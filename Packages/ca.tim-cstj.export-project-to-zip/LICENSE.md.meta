@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 9070cc08537412344869af7e8e21ec31
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 243983
+  packageName: Export Project to Zip
+  packageVersion: 1.1.5
+  assetPath: Packages/ca.tim-cstj.export-project-to-zip/LICENSE.md
+  uploadId: 843732

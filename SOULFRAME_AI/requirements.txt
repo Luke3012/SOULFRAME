@@ -1,0 +1,37 @@
+# SOULFRAME AI Services - Python Requirements
+# Testato con Python 3.11
+
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+starlette==0.35.1
+pydantic==2.5.3
+
+# Whisper (Speech-to-Text)
+openai-whisper==20231117
+
+# RAG & Vector Database
+chromadb==0.4.22
+requests==2.31.0
+rank-bm25==0.2.2
+
+# OCR & PDF Processing
+pytesseract==0.3.10
+Pillow==10.2.0
+PyMuPDF==1.23.21
+
+# Coqui TTS (Text-to-Speech)
+coqui-tts
+numpy==1.24.3
+soundfile==0.12.1
+
+# Deep Learning (per TTS e compatibilità)
+torch==2.1.2
+torchaudio==2.1.2
+
+# Gemini Vision (opzionale - per descrizione immagini)
+google-genai==0.2.0
+
+# Utilities
+hnswlib==0.8.0

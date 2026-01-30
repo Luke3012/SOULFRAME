@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Avaturn Demo</title>
+    <meta name="description" content="Unity plugin to turn people into realistic 3D avatars">
+    <link rel="stylesheet" href="TemplateData/style.css">
+	<link rel="stylesheet" href="TemplateData/Avaturn/AvaturnStyle.css"><!-- Required for Avaturn Web Creator -->
+	<link rel="shortcut icon" href="TemplateData/favicon.ico" />
+</head>
+
+<body>
+    <div id="canvas-wrap">
+		<!-- avaturn-container div and contents required for Avaturn Web Creator -->
+        <div id="avaturn-container">
+			<div id="avaturn-sdk-container" class="avaturn-sdk-container"></div>
+        </div>
+		<!-- avaturn-container div and contents required for Avaturn Web Creator -->
+        <div id="unity-container">
+            <canvas id="unity-canvas" ></canvas>
+        </div>
+    </div>
+</body>
+
+<script src="TemplateData/Global.js"></script>
+<script src="TemplateData/Avaturn/AvaturnFrame.js" type="module"></script><!-- Required for Avaturn Web Creator -->
+<script src="Build/{{{ LOADER_FILENAME }}}"></script>
+<script src="TemplateData/UnitySetup.js"></script>
+
+</html>
