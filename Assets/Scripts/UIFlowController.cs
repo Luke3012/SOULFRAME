@@ -42,6 +42,10 @@ public class UIFlowController : MonoBehaviour
     public Button btnBackToHome;
     public TextMeshProUGUI avatarInfoText;
 
+    [Header("Hint Bar")]
+    public UIHintBar hintBar;
+    public List<HintEntry> hintEntries = new List<HintEntry>();
+
     [Header("Transitions")]
     [SerializeField] private float transitionDuration = 0.25f;
     [SerializeField] private float slideOffset = 40f;
@@ -57,6 +61,7 @@ public class UIFlowController : MonoBehaviour
     private readonly Dictionary<UIState, GameObject> panelMap = new Dictionary<UIState, GameObject>();
     private readonly Dictionary<GameObject, CanvasGroup> panelCanvasGroups = new Dictionary<GameObject, CanvasGroup>();
     private readonly Dictionary<GameObject, Vector2> panelDefaultPositions = new Dictionary<GameObject, Vector2>();
+    private readonly Dictionary<UIState, string> hintMap = new Dictionary<UIState, string>();
 
     private UIState currentState;
     private Coroutine transitionRoutine;
@@ -93,6 +98,11 @@ public class UIFlowController : MonoBehaviour
             Debug.Log($"AvaturnSystem trovato: {avaturnSystem != null}");
         }
 
+        if (hintBar == null)
+        {
+            hintBar = FindFirstObjectByType<UIHintBar>();
+        }
+
         btnNewAvatar.onClick.AddListener(OnNewAvatar);
         btnShowList.onClick.AddListener(GoToAvatarLibrary);
         btnBackFromList.onClick.AddListener(GoBack);
@@ -103,8 +113,11 @@ public class UIFlowController : MonoBehaviour
 
         BuildPanelMap();
         CachePanelDefaults();
+        BuildHintMap();
 
         SetStateImmediate(UIState.MainMenu);
+
+        UpdateHintBar(UIState.MainMenu);
 
         UpdateDebugText("Sistema pronto. Clicca 'Nuovo Avatar' per iniziare.");
 
@@ -125,6 +138,25 @@ public class UIFlowController : MonoBehaviour
         panelMap[UIState.SetupVoice] = pnlSetupVoice;
         panelMap[UIState.SetupMemory] = pnlSetupMemory;
         panelMap[UIState.MainMode] = pnlMainMode;
+    }
+
+    private void BuildHintMap()
+    {
+        hintMap.Clear();
+        if (hintEntries.Count == 0)
+        {
+            hintMap[UIState.MainMenu] = "[X] Enter   [Tri] Close";
+            hintMap[UIState.AvatarLibrary] = "[X] Select   [O] Back";
+            hintMap[UIState.AvatarReady] = "[X] Play   [O] Close";
+            hintMap[UIState.SetupVoice] = "[X] Record   [O] Back";
+            hintMap[UIState.SetupMemory] = "[X] Save   [O] Back";
+            hintMap[UIState.MainMode] = "[X] Confirm   [O] Back";
+            return;
+        }
+        foreach (var entry in hintEntries)
+        {
+            hintMap[entry.state] = entry.hints;
+        }
     }
 
     private void CachePanelDefaults()
@@ -242,6 +274,8 @@ public class UIFlowController : MonoBehaviour
 
         currentState = targetState;
 
+        UpdateHintBar(targetState);
+
         if (transitionRoutine != null)
         {
             StopCoroutine(transitionRoutine);
@@ -271,6 +305,8 @@ public class UIFlowController : MonoBehaviour
 
             ResetPanelPosition(pair.Value);
         }
+
+        UpdateHintBar(targetState);
     }
 
     private GameObject GetPanel(UIState state)
@@ -499,6 +535,46 @@ public class UIFlowController : MonoBehaviour
             debugText.text = message;
         }
         Debug.Log("[UIFlowController] " + message);
+    }
+
+    private void UpdateHintBar(UIState state)
+    {
+        if (hintBar == null)
+            return;
+
+        // Se usi hintEntries nell'Inspector, mantieni il vecchio comportamento testuale
+        if (hintEntries != null && hintEntries.Count > 0 && hintMap.TryGetValue(state, out var hints))
+        {
+            hintBar.SetHints(hints);
+            return;
+        }
+
+        // Horizontal arrows solo in AvatarReady
+        bool isAvatarReady = state == UIState.AvatarReady;
+        hintBar.SetArrowsHorizontal(isAvatarReady);
+
+        // Default: PC keyboard prompts
+        var arrows = new UIHintBar.HintItem(UIHintBar.HintIcon.Arrows, "Seleziona");
+        var enter = new UIHintBar.HintItem(UIHintBar.HintIcon.Enter, "Seleziona");
+
+        if (state == UIState.MainMenu)
+        {
+            var esc = new UIHintBar.HintItem(UIHintBar.HintIcon.Esc, "Chiudi programma");
+            hintBar.SetHints(arrows, enter, esc);
+        }
+        else
+        {
+            var back = new UIHintBar.HintItem(UIHintBar.HintIcon.Backspace, "Indietro");
+            hintBar.SetHints(arrows, enter, back);
+        }
+    }
+
+
+    [System.Serializable]
+    public struct HintEntry
+    {
+        public UIState state;
+        [TextArea] public string hints;
     }
 
     public void OnAvatarJsonReceived(string json)
