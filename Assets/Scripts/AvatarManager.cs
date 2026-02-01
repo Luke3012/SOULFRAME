@@ -67,10 +67,12 @@ public class AvatarManager : MonoBehaviour
     public Transform spawnPoint;
 
     [Header("UI Reference")]
-    public UIManager uiManager;
+    public UIFlowController uiFlowController;
 
-    [Header("Replace target")]
-    public Transform baseModelToReplace; // assegna Avaturn-BaseModel da Inspector
+    [Header("Avatar Anchor")]
+    public Transform avatarAnchor;
+    public Transform baseModelToReplace; // opzionale: placeholder legacy
+    public bool hideBaseModel = true;
     public bool destroyBaseModel = true;
 
 
@@ -92,11 +94,11 @@ public class AvatarManager : MonoBehaviour
     private string savePath;
     private GameObject currentAvatar;
 
-    private Transform _baseParent;
-    private Vector3 _baseLocalPos;
-    private Quaternion _baseLocalRot;
-    private Vector3 _baseLocalScale;
-    private bool _basePoseCached;
+    private Transform _anchorParent;
+    private Vector3 _anchorLocalPos;
+    private Quaternion _anchorLocalRot;
+    private Vector3 _anchorLocalScale;
+    private bool _anchorPoseCached;
 
     public AvaturnULipSyncBinder lipSyncBinder;
     public ULipSyncProfileRouter profileRouter;
@@ -113,18 +115,44 @@ public class AvatarManager : MonoBehaviour
         if (downloadAvatar != null)
             downloadAvatar.SetOnDownloaded(OnAvatarDownloaded);
 
+        if (avatarAnchor != null)
+        {
+            _anchorParent = avatarAnchor;
+            if (baseModelToReplace != null)
+            {
+                _anchorLocalPos = baseModelToReplace.localPosition;
+                _anchorLocalRot = baseModelToReplace.localRotation;
+                _anchorLocalScale = baseModelToReplace.localScale;
+            }
+            else
+            {
+                _anchorLocalPos = Vector3.zero;
+                _anchorLocalRot = Quaternion.identity;
+                _anchorLocalScale = Vector3.one;
+            }
+            _anchorPoseCached = true;
+        }
+        else if (baseModelToReplace != null)
+        {
+            _anchorParent = baseModelToReplace.parent;
+            _anchorLocalPos = baseModelToReplace.localPosition;
+            _anchorLocalRot = baseModelToReplace.localRotation;
+            _anchorLocalScale = baseModelToReplace.localScale;
+            _anchorPoseCached = true;
+        }
+
         if (baseModelToReplace != null)
         {
-            _baseParent = baseModelToReplace.parent;
-            _baseLocalPos = baseModelToReplace.localPosition;
-            _baseLocalRot = baseModelToReplace.localRotation;
-            _baseLocalScale = baseModelToReplace.localScale;
-            _basePoseCached = true;
-            if (idleLook != null)
-                idleLook.Setup(baseModelToReplace); // imposta animazione sul modello base
-
-            baseModelToReplace.gameObject.SetActive(true);
-            destroyBaseModel = false;
+            if (!hideBaseModel)
+            {
+                if (idleLook != null)
+                    idleLook.Setup(baseModelToReplace);
+                baseModelToReplace.gameObject.SetActive(true);
+            }
+            else
+            {
+                baseModelToReplace.gameObject.SetActive(false);
+            }
         }
     }
 
@@ -133,14 +161,14 @@ public class AvatarManager : MonoBehaviour
     {
         Debug.Log($"Avatar ricevuto: {avatarInfo.AvatarId}");
 
-        uiManager?.UpdateDebugText($"Avatar ricevuto ({avatarInfo.Gender}) - elaborazione...");
+        uiFlowController?.UpdateDebugText($"Avatar ricevuto ({avatarInfo.Gender}) - elaborazione...");
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         // In WebGL dobbiamo ricevere un http(s) URL per caricarlo con GLTFast/UnityWebRequest
         if (!avatarInfo.Url.StartsWith("http://") && !avatarInfo.Url.StartsWith("https://"))
         {
             Debug.LogError("WEBGL: ricevuto un URL non-http(s). Imposta Export type = HttpURL in Avaturn (o forza avaturnForceExportHttpUrl).");
-            uiManager?.UpdateDebugText("Errore: su WebGL serve HttpURL. Controlla Export type su Avaturn.");
+            uiFlowController?.UpdateDebugText("Errore: su WebGL serve HttpURL. Controlla Export type su Avaturn.");
             return;
         }
 
@@ -177,13 +205,13 @@ public class AvatarManager : MonoBehaviour
         } else
             Debug.LogError("DownloadAvatar reference mancante in AvatarManager");
 
-        uiManager?.OnAvatarDownloadStarted(avatarInfo);
+        uiFlowController?.OnAvatarDownloadStarted(avatarInfo);
     }
 
     public void LoadSavedAvatar(AvatarData avatarData)
     {
         Debug.Log($"Caricamento avatar salvato: {avatarData.avatarId}");
-        uiManager?.UpdateDebugText($"Caricamento avatar {avatarData.avatarId}...");
+        uiFlowController?.UpdateDebugText($"Caricamento avatar {avatarData.avatarId}...");
 
         profileRouter?.ApplyGender(avatarData.gender);
 
@@ -201,20 +229,20 @@ public class AvatarManager : MonoBehaviour
             return;
         }
 
-        Transform parent = _basePoseCached ? _baseParent : spawnPoint;
+        Transform parent = _anchorPoseCached ? _anchorParent : spawnPoint;
+        if (parent == null)
+            parent = transform;
 
         var containerGO = new GameObject("CurrentAvatar");
         var container = containerGO.transform;
         container.SetParent(parent, false);
 
-        if (_basePoseCached)
+        // Applica la posizione PRIMA di reparentizzare i loader
+        if (_anchorPoseCached)
         {
-            container.localPosition = _baseLocalPos;
-            container.localRotation = _baseLocalRot;
-            container.localScale = _baseLocalScale;
-
-            // Nascondi il placeholder
-            if (baseModelToReplace != null) baseModelToReplace.gameObject.SetActive(false);
+            container.localPosition = _anchorLocalPos;
+            container.localRotation = _anchorLocalRot;
+            container.localScale = _anchorLocalScale;
         }
         else
         {
@@ -223,7 +251,6 @@ public class AvatarManager : MonoBehaviour
             container.localScale = Vector3.one;
         }
 
-
         // elimina eventuale avatar precedente
         if (currentAvatar != null) Destroy(currentAvatar);
 
@@ -231,14 +258,11 @@ public class AvatarManager : MonoBehaviour
         loaderTransform.position = container.position;
         loaderTransform.rotation = container.rotation;
 
-        //loaderTransform.localScale = Vector3.one;
-
         // sposta i figli dal Loader al container
         while (loaderTransform.childCount > 0)
         {
             var child = loaderTransform.GetChild(0);
             child.SetParent(container, false); // Usa worldPositionStays = false e poi azzera offset sul root
-            
             child.localPosition = Vector3.zero;
             child.localRotation = Quaternion.identity;
         }
@@ -255,10 +279,16 @@ public class AvatarManager : MonoBehaviour
         if (idleLook != null)
             StartCoroutine(SetupIdleLookNextFrame(container));
 
+        // Nascondi il baseModel se necessario
+        if (baseModelToReplace != null && hideBaseModel)
+        {
+            baseModelToReplace.gameObject.SetActive(false);
+        }
+
         // Debug utilissimo: ora deve essere vicino allo spawnpoint
         Debug.Log($"[Avatar] container world={container.position} local={container.localPosition} children={container.childCount}");
 
-        uiManager?.OnAvatarDownloaded(container);
+        uiFlowController?.OnAvatarDownloaded(container);
     }
 
     private IEnumerator SetupLipSyncNextFrame(Transform avatarRoot)
@@ -316,11 +346,10 @@ public class AvatarManager : MonoBehaviour
         }
 
         // Riattiva il placeholder
-        if (baseModelToReplace != null)
+        if (baseModelToReplace != null && !hideBaseModel)
         {
             baseModelToReplace.gameObject.SetActive(true);
 
-            // Rifai Setup sul modello base (al frame dopo l'enable)
             if (idleLook != null)
                 StartCoroutine(SetupIdleLookOnBaseNextFrame());
         }
@@ -433,7 +462,7 @@ public class AvatarManager : MonoBehaviour
 
     private string _lastAvatarId;
     private float _lastAvatarTs;
-    // chiamato da UIManager / bridge
+    // chiamato da UIFlowController / bridge
     public void OnAvatarJsonReceived(string json)
     {
         Debug.Log($"JSON ricevuto: {json}");
@@ -447,13 +476,13 @@ public class AvatarManager : MonoBehaviour
 
             if (jsonData.status == "closed")
             {
-                uiManager?.UpdateDebugText("Avaturn chiuso");
+                uiFlowController?.UpdateDebugText("Avaturn chiuso");
                 return;
             }
 
             if (jsonData.status == "error")
             {
-                uiManager?.UpdateDebugText("Errore Avaturn");
+                uiFlowController?.UpdateDebugText("Errore Avaturn");
                 return;
             }
 
@@ -482,7 +511,7 @@ public class AvatarManager : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogError($"Errore nel parsing JSON: {e.Message}");
-            uiManager?.UpdateDebugText("Errore JSON avatar");
+            uiFlowController?.UpdateDebugText("Errore JSON avatar");
         }
     }
 

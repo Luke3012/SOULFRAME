@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 public class GitWindow : EditorWindow
 {
@@ -59,12 +60,14 @@ public class GitWindow : EditorWindow
         if (GUILayout.Button("Push"))
         {
             string msg = string.IsNullOrEmpty(commitMessage) ? "update" : commitMessage;
+            UnityEngine.Debug.Log($"[VCS] Avvio Push: '{msg}'...");
             PerformGitPush(msg);
             commitMessage = "";
         }
 
         if (GUILayout.Button("Pull"))
         {
+            UnityEngine.Debug.Log("[VCS] Avvio Pull...");
             RunCmd("/C git pull");
         }
 
@@ -135,7 +138,52 @@ public class GitWindow : EditorWindow
         startInfo.WindowStyle = ProcessWindowStyle.Hidden;
         startInfo.FileName = "cmd.exe";
         startInfo.Arguments = args;
+        startInfo.UseShellExecute = false;
+        startInfo.RedirectStandardOutput = true;
+        startInfo.RedirectStandardError = true;
+        startInfo.CreateNoWindow = true;
+        startInfo.WorkingDirectory = Directory.GetParent(Application.dataPath).FullName;
+        
         process.StartInfo = startInfo;
+        
+        StringBuilder output = new StringBuilder();
+        StringBuilder error = new StringBuilder();
+        
+        process.OutputDataReceived += (sender, e) => {
+            if (!string.IsNullOrEmpty(e.Data))
+                output.AppendLine(e.Data);
+        };
+        
+        process.ErrorDataReceived += (sender, e) => {
+            if (!string.IsNullOrEmpty(e.Data))
+                error.AppendLine(e.Data);
+        };
+        
         process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        process.WaitForExit();
+        
+        string outputStr = output.ToString().Trim();
+        string errorStr = error.ToString().Trim();
+        
+        if (!string.IsNullOrEmpty(outputStr))
+        {
+            UnityEngine.Debug.Log($"[VCS] Operazione completata:\n{outputStr}");
+        }
+        
+        if (!string.IsNullOrEmpty(errorStr))
+        {
+            // Git spesso usa stderr anche per messaggi informativi
+            if (errorStr.Contains("error:") || errorStr.Contains("fatal:"))
+                UnityEngine.Debug.LogError($"[VCS] Errore:\n{errorStr}");
+            else
+                UnityEngine.Debug.Log($"[VCS] Info:\n{errorStr}");
+        }
+        
+        if (string.IsNullOrEmpty(outputStr) && string.IsNullOrEmpty(errorStr))
+        {
+            UnityEngine.Debug.Log("[VCS] Operazione completata (nessun output)");
+        }
     }
 }

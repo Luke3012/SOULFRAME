@@ -751,8 +751,40 @@ Transform:
   m_Children:
   - {fileID: 1286326862}
   - {fileID: 1685682123}
+  - {fileID: 2000000101}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 179.646, z: 0}
+--- !u!1 &2000000100
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2000000101}
+  m_Layer: 0
+  m_Name: AvatarAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2000000101
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000000100}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 531960401}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &698402363
 GameObject:
   m_ObjectHideFlags: 0
@@ -765,7 +797,7 @@ GameObject:
   - component: {fileID: 698402366}
   - component: {fileID: 698402365}
   m_Layer: 5
-  m_Name: HomePanel
+  m_Name: Pnl_MainMenu
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -842,7 +874,7 @@ GameObject:
   - component: {fileID: 733325188}
   - component: {fileID: 733325187}
   m_Layer: 5
-  m_Name: ListPanel
+  m_Name: Pnl_AvatarLibrary
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1201,7 +1233,7 @@ GameObject:
   - component: {fileID: 896084380}
   - component: {fileID: 896084379}
   m_Layer: 5
-  m_Name: GamePanel
+  m_Name: Pnl_AvatarReady
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1268,6 +1300,111 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 896084377}
   m_CullTransparentMesh: 1
+--- !u!1 &2000000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2000000004}
+  m_Layer: 5
+  m_Name: Pnl_SetupVoice
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!224 &2000000004
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000000001}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1308669709}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!1 &2000000002
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2000000005}
+  m_Layer: 5
+  m_Name: Pnl_SetupMemory
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!224 &2000000005
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000000002}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1308669709}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!1 &2000000003
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2000000006}
+  m_Layer: 5
+  m_Name: Pnl_MainMode
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!224 &2000000006
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000000003}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1308669709}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &896232446 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 5449571898335139354, guid: 0526b97744fd68b40a2ca95ba845cadc, type: 3}
@@ -2205,7 +2342,7 @@ GameObject:
   - component: {fileID: 1308669707}
   - component: {fileID: 1308669706}
   m_Layer: 5
-  m_Name: UIManager
+  m_Name: UIFlowController
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2290,6 +2427,9 @@ RectTransform:
   - {fileID: 698402364}
   - {fileID: 733325186}
   - {fileID: 896084378}
+  - {fileID: 2000000004}
+  - {fileID: 2000000005}
+  - {fileID: 2000000006}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -2308,10 +2448,13 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e1b855bde38b255429aa0a4214608a84, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::UIManager
-  homePanel: {fileID: 698402363}
-  listPanel: {fileID: 733325185}
-  gamePanel: {fileID: 896084377}
+  m_EditorClassIdentifier: Assembly-CSharp::UIFlowController
+  pnlMainMenu: {fileID: 698402363}
+  pnlAvatarLibrary: {fileID: 733325185}
+  pnlAvatarReady: {fileID: 896084377}
+  pnlSetupVoice: {fileID: 2000000001}
+  pnlSetupMemory: {fileID: 2000000002}
+  pnlMainMode: {fileID: 2000000003}
   btnNewAvatar: {fileID: 1482831231}
   btnShowList: {fileID: 901363462}
   debugText: {fileID: 356181326}
@@ -2608,7 +2751,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AvaturnWebController
   avaturnUrl: https://soulframe.avaturn.dev?sdk=true
-  uiManager: {fileID: 1308669710}
+  uiFlowController: {fileID: 1308669710}
 --- !u!114 &1480375625
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2623,8 +2766,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AvatarManager
   downloadAvatar: {fileID: 896232446}
   spawnPoint: {fileID: 531960401}
-  uiManager: {fileID: 1308669710}
+  uiFlowController: {fileID: 1308669710}
+  avatarAnchor: {fileID: 2000000101}
   baseModelToReplace: {fileID: 1286326862}
+  hideBaseModel: 1
   destroyBaseModel: 1
   addLocalTestModels: 1
   localModel2FileName: model2.glb

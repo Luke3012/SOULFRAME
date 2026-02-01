@@ -7,7 +7,7 @@ public class AvaturnWebController : MonoBehaviour
     public string avaturnUrl = "https://soulframe.avaturn.dev?sdk=true";
 
     [Header("Riferimenti")]
-    public UIManager uiManager;
+    public UIFlowController uiFlowController;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")]
@@ -16,8 +16,8 @@ public class AvaturnWebController : MonoBehaviour
 
     void Start()
     {
-        if (uiManager == null)
-            uiManager = FindFirstObjectByType<UIManager>();
+        if (uiFlowController == null)
+            uiFlowController = FindFirstObjectByType<UIFlowController>();
     }
 
     public void OnClick_NewAvatar()
@@ -25,7 +25,7 @@ public class AvaturnWebController : MonoBehaviour
 #if UNITY_EDITOR
         Application.OpenURL(avaturnUrl);
         Debug.Log("Apri URL nel browser: " + avaturnUrl);
-        if (uiManager != null) uiManager.UpdateDebugText("Apri URL nel browser esterno");
+        if (uiFlowController != null) uiFlowController.UpdateDebugText("Apri URL nel browser esterno");
 #elif UNITY_WEBGL && !UNITY_EDITOR
         OpenAvaturnIframe(avaturnUrl, this.gameObject.name, "OnAvatarJsonReceived");
 #else
@@ -36,6 +36,6 @@ public class AvaturnWebController : MonoBehaviour
     public void OnAvatarJsonReceived(string json)
     {
         Debug.Log("JSON ricevuto dal bridge: " + json);
-        if (uiManager != null) uiManager.OnAvatarJsonReceived(json);
+        if (uiFlowController != null) uiFlowController.OnAvatarJsonReceived(json);
     }
 }
