@@ -122,58 +122,52 @@ public class GitWindow : EditorWindow
 
         if (commitHistory.Count > 0)
         {
-            GUILayout.Label($"Commit caricati: {commitHistory.Count}");
+            GUILayout.Label($"Commit disponibili ({commitHistory.Count}):");
+            commitHistoryScroll = GUILayout.BeginScrollView(commitHistoryScroll, GUILayout.Height(120));
+
+            for (int i = 0; i < commitHistory.Count; i++)
+            {
+                string label = $"{commitHistory[i].Hash.Substring(0, 7)} - {commitHistory[i].Message} ({commitHistory[i].Author}, {commitHistory[i].Date})";
+                
+                if (GUILayout.Button(label, selectedCommitIndex == i ? EditorStyles.radioButton : EditorStyles.label))
+                {
+                    selectedCommitIndex = i;
+                }
+            }
+
+            GUILayout.EndScrollView();
+
+            GUILayout.Space(10);
+            if (selectedCommitIndex >= 0 && selectedCommitIndex < commitHistory.Count)
+            {
+                GUILayout.Label($"Selezionato: {commitHistory[selectedCommitIndex].Message}");
+                
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("Soft Revert (mantieni modifiche)"))
+                {
+                    RevertToCommit(selectedCommitIndex, false);
+                }
+                if (GUILayout.Button("Hard Revert (ATTENZIONE!)", GUILayout.Width(150)))
+                {
+                    if (EditorUtility.DisplayDialog("Revert Confermato?",
+                        $"Sei sicuro? Questo cancellerà TUTTE le modifiche dopo il commit:\n\n{commitHistory[selectedCommitIndex].Message}\n\nQuesta azione è IRREVERSIBILE!",
+                        "Sì, revert hard", "Annulla"))
+                    {
+                        RevertToCommit(selectedCommitIndex, true);
+                    }
+                }
+                GUILayout.EndHorizontal();
+            }
+            else
+            {
+                GUI.enabled = false;
+                GUILayout.Button("Seleziona un commit per applicare il revert");
+                GUI.enabled = true;
+            }
         }
         else
         {
             GUILayout.Label("Caricamento commit in corso...", EditorStyles.helpBox);
-        }
-
-        if (commitHistory.Count > 0)
-        {
-            if (GUILayout.Button("Carica Storico Commit"))
-            {
-                LoadCommitHistory();
-            }
-
-            if (commitHistory.Count > 0)
-            {
-                GUILayout.Label($"Commit disponibili ({commitHistory.Count}):");
-                commitHistoryScroll = GUILayout.BeginScrollView(commitHistoryScroll, GUILayout.Height(120));
-
-                for (int i = 0; i < commitHistory.Count; i++)
-                {
-                    string label = $"{commitHistory[i].Hash.Substring(0, 7)} - {commitHistory[i].Message} ({commitHistory[i].Author}, {commitHistory[i].Date})";
-                    
-                    if (GUILayout.Button(label, selectedCommitIndex == i ? EditorStyles.radioButton : EditorStyles.label))
-                    {
-                        selectedCommitIndex = i;
-                    }
-                }
-
-                GUILayout.EndScrollView();
-
-                if (selectedCommitIndex >= 0 && selectedCommitIndex < commitHistory.Count)
-                {
-                    GUILayout.Label($"Selezionato: {commitHistory[selectedCommitIndex].Message}");
-                    
-                    GUILayout.BeginHorizontal();
-                    if (GUILayout.Button("Soft Revert (mantieni modifiche)"))
-                    {
-                        RevertToCommit(selectedCommitIndex, false);
-                    }
-                    if (GUILayout.Button("Hard Revert (ATTENZIONE!)", GUILayout.Width(150)))
-                    {
-                        if (EditorUtility.DisplayDialog("Revert Confermato?",
-                            $"Sei sicuro? Questo cancellerà TUTTE le modifiche dopo il commit:\n\n{commitHistory[selectedCommitIndex].Message}\n\nQuesta azione è IRREVERSIBILE!",
-                            "Sì, revert hard", "Annulla"))
-                        {
-                            RevertToCommit(selectedCommitIndex, true);
-                        }
-                    }
-                    GUILayout.EndHorizontal();
-                }
-            }
         }
 
         // Se serve resettare manualmente lo stato dello script
@@ -229,6 +223,7 @@ public class GitWindow : EditorWindow
         }
 
         AssetDatabase.Refresh();
+        LoadCommitHistory();
     }
 
     void ApplyPatch(bool useReject)
