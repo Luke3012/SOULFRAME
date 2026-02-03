@@ -73,7 +73,7 @@ ai_services.cmd
 ```
 
 Il menu ti permette di:
-- **[1] Start servizi** - avvia Ollama, Whisper, RAG e TTS
+- **[1] Start servizi** - avvia Ollama, Whisper, RAG, TTS e Build del Progetto
 - **[2] Stop servizi** - termina tutti i processi
 
 **Cosa fa ai_services.cmd:**
@@ -82,6 +82,7 @@ Il menu ti permette di:
 - Avvia ogni servizio in una finestra separata minimizzata
 - Configura le variabili d'ambiente necessarie per TTS
 - Fornisce link diretti alle UI Swagger (`/docs`)
+- Avvia il Build Server in `..\Build` (o `BUILD_DIR` se impostata) e apre `http://localhost:8000`
 
 ### Metodo Manuale
 
@@ -105,6 +106,11 @@ uvicorn rag_server:app --host 127.0.0.1 --port 8002
 cd backend
 .\venv\Scripts\activate
 uvicorn coqui_tts_server:app --host 127.0.0.1 --port 8004
+
+# Terminal 5 - Avatar Asset Server (Cache glb)
+cd backend
+.\venv\Scripts\activate
+uvicorn avatar_asset_server:app --host 127.0.0.1 --port 8003
 ```
 
 ## Porte Servizi
@@ -112,7 +118,9 @@ uvicorn coqui_tts_server:app --host 127.0.0.1 --port 8004
 - **Whisper**: http://127.0.0.1:8001/docs
 - **RAG**: http://127.0.0.1:8002/docs
 - **TTS**: http://127.0.0.1:8004/docs
+- **Avatar Asset**: http://127.0.0.1:8003/docs
 - **Ollama**: http://127.0.0.1:11434
+- **Build Server**: http://localhost:8000
 
 ## Uso
 
@@ -167,6 +175,47 @@ response = requests.post(
 
 with open("output.wav", "wb") as f:
     f.write(response.content)
+```
+
+### Avatar Asset Server (Cache .glb)
+
+```python
+import requests
+
+payload = {
+    "avatar_id": "avaturn_demo",
+    "url": "https://example.com/avaturn_export.glb",
+    "gender": "female",
+    "bodyId": "default",
+    "urlType": "glb"
+}
+
+response = requests.post("http://127.0.0.1:8003/avatars/import", json=payload)
+print(response.json())
+```
+
+## Come testare (curl)
+
+```bash
+# Import avatar (sostituisci con l'URL reale di export)
+curl -X POST http://127.0.0.1:8003/avatars/import \\
+  -H "Content-Type: application/json" \\
+  -d "{\\"avatar_id\\":\\"avaturn_demo\\",\\"url\\":\\"https://example.com/avaturn_export.glb\\",\\"gender\\":\\"female\\",\\"bodyId\\":\\"default\\",\\"urlType\\":\\"glb\\"}"
+
+# Scarica modello (verifica che i byte siano > 0)
+curl -L http://127.0.0.1:8003/avatars/avaturn_demo/model.glb --output avatar.glb
+
+# Lista avatar (deve contenere sempre LOCAL_model1 e LOCAL_model2)
+curl http://127.0.0.1:8003/avatars/list
+```
+
+## Build Server
+
+Se non esiste `..\Build`, imposta la variabile ambiente `BUILD_DIR` con il path completo:
+
+```powershell
+set BUILD_DIR=C:\Path\To\Build
+ai_services.cmd 1
 ```
 
 ## Note

@@ -11,6 +11,7 @@ REM ============================================================
 
 set "ROOT=%~dp0"
 set "BACKEND=%ROOT%backend"
+set "BUILD_DIR=C:\Users\lucat\Realta Virtuale\SOULFRAME\Build"
 
 REM Prefer backend\venv, fallback backend\.venv
 set "VENV_DIR=%BACKEND%\venv"
@@ -27,7 +28,9 @@ if not exist "%PY%" (
 set "WHISPER_PORT=8001"
 set "RAG_PORT=8002"
 set "TTS_PORT=8004"
+set "AVATAR_ASSET_PORT=8003"
 set "OLLAMA_PORT=11434"
+set "BUILD_PORT=8000"
 
 REM Coqui XTTS v2 (se coqui_tts_server.py legge queste env)
 set "TTS_HOME=%ROOT%models\coqui_tts"
@@ -92,12 +95,23 @@ if "!LISTENING!"=="1" (
   start "SOULFRAME_TTS" /D "%BACKEND%" cmd /c "set ""TTS_HOME=%TTS_HOME%"" && set ""COQUI_TTS_MODEL=%COQUI_TTS_MODEL%"" && set ""COQUI_LANG=%COQUI_LANG%"" && set ""COQUI_DEFAULT_SPEAKER_WAV=%COQUI_DEFAULT_SPEAKER_WAV%"" && ^"%PY%^" -m uvicorn coqui_tts_server:app --host 127.0.0.1 --port %TTS_PORT% --log-level info"
 )
 
+REM --- Avatar Asset Server ---
+call :PORT_IS_LISTENING %AVATAR_ASSET_PORT%
+if "!LISTENING!"=="1" (
+  echo    Avatar Asset Server gia' attivo su %AVATAR_ASSET_PORT%
+) else (
+  start "SOULFRAME_AVATAR_ASSET" /D "%BACKEND%" cmd /c ""%PY%" -m uvicorn avatar_asset_server:app --host 127.0.0.1 --port %AVATAR_ASSET_PORT% --log-level info"
+)
+
 echo.
 echo Servizi:
 echo    Whisper: http://127.0.0.1:%WHISPER_PORT%/docs
 echo    RAG:      http://127.0.0.1:%RAG_PORT%/docs
 echo    TTS:      http://127.0.0.1:%TTS_PORT%/docs    (health: /health)
+echo    Avatar:   http://127.0.0.1:%AVATAR_ASSET_PORT%/docs
 echo.
+
+call :BUILD_SERVER
 exit /b 0
 
 :STOP
@@ -107,6 +121,12 @@ REM Kill Python services
 call :KILL_PORT_PY %WHISPER_PORT%
 call :KILL_PORT_PY %RAG_PORT%
 call :KILL_PORT_PY %TTS_PORT%
+call :KILL_PORT_PY %AVATAR_ASSET_PORT%
+call :KILL_PORT_PY %BUILD_PORT%
+
+REM Chiudi eventuali finestre residue del server WebGL (cmd /k)
+call :KILL_WINDOWTITLE "WebGL Python Server"
+call :KILL_WINDOWTITLE "SOULFRAME_BUILD"
 
 REM Kill Ollama (speciale, non e' python)
 call :KILL_PORT_FORCE %OLLAMA_PORT%
@@ -160,4 +180,40 @@ for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":%PORT% .*LISTENING" /
   REM Forza la chiusura di qualsiasi processo su questa porta (Ollama)
   taskkill /PID %%p /F /T >nul 2>&1
 )
+exit /b 0
+
+:KILL_WINDOWTITLE
+set "WT=%~1"
+REM taskkill supporta wildcard con *
+taskkill /FI "WINDOWTITLE eq %WT%*" /F /T >nul 2>&1
+exit /b 0
+
+REM ========================= BUILD SERVER =========================
+:BUILD_SERVER
+echo.
+echo Avvio Build Server...
+
+set "BUILD_DIR_ENV=%BUILD_DIR%"
+set "RESOLVED_BUILD_DIR="
+if not "%BUILD_DIR_ENV%"=="" set "RESOLVED_BUILD_DIR=%BUILD_DIR_ENV%"
+if "%RESOLVED_BUILD_DIR%"=="" set "RESOLVED_BUILD_DIR=%ROOT%..\Build"
+
+if not exist "%RESOLVED_BUILD_DIR%" (
+  echo [ERRORE] Build directory non trovata: %RESOLVED_BUILD_DIR%
+  exit /b 1
+)
+
+echo    Build dir: %RESOLVED_BUILD_DIR%
+
+call :PORT_IS_LISTENING %BUILD_PORT%
+if "!LISTENING!"=="1" (
+  echo    Build server gia' attivo su %BUILD_PORT%
+) else (
+  REM Avvia come gli altri servizi: cmd /c (si chiude quando il processo python termina)
+  start "SOULFRAME_BUILD" /D "%RESOLVED_BUILD_DIR%" /min cmd /c ""%PY%" -m http.server %BUILD_PORT%"
+  ping 127.0.0.1 -n 2 > nul
+)
+
+set "URL=http://localhost:%BUILD_PORT%"
+start "" "%URL%"
 exit /b 0

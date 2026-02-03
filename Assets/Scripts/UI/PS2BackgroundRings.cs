@@ -10,19 +10,19 @@ public class PS2BackgroundRings : MonoBehaviour
     [Header("Particle Color / Glow")]
     [SerializeField, ColorUsage(true, true)]
     private Color ringTint = new Color(0.4f, 0.75f, 1f, 0.9f);
-    [SerializeField] private float particleHDRIntensity = 5.0f; // aumenta per pi˘ bloom
+    [SerializeField] private float particleHDRIntensity = 5.0f; // aumenta per pi√π bloom
     [SerializeField] private bool overrideMaterialColor = false; // se TRUE, sovrascrive _Color del material
 
     [Header("Renderer Sorting (utile se in UI)")]
     [SerializeField] private string sortingLayerName = "UI";
     [SerializeField] private int sortingOrder = 100;
 
-    [Header("Orbs (unit‡ del RectTransform / UI)")]
+    [Header("Orbs (unit√† del RectTransform / UI)")]
     [SerializeField, Range(3, 12)] private int orbCount = 7;
-    [SerializeField] private float orbSize = 24f;                 // ìpixel-ishî
-    [SerializeField] private float orbitRadius = 140f;            // ìpixel-ishî
+    [SerializeField] private float orbSize = 24f;                 // ‚Äúpixel-ish‚Äù
+    [SerializeField] private float orbitRadius = 140f;            // ‚Äúpixel-ish‚Äù
     [SerializeField] private float radiusJitter = 10f;
-    [SerializeField] private float spacingJitterRadians = 0.05f;  // piccola irregolarit‡ nella spaziatura
+    [SerializeField] private float spacingJitterRadians = 0.05f;  // piccola irregolarit√† nella spaziatura
 
     [Header("Orbit (PS2 style)")]
     [SerializeField] private float baseOrbitSpeed = 1.15f;        // rad/sec
@@ -32,16 +32,23 @@ public class PS2BackgroundRings : MonoBehaviour
     [Header("Occasional Mix (si mischiano ogni tanto)")]
     [SerializeField] private Vector2 mixIntervalRange = new Vector2(3.5f, 8.5f);
     [SerializeField] private float mixDuration = 1.35f;
-    [SerializeField] private float mixPhaseStrength = 0.65f;      // rad: quanto ìsorpassanoî
-    [SerializeField] private float mixChaosBoost = 18f;           // ìpixel-ishî extra jitter SOLO durante il mix
+    [SerializeField] private float mixPhaseStrength = 0.65f;      // rad: quanto ‚Äúsorpassano‚Äù
+    [SerializeField] private float mixChaosBoost = 18f;           // ‚Äúpixel-ish‚Äù extra jitter SOLO durante il mix
     [SerializeField, Range(1, 12)] private int mixAffectCount = 3; // quante particelle coinvolge ogni mix
 
-    [Header("Trail (unit‡ del RectTransform / UI)")]
-    [SerializeField] private float trailSpacing = 34f;         // ìpixel-ishî
+    [Header("Trail (unit√† del RectTransform / UI)")]
+    private float baseOrbitSpeedDefault;
+
+    public void SetOrbitSpeedMultiplier(float multiplier)
+    {
+        baseOrbitSpeed = baseOrbitSpeedDefault * Mathf.Max(0f, multiplier);
+    }
+
+    [SerializeField] private float trailSpacing = 34f;         // ‚Äúpixel-ish‚Äù
     [SerializeField] private float trailInertia = 10f;         // smoothing verso target
-    [SerializeField] private float movementThreshold = 6f;     // ìpixel-ishî al secondo
-    [SerializeField] private float breakToTrailSpeed = 14f;    // quanto ìsubitoî rompi in scia
-    [SerializeField] private float returnToOrbitSpeed = 3f;    // quanto ìmorbidoî ri-agganci
+    [SerializeField] private float movementThreshold = 6f;     // ‚Äúpixel-ish‚Äù al secondo
+    [SerializeField] private float breakToTrailSpeed = 14f;    // quanto ‚Äúsubito‚Äù rompi in scia
+    [SerializeField] private float returnToOrbitSpeed = 3f;    // quanto ‚Äúmorbido‚Äù ri-agganci
     [SerializeField] private bool useUnscaledTime = true;
 
     private ParticleSystem ps;
@@ -78,6 +85,9 @@ public class PS2BackgroundRings : MonoBehaviour
 
     private void Awake()
     {
+        // Initialize base orbit speed for multiplier calculations
+        baseOrbitSpeedDefault = baseOrbitSpeed;
+        
         rectTransform = GetComponent<RectTransform>();
 
         EnsureParticleSystem();
@@ -113,7 +123,7 @@ public class PS2BackgroundRings : MonoBehaviour
 
         Vector3 center = GetCenterWorld();
 
-        // local->world scale (cosÏ orbitRadius/orbSize sono in ìunit‡ UIî)
+        // local->world scale (cos√¨ orbitRadius/orbSize sono in ‚Äúunit√† UI‚Äù)
         float unitToWorld = GetUnitToWorld();
         float thresholdWorld = movementThreshold * unitToWorld;
 
@@ -135,7 +145,7 @@ public class PS2BackgroundRings : MonoBehaviour
         // assicura numero particelle
         EnsureExactParticleCount();
 
-        // orbit: una baseAngle comune, cosÏ seguono la stessa traiettoria
+        // orbit: una baseAngle comune, cos√¨ seguono la stessa traiettoria
         baseAngle += baseOrbitSpeed * dt;
 
         float sizeWorld = orbSize * unitToWorld;
@@ -155,7 +165,7 @@ public class PS2BackgroundRings : MonoBehaviour
         float chaosPixels = microJitter + mixChaosBoost * mixPulse;
 
         // colore particella (HDR per far lavorare il Bloom)
-        // Se ha gi‡ PS2_RingAdditive con tinta blu, di default NON raddoppia la tinta:
+        // Se ha gi√† PS2_RingAdditive con tinta blu, di default NON raddoppia la tinta:
         Color baseColor = (ringMaterial != null && !overrideMaterialColor) ? Color.white : ringTint;
         Color particleColor = new Color(
             baseColor.r * particleHDRIntensity,
@@ -179,7 +189,7 @@ public class PS2BackgroundRings : MonoBehaviour
 
             Vector3 target = Vector3.Lerp(orbitTarget, trailTarget, chaseWeight);
 
-            // smoothing esponenziale (stabile e ìinerzialeî)
+            // smoothing esponenziale (stabile e ‚Äúinerziale‚Äù)
             float k = 1f - Mathf.Exp(-trailInertia * dt);
             simPositions[i] = Vector3.Lerp(simPositions[i], target, k);
 
@@ -187,7 +197,7 @@ public class PS2BackgroundRings : MonoBehaviour
             particles[i].startSize = sizeWorld;
             particles[i].startColor = particleColor;
 
-            // vita infinita ìpraticaî
+            // vita infinita ‚Äúpratica‚Äù
             particles[i].remainingLifetime = 999999f;
             particles[i].startLifetime = 999999f;
         }
@@ -223,7 +233,7 @@ public class PS2BackgroundRings : MonoBehaviour
         for (int i = 0; i < mixTargets.Length; i++)
             mixTargets[i] = 0f;
 
-        // sceglie un sottoinsieme di particelle da ìmischiareî
+        // sceglie un sottoinsieme di particelle da ‚Äúmischiare‚Äù
         int count = Mathf.Clamp(mixAffectCount, 1, orbCount);
         for (int k = 0; k < count; k++)
         {

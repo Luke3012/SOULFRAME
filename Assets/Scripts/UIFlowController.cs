@@ -6,6 +6,9 @@ using UnityEngine.UI;
 #if UNITY_WEBGL && !UNITY_EDITOR
 using System.Runtime.InteropServices;
 #endif
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public class UIFlowController : MonoBehaviour
 {
@@ -31,20 +34,45 @@ public class UIFlowController : MonoBehaviour
     public Button btnNewAvatar;
     public Button btnShowList;
     public TextMeshProUGUI debugText;
+    
+    [Header("Main Menu Intro")]
+    [SerializeField] private bool enableMainMenuIntro = true;
+    [SerializeField] private float mainMenuIntroDelay = 1.5f;
+    [SerializeField] private float mainMenuButtonsFadeDuration = 0.5f;
+    private CanvasGroup _titleCanvasGroup;
+    private CanvasGroup _btnNewAvatarGroup;
+    private CanvasGroup _btnShowListGroup;
+    private bool _mainMenuButtonsIntroDone;
 
     [Header("List Panel")]
     public Transform listContent;
     public GameObject listItemPrefab;
-    public Button btnBackFromList;
 
     [Header("Avatar Ready Panel")]
-    public Button btnCloseAvatar;
-    public Button btnBackToHome;
     public TextMeshProUGUI avatarInfoText;
+
+    [Header("Avatar Library 3D")]
+    public AvatarLibraryCarousel avatarLibraryCarousel;
 
     [Header("Hint Bar")]
     public UIHintBar hintBar;
     public List<HintEntry> hintEntries = new List<HintEntry>();
+
+    [Header("Carousel UI")]
+    [SerializeField] private CanvasGroup soulframeTitleGroup;
+
+    [Header("Navigation")]
+    public UINavigator navigator;
+
+    [Header("Background Rings")]
+    [SerializeField] private Transform ringsTransform;
+    [SerializeField] private Vector3 ringsHiddenOffset = new Vector3(0f, 0f, 2f);
+    [SerializeField] private float ringsTransitionDuration = 0.6f;
+    [SerializeField] private PS2BackgroundRings ringsController;
+
+    [Header("Download State")]
+    [SerializeField] private float downloadRingsSpeedMultiplier = 2f;
+
 
     [Header("Transitions")]
     [SerializeField] private float transitionDuration = 0.25f;
@@ -65,10 +93,40 @@ public class UIFlowController : MonoBehaviour
 
     private UIState currentState;
     private Coroutine transitionRoutine;
+    private Coroutine ringsRoutine;
+    private Vector3 ringsDefaultPosition;
+    private CanvasGroup mainMenuCanvasGroup;
+    private float mainMenuBaseAlpha = 1f;
+    private bool pendingNewAvatarDownload;
+    private bool downloadStateActive;
+    private bool carouselDownloading;
+    private bool webOverlayOpen;
+
+    // Fix 1: Flag per controllare se la transizione a AvatarReady è stata richiesta dall'utente
+    private bool _pendingAvatarReadyTransition = false;
+    private bool _previewModeActive = false;
+
+    public bool IsWebOverlayOpen => webOverlayOpen;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")] private static extern int EnsureDynCallV();
 #endif
+
+    void Awake()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            int ok = EnsureDynCallV();
+            Debug.Log("[WebGL] EnsureDynCallV (UIFlowController Awake) => " + ok);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[WebGL] EnsureDynCallV (UIFlowController Awake) failed: " + e.Message);
+        }
+#endif
+
+    }
 
     void Start()
     {
@@ -84,6 +142,7 @@ public class UIFlowController : MonoBehaviour
         {
             Debug.LogWarning("[WebGL] EnsureDynCallV failed: " + e.Message);
         }
+
 #endif
 
         if (avatarManager == null)
@@ -103,17 +162,76 @@ public class UIFlowController : MonoBehaviour
             hintBar = FindFirstObjectByType<UIHintBar>();
         }
 
-        btnNewAvatar.onClick.AddListener(OnNewAvatar);
-        btnShowList.onClick.AddListener(GoToAvatarLibrary);
-        btnBackFromList.onClick.AddListener(GoBack);
-        btnCloseAvatar.onClick.AddListener(OnCloseAvatarClick);
-        btnBackToHome.onClick.AddListener(GoToMainMenu);
+        if (avatarLibraryCarousel == null)
+        {
+            avatarLibraryCarousel = FindFirstObjectByType<AvatarLibraryCarousel>();
+        }
 
-        btnCloseAvatar.gameObject.SetActive(false);
+        if (avatarLibraryCarousel != null)
+        {
+            avatarLibraryCarousel.Initialize(avatarManager, this);
+        }
+
+        if (ringsTransform == null)
+        {
+            var ringsObject = GameObject.Find("VFX_BackgroundRings");
+            if (ringsObject != null)
+            {
+                ringsTransform = ringsObject.transform;
+            }
+        }
+
+        if (ringsTransform != null)
+        {
+            ringsDefaultPosition = ringsTransform.position;
+        }
+
+        if (ringsController == null && ringsTransform != null)
+        {
+            ringsController = ringsTransform.GetComponent<PS2BackgroundRings>();
+        }
+        
+        // Fix 1: Risolvi il CanvasGroup del titolo
+        ResolveTitleGroup();
+
+        if (btnNewAvatar != null) btnNewAvatar.onClick.AddListener(OnNewAvatar);
+        if (btnShowList != null) btnShowList.onClick.AddListener(GoToAvatarLibrary);
+        
+        // NOTE: All UI back/navigation buttons removed in favor of keyboard Backspace handling.
+        // Hint bar shows keyboard prompts to guide users (Arrows/Enter/Backspace).
 
         BuildPanelMap();
         CachePanelDefaults();
         BuildHintMap();
+
+        if (pnlMainMenu != null)
+        {
+            mainMenuCanvasGroup = GetOrAddCanvasGroup(pnlMainMenu);
+            if (mainMenuCanvasGroup != null)
+            {
+                mainMenuBaseAlpha = mainMenuCanvasGroup.alpha;
+            }
+        }
+
+        if (navigator == null)
+        {
+            navigator = FindFirstObjectByType<UINavigator>();
+            if (navigator == null)
+            {
+                navigator = gameObject.AddComponent<UINavigator>();
+            }
+        }
+
+        if (navigator != null)
+        {
+            navigator.SetActions(GoBack, ExitApplication);
+        }
+        
+        // Fix 1: Nascondi i bottoni se l'intro è abilitata
+        if (enableMainMenuIntro)
+        {
+            SetMainMenuButtonsVisible(false, immediate: true);
+        }
 
         SetStateImmediate(UIState.MainMenu);
 
@@ -127,6 +245,12 @@ public class UIFlowController : MonoBehaviour
         }
 
         webController = FindFirstObjectByType<AvaturnWebController>();
+        
+        // Fix 1: Avvia intro se abilitata
+        if (enableMainMenuIntro)
+        {
+            StartCoroutine(MainMenuButtonsIntroRoutine());
+        }
     }
 
     private void BuildPanelMap()
@@ -138,6 +262,116 @@ public class UIFlowController : MonoBehaviour
         panelMap[UIState.SetupVoice] = pnlSetupVoice;
         panelMap[UIState.SetupMemory] = pnlSetupMemory;
         panelMap[UIState.MainMode] = pnlMainMode;
+    }
+    
+    // Fix 1 parte 3: Metodi helper per l'intro
+    private void ResolveTitleGroup()
+    {
+        if (soulframeTitleGroup != null)
+        {
+            _titleCanvasGroup = soulframeTitleGroup;
+        }
+        else
+        {
+            var titleObj = GameObject.Find("Title_SOULFRAME");
+            if (titleObj != null)
+            {
+                _titleCanvasGroup = titleObj.GetComponent<CanvasGroup>();
+                if (_titleCanvasGroup == null)
+                {
+                    Debug.LogWarning("[UIFlowController] Title_SOULFRAME trovato ma senza CanvasGroup");
+                }
+            }
+        }
+        
+        // Crea CanvasGroup per i bottoni se non esistono
+        if (btnNewAvatar != null)
+        {
+            _btnNewAvatarGroup = btnNewAvatar.GetComponent<CanvasGroup>();
+            if (_btnNewAvatarGroup == null)
+            {
+                _btnNewAvatarGroup = btnNewAvatar.gameObject.AddComponent<CanvasGroup>();
+            }
+        }
+        
+        if (btnShowList != null)
+        {
+            _btnShowListGroup = btnShowList.GetComponent<CanvasGroup>();
+            if (_btnShowListGroup == null)
+            {
+                _btnShowListGroup = btnShowList.gameObject.AddComponent<CanvasGroup>();
+            }
+        }
+    }
+    
+    private void SetMainMenuButtonsVisible(bool visible, bool immediate = false)
+    {
+        float targetAlpha = visible ? 1f : 0f;
+        bool interactable = visible;
+        
+        if (_btnNewAvatarGroup != null)
+        {
+            if (immediate)
+            {
+                _btnNewAvatarGroup.alpha = targetAlpha;
+            }
+            _btnNewAvatarGroup.interactable = interactable;
+            _btnNewAvatarGroup.blocksRaycasts = interactable;
+        }
+        
+        if (_btnShowListGroup != null)
+        {
+            if (immediate)
+            {
+                _btnShowListGroup.alpha = targetAlpha;
+            }
+            _btnShowListGroup.interactable = interactable;
+            _btnShowListGroup.blocksRaycasts = interactable;
+        }
+    }
+    
+    private IEnumerator MainMenuButtonsIntroRoutine()
+    {
+        // Aspetta che il titolo abbia completato il fade-in
+        if (_titleCanvasGroup != null)
+        {
+            while (_titleCanvasGroup.alpha < 0.99f)
+            {
+                yield return null;
+            }
+        }
+        
+        // Delay extra
+        if (mainMenuIntroDelay > 0f)
+        {
+            yield return new WaitForSecondsRealtime(mainMenuIntroDelay);
+        }
+        
+        // Fade-in dei bottoni
+        float elapsed = 0f;
+        while (elapsed < mainMenuButtonsFadeDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / mainMenuButtonsFadeDuration);
+            
+            if (_btnNewAvatarGroup != null)
+            {
+                _btnNewAvatarGroup.alpha = t;
+            }
+            if (_btnShowListGroup != null)
+            {
+                _btnShowListGroup.alpha = t;
+            }
+            
+            yield return null;
+        }
+        
+        // Completa e rendi interattivi
+        SetMainMenuButtonsVisible(true, immediate: false);
+        _mainMenuButtonsIntroDone = true;
+        
+        // Aggiorna il navigator
+        ConfigureNavigatorForState(UIState.MainMenu, true);
     }
 
     private void BuildHintMap()
@@ -180,11 +414,13 @@ public class UIFlowController : MonoBehaviour
 
     void OnNewAvatar()
     {
+        pendingNewAvatarDownload = true;
 #if UNITY_EDITOR
         string url = avaturnSystem != null ? avaturnSystem.GetAvaturnUrl() : "https://demo.avaturn.dev";
         Application.OpenURL(url);
         UpdateDebugText("Editor: Apri URL nel browser esterno");
 #elif UNITY_WEBGL && !UNITY_EDITOR
+        SetWebOverlayOpen(true);
         if (webController != null)
         {
             webController.OnClick_NewAvatar();
@@ -209,19 +445,34 @@ public class UIFlowController : MonoBehaviour
 
     public void GoToMainMenu()
     {
-        backStack.Clear();
+        // Fix 1: Resetta il flag quando torni a casa
+        _pendingAvatarReadyTransition = false;
+        pendingNewAvatarDownload = false;
+        ExitDownloadState();
+        avatarManager?.CancelAllDownloads();
         backStack.Clear();
         GoToState(UIState.MainMenu);
+    }
+
+    // Fix 1: Metodo pubblico per notificare che l'utente ha richiesto un main avatar load
+    public void NotifyMainAvatarLoadRequested()
+    {
+        _pendingAvatarReadyTransition = true;
+        Debug.Log("[UIFlowController] Main avatar load requested by user.");
     }
 
     public void GoToAvatarLibrary()
     {
         GoToState(UIState.AvatarLibrary);
-        PopulateAvatarList();
+        if (avatarLibraryCarousel == null)
+        {
+            PopulateAvatarList();
+        }
     }
 
     public void GoToAvatarReady()
     {
+        avatarManager?.CancelAllDownloads();
         GoToState(UIState.AvatarReady);
     }
 
@@ -242,6 +493,20 @@ public class UIFlowController : MonoBehaviour
 
     public void GoBack()
     {
+        // Al menu principale Backspace non deve innescare alcuna transizione.
+        if (currentState == UIState.MainMenu)
+            return;
+
+        // FIX BACKSPACE: In AvatarReady, rimuovi l'avatar corrente prima di tornare indietro
+        if (currentState == UIState.AvatarReady)
+        {
+            if (avatarManager != null)
+            {
+                avatarManager.RemoveCurrentAvatar();
+                Debug.Log("[UIFlowController] Avatar rimosso tramite Backspace da AvatarReady");
+            }
+        }
+
         if (backStack.Count == 0)
         {
             GoToMainMenu();
@@ -275,6 +540,8 @@ public class UIFlowController : MonoBehaviour
         currentState = targetState;
 
         UpdateHintBar(targetState);
+        ConfigureNavigatorForState(targetState, true);
+        UpdateStateEffects(targetState);
 
         if (transitionRoutine != null)
         {
@@ -307,6 +574,8 @@ public class UIFlowController : MonoBehaviour
         }
 
         UpdateHintBar(targetState);
+        ConfigureNavigatorForState(targetState, true);
+        UpdateStateEffects(targetState);
     }
 
     private GameObject GetPanel(UIState state)
@@ -437,15 +706,7 @@ public class UIFlowController : MonoBehaviour
         }
     }
 
-    void OnCloseAvatarClick()
-    {
-        if (avatarManager != null)
-        {
-            avatarManager.RemoveCurrentAvatar();
-            btnCloseAvatar.gameObject.SetActive(false);
-            UpdateDebugText("Avatar rimosso dalla scena");
-        }
-    }
+    // OnCloseAvatarClick() rimosso - ora la pulizia avatar avviene via GoBack() da AvatarReady
 
     void PopulateAvatarList()
     {
@@ -485,15 +746,22 @@ public class UIFlowController : MonoBehaviour
             {
                 text.text = "Nessun avatar salvato";
             }
-            emptyItem.GetComponent<Button>().interactable = false;
+            var emptyButton = emptyItem.GetComponent<Button>();
+            if (emptyButton != null)
+            {
+                emptyButton.interactable = false;
+            }
             avatarListItems.Add(emptyItem);
         }
+
+        ConfigureNavigatorForState(currentState, true);
     }
 
     void LoadAvatarFromList(AvatarManager.AvatarData avatarData)
     {
         if (avatarManager != null)
         {
+            NotifyMainAvatarLoadRequested();
             avatarManager.LoadSavedAvatar(avatarData);
             GoToAvatarReady();
         }
@@ -505,6 +773,7 @@ public class UIFlowController : MonoBehaviour
 
         if (avatarManager != null)
         {
+            NotifyMainAvatarLoadRequested();
             avatarManager.OnAvatarReceived(avatarInfo);
         }
     }
@@ -512,19 +781,84 @@ public class UIFlowController : MonoBehaviour
     public void OnAvatarDownloadStarted(Avaturn.Core.Runtime.Scripts.Avatar.Data.AvatarInfo avatarInfo)
     {
         UpdateDebugText("Download avatar in corso...");
+
+        if (pendingNewAvatarDownload && avatarManager != null && !avatarManager.IsPreviewDownloadActive)
+        {
+            pendingNewAvatarDownload = false;
+            EnterDownloadState();
+        }
     }
 
     public void OnAvatarDownloaded(Transform avatarTransform)
     {
         UpdateDebugText("Avatar caricato nella scena!");
 
-        btnCloseAvatar.gameObject.SetActive(true);
+        ExitDownloadState();
 
-        GoToAvatarReady();
+        // Fix 1: Transizione SOLO se era una richiesta utente (main load)
+        if (_pendingAvatarReadyTransition)
+        {
+            _pendingAvatarReadyTransition = false;
+            GoToAvatarReady();
+        }
+        else
+        {
+            // preview completata: NON cambiare pannello
+            Debug.Log("[UIFlowController] Download completato senza transizione (preview).");
+        }
 
         if (avatarInfoText != null && avatarTransform != null)
         {
             avatarInfoText.text = $"Avatar: {avatarTransform.name}\nPosizione: {avatarSpawnPoint.position}";
+        }
+    }
+
+    public void SetPreviewModeUI(bool active)
+    {
+        if (active)
+        {
+            _previewModeActive = true;
+            if (hintBar != null) hintBar.gameObject.SetActive(false);
+            SetTitleVisible(false);
+        }
+        else
+        {
+            // Ripristina SOLO se eravamo in modalità preview (evita di rompere l'intro al boot)
+            if (_previewModeActive)
+            {
+                _previewModeActive = false;
+                if (!downloadStateActive && !carouselDownloading)
+                {
+                    if (hintBar != null) hintBar.gameObject.SetActive(true);
+                    SetTitleVisible(true);
+                }
+            }
+        }
+    }
+
+    public void SetCarouselDownloading(bool on)
+    {
+        carouselDownloading = on;
+        if (on)
+        {
+            if (hintBar != null) hintBar.gameObject.SetActive(false);
+            SetTitleVisible(false);
+        }
+        else
+        {
+            if (!downloadStateActive && !_previewModeActive)
+            {
+                if (hintBar != null) hintBar.gameObject.SetActive(true);
+                SetTitleVisible(true);
+            }
+        }
+    }
+
+    private void SetTitleVisible(bool visible)
+    {
+        if (_titleCanvasGroup != null)
+        {
+            _titleCanvasGroup.alpha = visible ? 1f : 0f;
         }
     }
 
@@ -549,13 +883,13 @@ public class UIFlowController : MonoBehaviour
             return;
         }
 
-        // Horizontal arrows solo in AvatarReady
-        bool isAvatarReady = state == UIState.AvatarReady;
-        hintBar.SetArrowsHorizontal(isAvatarReady);
+        // Horizontal arrows in AvatarReady/AvatarLibrary
+        bool useHorizontal = state == UIState.AvatarReady || state == UIState.AvatarLibrary;
+        hintBar.SetArrowsHorizontal(useHorizontal);
 
         // Default: PC keyboard prompts
         var arrows = new UIHintBar.HintItem(UIHintBar.HintIcon.Arrows, "Seleziona");
-        var enter = new UIHintBar.HintItem(UIHintBar.HintIcon.Enter, "Seleziona");
+        var enter = new UIHintBar.HintItem(UIHintBar.HintIcon.Enter, state == UIState.AvatarLibrary ? "Conferma" : "Seleziona");
 
         if (state == UIState.MainMenu)
         {
@@ -567,6 +901,197 @@ public class UIFlowController : MonoBehaviour
             var back = new UIHintBar.HintItem(UIHintBar.HintIcon.Backspace, "Indietro");
             hintBar.SetHints(arrows, enter, back);
         }
+    }
+
+    private void UpdateStateEffects(UIState state)
+    {
+        bool inLibrary = state == UIState.AvatarLibrary;
+        if (avatarLibraryCarousel != null)
+        {
+            avatarLibraryCarousel.ShowLibrary(inLibrary);
+        }
+
+        if (avatarManager != null)
+        {
+            avatarManager.SetCurrentAvatarVisible(!inLibrary);
+        }
+
+        UpdateRingsForState(state);
+    }
+
+    private void ConfigureNavigatorForState(UIState state, bool resetIndex)
+    {
+        if (navigator == null)
+        {
+            return;
+        }
+
+        var selectables = new List<Selectable>();
+        var axisMode = UINavigator.AxisMode.Vertical;
+
+        switch (state)
+        {
+            case UIState.MainMenu:
+                // Fix 1 parte 4: Non includere i bottoni nel navigator finché l'intro non è completata
+                if (!enableMainMenuIntro || _mainMenuButtonsIntroDone)
+                {
+                    if (btnNewAvatar != null) selectables.Add(btnNewAvatar);
+                    if (btnShowList != null) selectables.Add(btnShowList);
+                }
+                axisMode = UINavigator.AxisMode.Vertical;
+                break;
+            case UIState.AvatarLibrary:
+                // Carosello 3D: nessun selectable (gestito internamente da AvatarLibraryCarousel)
+                // Lista classica: bottoni avatar come selectables
+                if (avatarLibraryCarousel == null)
+                {
+                    foreach (var item in avatarListItems)
+                    {
+                        if (item == null) continue;
+                        var button = item.GetComponent<Button>();
+                        if (button != null) selectables.Add(button);
+                    }
+                    axisMode = UINavigator.AxisMode.Vertical;
+                }
+                else
+                {
+                    axisMode = UINavigator.AxisMode.Horizontal;
+                }
+                break;
+            case UIState.AvatarReady:
+                axisMode = UINavigator.AxisMode.Horizontal;
+                break;
+            case UIState.SetupVoice:
+            case UIState.SetupMemory:
+            case UIState.MainMode:
+                axisMode = UINavigator.AxisMode.Vertical;
+                break;
+        }
+
+        navigator.SetExitAllowed(state == UIState.MainMenu);
+        navigator.SetMenu(selectables, axisMode, resetIndex);
+    }
+
+    private void UpdateRingsForState(UIState state)
+    {
+        if (ringsTransform == null)
+        {
+            return;
+        }
+
+        bool hideRings = state != UIState.MainMenu;
+        Vector3 offset = ringsHiddenOffset;
+        if (Camera.main != null)
+        {
+            offset = Camera.main.transform.right * ringsHiddenOffset.x +
+                     Camera.main.transform.up * ringsHiddenOffset.y +
+                     Camera.main.transform.forward * ringsHiddenOffset.z;
+        }
+
+        Vector3 target = hideRings ? ringsDefaultPosition + offset : ringsDefaultPosition;
+
+        if (ringsRoutine != null)
+        {
+            StopCoroutine(ringsRoutine);
+        }
+
+        ringsRoutine = StartCoroutine(AnimateRings(target));
+    }
+
+    private void EnterDownloadState()
+    {
+        if (downloadStateActive)
+        {
+            return;
+        }
+
+        downloadStateActive = true;
+        if (mainMenuCanvasGroup != null)
+        {
+            // FIX: Hide completely as requested
+            mainMenuCanvasGroup.alpha = 0f; 
+            mainMenuCanvasGroup.interactable = false;
+            mainMenuCanvasGroup.blocksRaycasts = false;
+        }
+        
+        // Fix: Hide Title and HintBar explicitly
+        if (_titleCanvasGroup != null) _titleCanvasGroup.alpha = 0f;
+        if (hintBar != null) hintBar.gameObject.SetActive(false);
+
+        SetMainMenuButtonsVisible(false, immediate: true);
+
+        if (ringsController != null)
+        {
+            ringsController.SetOrbitSpeedMultiplier(downloadRingsSpeedMultiplier);
+        }
+    }
+
+    private void ExitDownloadState()
+    {
+        if (!downloadStateActive)
+        {
+            return;
+        }
+
+        downloadStateActive = false;
+        if (mainMenuCanvasGroup != null)
+        {
+            mainMenuCanvasGroup.alpha = mainMenuBaseAlpha;
+            mainMenuCanvasGroup.interactable = true;
+            mainMenuCanvasGroup.blocksRaycasts = true;
+        }
+        
+        // Fix: Restore Title and HintBar
+        if (!carouselDownloading && !_previewModeActive)
+        {
+            SetTitleVisible(true);
+            if (hintBar != null) hintBar.gameObject.SetActive(true);
+        }
+
+        if (!enableMainMenuIntro || _mainMenuButtonsIntroDone)
+        {
+            SetMainMenuButtonsVisible(true, immediate: true);
+        }
+
+        if (ringsController != null)
+        {
+            ringsController.SetOrbitSpeedMultiplier(1f);
+        }
+    }
+
+    private IEnumerator AnimateRings(Vector3 targetPosition)
+    {
+        if (ringsTransform == null)
+        {
+            yield break;
+        }
+
+        Vector3 start = ringsTransform.position;
+        float elapsed = 0f;
+
+        while (elapsed < ringsTransitionDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = ringsTransitionDuration <= 0f ? 1f : Mathf.Clamp01(elapsed / ringsTransitionDuration);
+            ringsTransform.position = Vector3.Lerp(start, targetPosition, Mathf.SmoothStep(0f, 1f, t));
+            yield return null;
+        }
+
+        ringsTransform.position = targetPosition;
+    }
+
+    private void ExitApplication()
+    {
+        if (currentState != UIState.MainMenu)
+        {
+            return;
+        }
+
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 
 
@@ -583,6 +1108,12 @@ public class UIFlowController : MonoBehaviour
 
         try
         {
+            var jsonData = JsonUtility.FromJson<AvatarJsonData>(json);
+            if (jsonData != null && (jsonData.status == "closed" || jsonData.status == "error"))
+            {
+                SetWebOverlayOpen(false);
+            }
+
             if (avatarManager != null)
             {
                 avatarManager.OnAvatarJsonReceived(json);
@@ -593,6 +1124,21 @@ public class UIFlowController : MonoBehaviour
             Debug.LogError("Errore nel parsing JSON: " + e.Message);
             UpdateDebugText("Errore nel ricevere l'avatar: " + e.Message);
         }
+    }
+
+    public void OnWebOverlayOpened()
+    {
+        SetWebOverlayOpen(true);
+    }
+
+    public void OnWebOverlayClosed()
+    {
+        SetWebOverlayOpen(false);
+    }
+
+    private void SetWebOverlayOpen(bool isOpen)
+    {
+        webOverlayOpen = isOpen;
     }
 
     [System.Serializable]

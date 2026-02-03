@@ -38,4 +38,20 @@ public class AvaturnWebController : MonoBehaviour
         Debug.Log("JSON ricevuto dal bridge: " + json);
         if (uiFlowController != null) uiFlowController.OnAvatarJsonReceived(json);
     }
+
+    public void OnWebOverlayOpened()
+    {
+        if (uiFlowController != null)
+        {
+            uiFlowController.OnWebOverlayOpened();
+        }
+    }
+
+    public void OnWebOverlayClosed()
+    {
+        if (uiFlowController != null)
+        {
+            uiFlowController.OnWebOverlayClosed();
+        }
+    }
 }

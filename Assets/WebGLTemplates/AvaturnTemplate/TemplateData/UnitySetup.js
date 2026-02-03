@@ -19,7 +19,12 @@ function unityShowBanner(msg, type) {
         productName: "{{{ PRODUCT_NAME }}}",
         productVersion: "{{{ PRODUCT_VERSION }}}",
         showBanner: unityShowBanner,
+        matchWebGLToCanvasSize: true,
     };
+
+    // Remove any fixed canvas sizing - let CSS handle it
+    canvas.style.width = "";
+    canvas.style.height = "";
 
     createUnityInstance(canvas, config, (progress) => {
     })

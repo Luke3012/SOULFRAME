@@ -26,6 +26,7 @@ ExportedObj/
 *.pdb
 *.opendb
 *.VC.db
+*.rej
 
 # Unity3D generated meta files
 *.pidb.meta
@@ -53,12 +54,14 @@ SOULFRAME_AI/backend/voices/
 *.bin
 *.onnx
 
-# Ignora il database locale del RAG (si rigenera o è pesante)
+# Ignora il database locale del RAG
 SOULFRAME_AI/backend/rag_store/
+SOULFRAME_AI/backend/avatar_store/
 
 # Ignora chiavi API e file temporanei
 gemini_key.txt
 *.log
+SOULFRAME_AI/PID
 
 # OS specific
 .DS_Store

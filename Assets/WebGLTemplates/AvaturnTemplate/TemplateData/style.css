@@ -1,18 +1,35 @@
 #canvas-wrap {
-    padding: 0;            
+    padding: 0;
     margin: 0;
     position: relative;
+    width: 100%;
+    height: 100%;
 }
 
-#unity-container {background-color: #ffffff!important;}
-#unity-container { background: #231F20;pointer-events: inherit; display:block }
-#unity-container {
-    width: 100vw;
-    height: 100vh;
+#unity-container { 
+    background: #231F20;
+    pointer-events: inherit; 
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     z-index: 2;
+    margin: 0;
+    padding: 0;
 }
 
-#unity-canvas { background: #231F20;pointer-events: inherit; display:block; width: 100%!important ; height: 100%!important; z-index: 2; }
+#unity-canvas { 
+    background: #231F20;
+    pointer-events: inherit; 
+    display: block; 
+    width: 100% !important; 
+    height: 100% !important; 
+    z-index: 2;
+    margin: 0;
+    padding: 0;
+}
 
 canvas {
     width: 100%;
@@ -26,6 +43,10 @@ canvas+* {
 
 html {
     box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
 }
 
 *,
@@ -36,7 +57,11 @@ html {
 
 body {
     margin: 0;
-    position: relative;
+    padding: 0;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
 }
 
 #loader2 {

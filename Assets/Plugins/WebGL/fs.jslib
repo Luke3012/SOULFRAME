@@ -47,5 +47,52 @@ mergeInto(LibraryManager.library, {
     } catch (e) {
       console.error("[JS] syncfs exception:", e);
     }
+  },
+
+  JS_FileSystem_SyncFromDiskAndNotify: function (goNamePtr, callbackPtr) {
+    var goName = UTF8ToString(goNamePtr);
+    var callback = UTF8ToString(callbackPtr);
+
+    function sendMessage(msg) {
+      try {
+        // Prova multipli metodi per trovare l'istanza Unity corretta
+        if (typeof SendMessage !== "undefined") {
+          SendMessage(goName, callback, msg);
+          return;
+        }
+        if (typeof unityInstance !== "undefined" && unityInstance.SendMessage) {
+          unityInstance.SendMessage(goName, callback, msg);
+          return;
+        }
+        if (typeof window.gameInstance !== "undefined" && window.gameInstance.SendMessage) {
+          window.gameInstance.SendMessage(goName, callback, msg);
+          return;
+        }
+        console.warn("[JS] Impossibile trovare un'istanza Unity per SendMessage");
+      } catch (e) {
+        console.error("[JS] Errore invio a Unity:", e);
+      }
+    }
+
+    try {
+      if (typeof FS === "undefined" || !FS.syncfs) {
+        console.warn("[JS] FS.syncfs non disponibile (populate)");
+        sendMessage("ERR:no_fs");
+        return;
+      }
+
+      FS.syncfs(true, function (err) {
+        if (err) {
+          console.error("[JS] syncfs(populate) failed:", err);
+          sendMessage("ERR:" + (err.message || err.toString()));
+        } else {
+          console.log("[JS] syncfs(populate) OK");
+          sendMessage("OK");
+        }
+      });
+    } catch (e) {
+      console.error("[JS] syncfs(populate) exception:", e);
+      sendMessage("ERR:" + (e.message || e.toString()));
+    }
   }
 });
