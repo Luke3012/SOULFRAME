@@ -1,20 +1,20 @@
 # SOULFRAME AI Services
 
-Sistema di servizi AI per SOULFRAME: speech-to-text (Whisper), text-to-speech (Coqui XTTS), e RAG (Retrieval-Augmented Generation) con memoria persistente per avatar.
+Sistema di servizi AI per SOULFRAME: speech-to-text (Whisper), text-to-speech (Coqui XTTS v2) e RAG (Retrieval-Augmented Generation) con memoria persistente per avatar, basato su Ollama (LLM + embeddings).
 
 ## Prerequisiti
 
 ### Software Richiesto
 
 #### Windows
-- **Python 3.10+** ([download](https://www.python.org/downloads/))
+- **Python 3.11** ([download](https://www.python.org/downloads/))
 - **Ollama** ([download](https://ollama.ai/)) - necessario per embeddings e chat LLM
 - **Tesseract OCR** ([download](https://github.com/UB-Mannheim/tesseract/wiki)) - necessario per OCR da PDF/immagini
-  - Installa in `C:\Program Files\Tesseract-OCR\` (percorso default)
-  - Durante l'installazione, seleziona **lingua italiana** nei componenti aggiuntivi
+    - Installa in `C:\Program Files\Tesseract-OCR\` (percorso default)
+    - Durante l'installazione, seleziona **lingua italiana** nei componenti aggiuntivi
 
 #### Opzionale
-- **CUDA Toolkit 12.1+** - per accelerazione GPU (consigliato per TTS)
+- **CUDA (driver recenti)** - necessario per usare le wheel PyTorch cu128 (TTS su GPU)
 - **ffmpeg** - per supporto formati audio aggiuntivi in Whisper
 
 ### Modelli Ollama
@@ -33,9 +33,8 @@ ollama pull llama3:8b-instruct-q4_K_M
 Crea un ambiente virtuale Python per isolare le dipendenze:
 
 ```powershell
-cd backend
-python -m venv venv
-.\venv\Scripts\activate
+py -3.11 -m venv backend\.venv
+backend\.venv\Scripts\activate
 ```
 
 ### 2. Installazione Dipendenze
@@ -43,6 +42,20 @@ python -m venv venv
 ```powershell
 pip install -r requirements.txt
 ```
+
+> **ATTENZIONE (PyTorch cu128)**
+> `requirements.txt` include `torch` e `torchaudio` con build `+cu128`.
+> Per installarle correttamente, usa l'index NVIDIA:
+>
+> ```powershell
+> pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu128
+> ```
+>
+> Se vuoi usare la GPU (CUDA/cu128), reinstalla PyTorch con le wheel NVIDIA:
+>
+> ```powershell
+> pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+> ```
 
 **Nota**: L'installazione richiede diversi GB e può richiedere 10-20 minuti.
 
@@ -69,7 +82,7 @@ backend/voices/default.wav
 Usa lo script `ai_services.cmd` per gestire tutti i servizi:
 
 ```powershell
-ai_services.cmd
+ai_services.cmd 1
 ```
 
 Il menu ti permette di:
@@ -94,22 +107,22 @@ ollama serve
 
 # Terminal 2 - Whisper (Speech-to-Text)
 cd backend
-.\venv\Scripts\activate
+.\.venv\Scripts\activate
 uvicorn whisper_server:app --host 127.0.0.1 --port 8001
 
 # Terminal 3 - RAG (Retrieval-Augmented Generation)
 cd backend
-.\venv\Scripts\activate
+.\.venv\Scripts\activate
 uvicorn rag_server:app --host 127.0.0.1 --port 8002
 
 # Terminal 4 - TTS (Text-to-Speech)
 cd backend
-.\venv\Scripts\activate
+.\.venv\Scripts\activate
 uvicorn coqui_tts_server:app --host 127.0.0.1 --port 8004
 
 # Terminal 5 - Avatar Asset Server (Cache glb)
 cd backend
-.\venv\Scripts\activate
+.\.venv\Scripts\activate
 uvicorn avatar_asset_server:app --host 127.0.0.1 --port 8003
 ```
 

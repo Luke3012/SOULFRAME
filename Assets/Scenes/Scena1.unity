@@ -2083,6 +2083,8 @@ MonoBehaviour:
   selectionLightPrefab: {fileID: 0}
   fxRotationSpeed: 850
   fxDownSpeed: 1.5
+  fadeInDuration: 0.5
+  fadeInStagger: 0.5
   enterLibraryInputLockSeconds: 0.25
   previewRetryDelaySeconds: 0.4
   maxPreviewRetries: 1
@@ -4660,7 +4662,7 @@ MonoBehaviour:
   enableTtsWebGlStreaming: 1
   enableTtsWebGlStreamingLogs: 0
   enableTtsWebGlUnityAudio: 1
-  ttsStreamMaxChunkChars: 100
+  ttsStreamMaxChunkChars: 110
   transitionDuration: 0.25
   slideOffset: 40
   avaturnSystem: {fileID: 1480375626}

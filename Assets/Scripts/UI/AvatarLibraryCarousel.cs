@@ -54,6 +54,10 @@ public class AvatarLibraryCarousel : MonoBehaviour
     [SerializeField] private float fxRotationSpeed = 720f;
     [SerializeField] private float fxDownSpeed = 0.6f;
 
+    [Header("Fade In FX")]
+    [SerializeField] private float fadeInDuration = 0.3f;
+    [SerializeField] private float fadeInStagger = 0.07f;
+
     [Header("Input")]
     [SerializeField] private float enterLibraryInputLockSeconds = 0.25f;
     private float inputLockedUntil = 0f;
@@ -81,6 +85,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
     private bool ambientOverrideActive;
     private bool fxActive;
     private Coroutine fxRoutine;
+    private Transform _stagingRoot;
 
     public void Initialize(AvatarManager manager, UIFlowController flowController)
     {
@@ -94,6 +99,16 @@ public class AvatarLibraryCarousel : MonoBehaviour
         {
             trackBaseLocalPosition = trackRoot.localPosition;
         }
+        EnsureStagingRoot();
+    }
+
+    private void EnsureStagingRoot()
+    {
+        if (_stagingRoot != null) return;
+        var go = new GameObject("_CarouselStaging");
+        go.transform.SetParent(transform, false);
+        go.transform.localPosition = new Vector3(0f, -1000f, 0f);
+        _stagingRoot = go.transform;
     }
 
     public void ShowLibrary(bool enabled)
@@ -167,10 +182,11 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
             listRequestInFlight = false;
             BuildCarousel(result);
-            selectedIndex = RestoreSelectedIndex();
+            selectedIndex = 0;
             ApplySelectionVisuals();
             uiFlowController?.OnAvatarLibrarySelectionChanged();
             StartNextDownload();
+            StartCoroutine(StaggeredFadeIn());
         });
     }
 
@@ -472,6 +488,11 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
             items.Add(item);
             downloadQueue.Enqueue(index);
+
+            // Start invisible for staggered fade-in
+            if (item.root != null)
+                item.root.localScale = Vector3.zero;
+
             index++;
         }
 
@@ -714,7 +735,8 @@ public class AvatarLibraryCarousel : MonoBehaviour
         int generation = previewGeneration;
         SetCarouselDownloading(true);
         Debug.Log($"[AvatarLibraryCarousel] Preview start: {item.data.avatarId}");
-        bool started = avatarManager.DownloadPreviewToTransform(item.data, transform, loader =>
+        EnsureStagingRoot();
+        bool started = avatarManager.DownloadPreviewToTransform(item.data, _stagingRoot, loader =>
         {
             if (!active || generation != previewGeneration)
             {
@@ -1091,6 +1113,39 @@ public class AvatarLibraryCarousel : MonoBehaviour
         return 0;
     }
 
+
+    private IEnumerator StaggeredFadeIn()
+    {
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (!active) yield break;
+            var item = items[i];
+            if (item.root != null)
+                StartCoroutine(ScaleInTransform(item.root, itemScale, fadeInDuration));
+            if (i < items.Count - 1)
+                yield return new WaitForSecondsRealtime(fadeInStagger);
+        }
+    }
+
+    private IEnumerator ScaleInTransform(Transform target, Vector3 targetScale, float duration)
+    {
+        if (target == null) yield break;
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            if (target == null) yield break;
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            // Ease-out quadratic for smooth deceleration
+            float eased = 1f - (1f - t) * (1f - t);
+            target.localScale = targetScale * eased;
+            yield return null;
+        }
+
+        if (target != null)
+            target.localScale = targetScale;
+    }
 
     private void ClearCarousel()
     {
