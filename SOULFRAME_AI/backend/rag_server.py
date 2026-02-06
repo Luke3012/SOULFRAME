@@ -48,12 +48,13 @@ import stat
 import shutil
 import threading
 import traceback
-from typing import Any, Optional, List, Tuple
+from typing import Any, Optional, List, Tuple, TYPE_CHECKING, cast
 
 import requests
 import chromadb
 from chromadb.config import Settings
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from rank_bm25 import BM25Okapi
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -89,6 +90,16 @@ except Exception:
     fitz = None  # type: ignore
 
 
+if TYPE_CHECKING:
+    from chromadb.api import ClientAPI as ChromaClientAPI
+    from chromadb.api.types import Embedding as ChromaEmbedding
+    from chromadb.api.types import Metadata as ChromaMetadata
+else:
+    ChromaClientAPI = Any  # type: ignore[misc,assignment]
+    ChromaEmbedding = Any  # type: ignore[misc,assignment]
+    ChromaMetadata = Any  # type: ignore[misc,assignment]
+
+
 # -----------------------------
 # Config (env)
 # -----------------------------
@@ -104,6 +115,7 @@ os.makedirs(PERSIST_ROOT, exist_ok=True)
 CHUNK_CHARS = int(os.getenv("RAG_CHUNK_CHARS", "3500"))
 CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "500"))
 MIN_CHUNK_CHARS = int(os.getenv("RAG_MIN_CHUNK_CHARS", "20"))
+MAX_CHROMA_ADD_BATCH = int(os.getenv("RAG_CHROMA_ADD_BATCH", "5000"))
 MAX_CONTEXT_CHARS = int(os.getenv("RAG_MAX_CONTEXT_CHARS", "6000"))
 
 # OCR / Tesseract
@@ -246,7 +258,7 @@ def ollama_chat(messages: list[dict[str, str]]) -> str:
 # Chroma init (per-avatar persist dir)
 # -----------------------------
 
-_AVATAR_CLIENTS: dict[str, chromadb.PersistentClient] = {}
+_AVATAR_CLIENTS: dict[str, ChromaClientAPI] = {}
 _AVATAR_LOCK = threading.Lock()
 
 def _safe_avatar_key(avatar_id: str) -> str:
@@ -260,7 +272,7 @@ def _safe_avatar_key(avatar_id: str) -> str:
 def _avatar_persist_dir(avatar_id: str) -> str:
     return os.path.join(PERSIST_ROOT, _safe_avatar_key(avatar_id))
 
-def _get_client_for_avatar(avatar_id: str) -> chromadb.PersistentClient:
+def _get_client_for_avatar(avatar_id: str) -> ChromaClientAPI:
     key = _safe_avatar_key(avatar_id)
     with _AVATAR_LOCK:
         c = _AVATAR_CLIENTS.get(key)
@@ -353,9 +365,12 @@ def describe_image_with_gemini(image_bytes: bytes, prompt: str = "Descrivi detta
         if genai_types is None:
             raise HTTPException(status_code=500, detail="google.genai non disponibile.")
 
+        gt = genai_types
+        assert gt is not None
+
         parts = [
             prompt,
-            genai_types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+            gt.Part.from_bytes(data=image_bytes, mime_type="image/png"),
         ]
 
         response = _gemini_client.models.generate_content(
@@ -367,11 +382,20 @@ def describe_image_with_gemini(image_bytes: bytes, prompt: str = "Descrivi detta
         if text:
             return text
 
-        # fallback: prova a leggere da candidates
-        try:
-            return response.candidates[0].content.parts[0].text or ""
-        except Exception:
-            return ""
+        # fallback: prova a leggere da candidates (null-safe per Pylance e per SDK diversi)
+        candidates = getattr(response, "candidates", None)
+        if isinstance(candidates, list) and candidates:
+            try:
+                cand0 = candidates[0]
+                content = getattr(cand0, "content", None)
+                parts2 = getattr(content, "parts", None) if content is not None else None
+                if isinstance(parts2, list) and parts2:
+                    t2 = getattr(parts2[0], "text", None)
+                    if isinstance(t2, str):
+                        return t2
+            except Exception:
+                pass
+        return ""
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore Gemini Vision: {e}")
 
@@ -397,6 +421,8 @@ def _ensure_ocr_ready() -> bool:
 def ocr_image_bytes(image_bytes: bytes) -> str:
     if not _ensure_ocr_ready():
         raise HTTPException(status_code=500, detail="OCR non disponibile: installa pytesseract/pillow e tesseract")
+    assert Image is not None
+    assert pytesseract is not None
     img = Image.open(io.BytesIO(image_bytes))
     try:
         txt = pytesseract.image_to_string(img, lang=RAG_OCR_LANG)
@@ -439,6 +465,9 @@ def extract_text_from_pdf(pdf_bytes: bytes, force_ocr: bool = False) -> List[Tup
             status_code=500, 
             detail="OCR non disponibile. Installa tesseract-ocr e pytesseract/pillow."
         )
+
+    assert Image is not None
+    assert pytesseract is not None
 
     sections: List[Tuple[str, dict]] = []
     skipped_pages = []
@@ -558,12 +587,19 @@ def _hybrid_search(
         vec_docs = (res.get("documents") or [[]])[0]
         vec_metas = (res.get("metadatas") or [[]])[0]
         vec_distances = (res.get("distances") or [[]])[0]
-        
-        if not vec_docs:
+
+        # Filtra candidati non testuali/None (alcuni backend possono ritornare doc None)
+        candidates: list[tuple[str, dict, float | None]] = []
+        for d, m, dist in zip(vec_docs, vec_metas, vec_distances):
+            if not isinstance(d, str) or not d.strip():
+                continue
+            candidates.append((d, m or {}, dist if isinstance(dist, (int, float)) else None))
+
+        if not candidates:
             return [], []
-        
+
         # 2) BM25 search solo sui candidati
-        tokenized_docs = [doc.lower().split() for doc in vec_docs]
+        tokenized_docs = [d.lower().split() for d, _, _ in candidates]
         bm25 = BM25Okapi(tokenized_docs)
         query_tokens = query.lower().split()
         bm25_scores = bm25.get_scores(query_tokens)
@@ -572,15 +608,15 @@ def _hybrid_search(
         max_bm25 = max(bm25_scores) if max(bm25_scores) > 0 else 1
         bm25_norm = [s / max_bm25 for s in bm25_scores]
         
-        vec_scores_raw = [1 - d if d is not None else 0 for d in vec_distances]
+        vec_scores_raw = [1 - dist if dist is not None else 0 for _, _, dist in candidates]
         max_vec = max(vec_scores_raw) if max(vec_scores_raw) > 0 else 1
         vec_norm = [s / max_vec for s in vec_scores_raw]
         
         # 3) Combina score
-        combined = []
-        for i in range(len(vec_docs)):
+        combined: list[tuple[float, str, dict]] = []
+        for i, (doc, meta, _) in enumerate(candidates):
             score = (bm25_weight * bm25_norm[i]) + ((1 - bm25_weight) * vec_norm[i])
-            combined.append((score, vec_docs[i], vec_metas[i]))
+            combined.append((float(score), doc, meta))
         
         # 4) Ordina e ritorna top_k
         combined.sort(key=lambda x: x[0], reverse=True)
@@ -606,6 +642,14 @@ def _hybrid_search(
 # API models
 # -----------------------------
 app = FastAPI(title="SOULFRAME RAG Server", version="3.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Exception handler globale
@@ -657,6 +701,20 @@ def health():
     }
 
 
+@app.get("/avatar_stats")
+def avatar_stats(avatar_id: str):
+    col = get_collection(avatar_id)
+    try:
+        count = col.count()
+    except Exception:
+        count = 0
+    return {
+        "avatar_id": avatar_id,
+        "count": count,
+        "has_memory": count > 0,
+    }
+
+
 @app.post("/remember")
 def remember(req: RememberReq):
     col = get_collection(req.avatar_id)
@@ -675,7 +733,12 @@ def remember(req: RememberReq):
     meta.setdefault("avatar_id", req.avatar_id)
     meta.setdefault("ts", int(time.time()))
 
-    col.add(ids=[_id], embeddings=[emb], documents=[txt], metadatas=[meta])
+    col.add(
+        ids=[_id],
+        embeddings=[emb],
+        documents=[txt],
+        metadatas=[cast(ChromaMetadata, meta)],
+    )
     return {"ok": True, "id": _id}
 
 
@@ -722,7 +785,7 @@ def recall(req: RecallReq):
         res = col.query(
             query_embeddings=[qemb],
             n_results=req.top_k,
-            include=["documents", "metadatas", "distances", "ids"],
+            include=["documents", "metadatas", "distances"],
         )
         return res
 
@@ -878,7 +941,8 @@ async def debug_pdf_ocr(
     page: int = Form(0),  # 0-indexed
 ):
     """DEBUG: Estrai OCR grezzo da una pagina specifica del PDF (no filtering)."""
-    if not file.filename.lower().endswith('.pdf'):
+    filename = (file.filename or "")
+    if not filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Solo PDF")
     
     raw = await file.read()
@@ -887,6 +951,9 @@ async def debug_pdf_ocr(
     
     if fitz is None or not _ensure_ocr_ready():
         raise HTTPException(status_code=500, detail="OCR non disponibile")
+
+    assert Image is not None
+    assert pytesseract is not None
     
     try:
         with fitz.open(stream=raw, filetype="pdf") as doc:
@@ -899,7 +966,7 @@ async def debug_pdf_ocr(
             ocr_raw = pytesseract.image_to_string(Image.open(io.BytesIO(img_bytes)), lang="eng")
             
             return {
-                "filename": file.filename,
+                "filename": filename,
                 "page": page,
                 "dpi": OCR_DPI,
                 "ocr_length": len(ocr_raw),
@@ -912,6 +979,8 @@ async def debug_pdf_ocr(
 async def describe_image(
     file: UploadFile = File(...),
     prompt: str = Form("Descrivi dettagliatamente questa immagine in italiano."),
+    avatar_id: Optional[str] = Form(None),
+    remember: bool = Form(False),
 ):
     """Descrivi un'immagine usando Gemini Vision.
     
@@ -942,11 +1011,43 @@ async def describe_image(
 
     description = describe_image_with_gemini(raw, prompt)
 
+    # Initialize response fields before conditional block
+    saved = False
+    save_error = None
+    if avatar_id and remember:
+        try:
+            txt = clean_text(description)
+            if len(txt) < MIN_CHUNK_CHARS:
+                raise ValueError("Testo troppo corto o vuoto.")
+            if looks_like_garbage(txt):
+                raise ValueError("Testo non valido.")
+
+            emb = ollama_embed_many([txt])[0]
+            _id = str(uuid.uuid4())
+            meta = {
+                "source_type": "image_description",
+                "source_filename": filename,
+                "avatar_id": avatar_id,
+                "ts": int(time.time()),
+            }
+            col = get_collection(avatar_id)
+            col.add(
+                ids=[_id],
+                embeddings=[emb],
+                documents=[txt],
+                metadatas=[cast(ChromaMetadata, _sanitize_metadata(meta))],
+            )
+            saved = True
+        except Exception as e:
+            save_error = str(e)[:200]
+
     return {
         "ok": True,
         "filename": filename,
         "description": description,
         "prompt_used": prompt,
+        "saved": saved,
+        "save_error": save_error,
     }
 
 
@@ -995,7 +1096,7 @@ async def ingest_file(
 
     ids: List[str] = []
     docs: List[str] = []
-    metas: List[dict] = []
+    metas: List[ChromaMetadata] = []
     seen_chunks: set = set()  # Track unique chunks
 
     for text, meta in sections:
@@ -1019,21 +1120,28 @@ async def ingest_file(
                 }
             )
             m["avatar_id"] = avatar_id
-            metas.append(_sanitize_metadata(m))
+            metas.append(cast(ChromaMetadata, _sanitize_metadata(m)))
 
     if not docs:
         raise HTTPException(status_code=400, detail="Nessun chunk valido generato dal file.")
 
     # embed in batch piccoli
-    embeddings: List[List[float]] = []
+    embeddings: List[ChromaEmbedding] = []
     batch = 16
     for i in range(0, len(docs), batch):
-        embeddings.extend(ollama_embed_many(docs[i : i + batch]))
+        embeddings.extend(cast(List[ChromaEmbedding], ollama_embed_many(docs[i : i + batch])))
 
     if len(embeddings) != len(docs):
         raise HTTPException(status_code=500, detail="Errore embeddings: conteggio non combacia.")
 
-    col.add(ids=ids, embeddings=embeddings, documents=docs, metadatas=metas)
+    batch_size = max(1, min(MAX_CHROMA_ADD_BATCH, len(docs)))
+    for i in range(0, len(docs), batch_size):
+        col.add(
+            ids=ids[i : i + batch_size],
+            embeddings=embeddings[i : i + batch_size],
+            documents=docs[i : i + batch_size],
+            metadatas=metas[i : i + batch_size],
+        )
 
     return {
         "ok": True,

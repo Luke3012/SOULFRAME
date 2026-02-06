@@ -112,6 +112,8 @@ public class PS2BackgroundRings : MonoBehaviour
 
     private void LateUpdate()
     {
+        FaceCameraIfNeeded();
+
         RebuildIfNeeded(force: false);
 
         if (ps == null || particles == null) return;
@@ -203,6 +205,28 @@ public class PS2BackgroundRings : MonoBehaviour
         }
 
         ps.SetParticles(particles, orbCount);
+    }
+
+    private void FaceCameraIfNeeded()
+    {
+        if (rectTransform != null)
+        {
+            return;
+        }
+
+        var cam = Camera.main;
+        if (cam == null)
+        {
+            return;
+        }
+
+        Vector3 toCamera = cam.transform.position - transform.position;
+        if (toCamera.sqrMagnitude <= 0.000001f)
+        {
+            return;
+        }
+
+        transform.rotation = Quaternion.LookRotation(toCamera.normalized, cam.transform.up);
     }
 
     private float Now() => useUnscaledTime ? Time.unscaledTime : Time.time;
@@ -340,7 +364,7 @@ public class PS2BackgroundRings : MonoBehaviour
         if (rectTransform != null)
             return rectTransform.TransformVector(new Vector3(local.x, local.y, 0f));
 
-        return new Vector3(local.x, local.y, 0f);
+        return transform.TransformVector(new Vector3(local.x, local.y, 0f));
     }
 
     private Vector3 GetCenterWorld()

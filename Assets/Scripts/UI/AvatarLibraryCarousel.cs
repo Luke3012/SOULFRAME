@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -49,6 +50,10 @@ public class AvatarLibraryCarousel : MonoBehaviour
     [SerializeField, Range(0.2f, 1f)] private float dimFactor = 0.55f;
     [SerializeField] private GameObject selectionLightPrefab; // Optional light to highlight selected item
 
+    [Header("Delete/Reset FX")]
+    [SerializeField] private float fxRotationSpeed = 720f;
+    [SerializeField] private float fxDownSpeed = 0.6f;
+
     [Header("Input")]
     [SerializeField] private float enterLibraryInputLockSeconds = 0.25f;
     private float inputLockedUntil = 0f;
@@ -67,10 +72,15 @@ public class AvatarLibraryCarousel : MonoBehaviour
     private bool listRequestInFlight;
     private bool carouselDownloading;
     private const string LastSelectedAvatarKey = "Carousel_LastSelectedAvatarId";
+    private const float ResetEffectDuration = 0.6f;
+    private const float ResetJumpHeight = 0.12f;
+    private const float DeleteEffectDuration = 3f;
     private AmbientMode previousAmbientMode;
     private Color previousAmbientColor;
     private float previousAmbientIntensity;
     private bool ambientOverrideActive;
+    private bool fxActive;
+    private Coroutine fxRoutine;
 
     public void Initialize(AvatarManager manager, UIFlowController flowController)
     {
@@ -159,6 +169,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
             BuildCarousel(result);
             selectedIndex = RestoreSelectedIndex();
             ApplySelectionVisuals();
+            uiFlowController?.OnAvatarLibrarySelectionChanged();
             StartNextDownload();
         });
     }
@@ -233,6 +244,11 @@ public class AvatarLibraryCarousel : MonoBehaviour
             {
                 ConfirmSelection();
             }
+            else if (Input.GetKeyDown(KeyCode.Delete))
+            {
+                uiFlowController?.RequestDeleteSelectedAvatar();
+                return;
+            }
             else if (Input.GetKeyDown(KeyCode.Backspace))
             {
                 uiFlowController?.GoToMainMenu();
@@ -265,6 +281,19 @@ public class AvatarLibraryCarousel : MonoBehaviour
             items[selectedIndex].root.localRotation = items[selectedIndex].initialRotation;
         }
         ApplySelectionVisuals();
+        uiFlowController?.OnAvatarLibrarySelectionChanged();
+    }
+
+    public bool TryGetSelectedAvatarData(out AvatarManager.AvatarData data)
+    {
+        data = null;
+        if (items.Count == 0 || selectedIndex < 0 || selectedIndex >= items.Count)
+        {
+            return false;
+        }
+
+        data = items[selectedIndex].data;
+        return data != null;
     }
 
     private void ConfirmSelection()
@@ -304,6 +333,11 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
     private void RotateSelected()
     {
+        if (fxActive)
+        {
+            return;
+        }
+
         if (selectedIndex < 0 || selectedIndex >= items.Count)
         {
             return;
@@ -316,6 +350,94 @@ public class AvatarLibraryCarousel : MonoBehaviour
         }
 
         selected.root.Rotate(Vector3.up, rotationSpeed * Time.unscaledDeltaTime, Space.Self);
+    }
+
+    public IEnumerator PlayResetEffect()
+    {
+        if (!TryGetSelectedItem(out var item) || item.root == null)
+        {
+            yield break;
+        }
+
+        if (fxRoutine != null)
+        {
+            StopCoroutine(fxRoutine);
+        }
+
+        fxRoutine = StartCoroutine(ResetEffectRoutine(item));
+        yield return fxRoutine;
+        fxRoutine = null;
+    }
+
+    public IEnumerator PlayDeleteEffect()
+    {
+        if (!TryGetSelectedItem(out var item) || item.root == null)
+        {
+            yield break;
+        }
+
+        if (fxRoutine != null)
+        {
+            StopCoroutine(fxRoutine);
+        }
+
+        fxRoutine = StartCoroutine(DeleteEffectRoutine(item));
+        yield return fxRoutine;
+        fxRoutine = null;
+    }
+
+    private IEnumerator ResetEffectRoutine(CarouselItem item)
+    {
+        fxActive = true;
+        Vector3 startPos = item.root.localPosition;
+        Quaternion startRot = item.root.localRotation;
+        float elapsed = 0f;
+        float spinTarget = Mathf.Max(1, Mathf.RoundToInt((fxRotationSpeed * ResetEffectDuration) / 360f)) * 360f;
+
+        while (elapsed < ResetEffectDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / ResetEffectDuration);
+            float jump = Mathf.Sin(t * Mathf.PI) * ResetJumpHeight;
+            item.root.localPosition = startPos + Vector3.up * jump;
+            float angle = Mathf.Lerp(0f, spinTarget, t);
+            item.root.localRotation = startRot * Quaternion.Euler(0f, angle, 0f);
+            yield return null;
+        }
+
+        item.root.localPosition = startPos;
+        item.root.localRotation = startRot;
+        fxActive = false;
+    }
+
+    private IEnumerator DeleteEffectRoutine(CarouselItem item)
+    {
+        fxActive = true;
+        Vector3 startPos = item.root.localPosition;
+        float elapsed = 0f;
+
+        while (elapsed < DeleteEffectDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float fall = fxDownSpeed * elapsed;
+            item.root.localPosition = startPos + Vector3.down * fall;
+            item.root.Rotate(Vector3.up, fxRotationSpeed * Time.unscaledDeltaTime, Space.Self);
+            yield return null;
+        }
+
+        fxActive = false;
+    }
+
+    private bool TryGetSelectedItem(out CarouselItem item)
+    {
+        item = null;
+        if (selectedIndex < 0 || selectedIndex >= items.Count)
+        {
+            return false;
+        }
+
+        item = items[selectedIndex];
+        return item != null && item.root != null;
     }
 
     private void BuildCarousel(List<AvatarManager.AvatarData> avatarList)

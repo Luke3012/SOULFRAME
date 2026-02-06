@@ -92,7 +92,8 @@ call :PORT_IS_LISTENING %TTS_PORT%
 if "!LISTENING!"=="1" (
   echo    TTS gia' attivo su %TTS_PORT%
 ) else (
-  start "SOULFRAME_TTS" /D "%BACKEND%" cmd /c "set ""TTS_HOME=%TTS_HOME%"" && set ""COQUI_TTS_MODEL=%COQUI_TTS_MODEL%"" && set ""COQUI_LANG=%COQUI_LANG%"" && set ""COQUI_DEFAULT_SPEAKER_WAV=%COQUI_DEFAULT_SPEAKER_WAV%"" && ^"%PY%^" -m uvicorn coqui_tts_server:app --host 127.0.0.1 --port %TTS_PORT% --log-level info"
+  REM Le env TTS_* / COQUI_* sono gia' impostate sopra e vengono ereditate dal processo.
+  start "SOULFRAME_TTS" /D "%BACKEND%" cmd /c ""%PY%" -m uvicorn coqui_tts_server:app --host 127.0.0.1 --port %TTS_PORT% --log-level info"
 )
 
 REM --- Avatar Asset Server ---

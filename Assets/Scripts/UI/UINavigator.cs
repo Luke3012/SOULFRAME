@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -21,11 +22,18 @@ public class UINavigator : MonoBehaviour
     [SerializeField] private AudioClip moveClip;
     [SerializeField] private AudioClip confirmClip;
     [SerializeField] private AudioClip backClip;
+    [SerializeField] private AudioClip resetClip;
+    [SerializeField] private AudioClip deleteClip;
+    [SerializeField] private AudioClip errorClip;
     [SerializeField, Range(0.01f, 0.5f)] private float audioCooldown = 0.08f;
+    [SerializeField, Range(0f, 0.5f)] private float confirmCooldownOnMenuChange = 0.15f;
 
     private readonly List<Selectable> items = new List<Selectable>();
     private int currentIndex;
     private float lastAudioTime;
+    private float suppressConfirmUntil;
+    private float suppressMoveUntil;
+    private GameObject lastSelected;
     private bool allowExit;
     private System.Action backAction;
     private System.Action exitAction;
@@ -40,6 +48,31 @@ public class UINavigator : MonoBehaviour
     public void SetExitAllowed(bool allowed)
     {
         allowExit = allowed;
+    }
+
+    public void PlayResetClip()
+    {
+        PlayAudio(resetClip);
+    }
+
+    public void PlayMoveClip()
+    {
+        PlayAudio(moveClip);
+    }
+
+    public void PlayConfirmClip()
+    {
+        PlayAudio(confirmClip, bypassCooldown: true);
+    }
+
+    public void PlayDeleteClip()
+    {
+        PlayAudio(deleteClip);
+    }
+
+    public void PlayErrorClip()
+    {
+        PlayAudio(errorClip);
     }
 
     private void Awake()
@@ -68,11 +101,22 @@ public class UINavigator : MonoBehaviour
         }
 
         EnsureValidSelection(resetIndex);
+        if (confirmCooldownOnMenuChange > 0f)
+        {
+            suppressConfirmUntil = Time.unscaledTime + confirmCooldownOnMenuChange;
+        }
+        suppressMoveUntil = Time.unscaledTime + 0.05f;
+        lastSelected = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
     }
 
     private void Update()
     {
         if (uiFlowController != null && uiFlowController.IsWebOverlayOpen)
+        {
+            return;
+        }
+
+        if (uiFlowController != null && uiFlowController.IsUiInputLocked)
         {
             return;
         }
@@ -88,6 +132,8 @@ public class UINavigator : MonoBehaviour
             return;
         }
 
+        UpdateSelectionAudio();
+
         if (HandleConfirm())
         {
             return;
@@ -98,6 +144,11 @@ public class UINavigator : MonoBehaviour
 
     private bool HandleConfirm()
     {
+        if (Time.unscaledTime < suppressConfirmUntil)
+        {
+            return false;
+        }
+
         if (!Input.GetKeyDown(KeyCode.Return))
         {
             return false;
@@ -112,14 +163,14 @@ public class UINavigator : MonoBehaviour
         var button = selectable.GetComponent<Button>();
         if (button != null)
         {
-            PlayAudio(confirmClip);
+            PlayConfirmClip();
             button.onClick.Invoke();
             return true;
         }
 
         if (EventSystem.current != null)
         {
-            PlayAudio(confirmClip);
+            PlayConfirmClip();
             ExecuteEvents.Execute(selectable.gameObject, new BaseEventData(EventSystem.current), ExecuteEvents.submitHandler);
             return true;
         }
@@ -129,6 +180,19 @@ public class UINavigator : MonoBehaviour
 
     private bool HandleBack()
     {
+        if (EventSystem.current != null)
+        {
+            var selected = EventSystem.current.currentSelectedGameObject;
+            if (selected != null)
+            {
+                var input = selected.GetComponent<TMPro.TMP_InputField>();
+                if (input != null && input.isFocused)
+                {
+                    return false;
+                }
+            }
+        }
+
         if (Input.GetKeyDown(KeyCode.Backspace))
         {
             PlayAudio(backClip);
@@ -187,7 +251,7 @@ public class UINavigator : MonoBehaviour
 
         currentIndex = nextIndex;
         SelectCurrent(true);
-        PlayAudio(moveClip);
+        PlayMoveClip();
     }
 
     private int FindNextIndex(int direction)
@@ -315,16 +379,38 @@ public class UINavigator : MonoBehaviour
         {
             selectable.Select();
         }
+
+        lastSelected = selectable.gameObject;
     }
 
-    private void PlayAudio(AudioClip clip)
+    private void UpdateSelectionAudio()
+    {
+        if (Time.unscaledTime < suppressMoveUntil || EventSystem.current == null)
+        {
+            return;
+        }
+
+        var selected = EventSystem.current.currentSelectedGameObject;
+        if (selected == null || selected == lastSelected)
+        {
+            return;
+        }
+
+        if (IsInMenu(selected))
+        {
+            PlayMoveClip();
+            lastSelected = selected;
+        }
+    }
+
+    private void PlayAudio(AudioClip clip, bool bypassCooldown = false)
     {
         if (clip == null || audioSource == null)
         {
             return;
         }
 
-        if (Time.unscaledTime - lastAudioTime < audioCooldown)
+        if (!bypassCooldown && Time.unscaledTime - lastAudioTime < audioCooldown)
         {
             return;
         }

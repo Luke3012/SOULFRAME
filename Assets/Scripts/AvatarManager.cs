@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Avaturn.Core.Runtime.Scripts.Avatar;
 using Avaturn.Core.Runtime.Scripts.Avatar.Data;
 using System.Collections.Generic;
@@ -7,8 +7,10 @@ using System.Collections;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR
 using GLTFast;
+#endif
+#if UNITY_WEBGL && !UNITY_EDITOR
 using System.Runtime.InteropServices;
 #endif
 
@@ -117,6 +119,18 @@ public class AvatarManager : MonoBehaviour
     public bool IsPreviewDownloading => _isPreviewDownloading;
     // Legacy support property, though mostly unused now
     public bool IsPreviewDownloadActive => _isPreviewDownloading;
+    public string CurrentAvatarId => currentDownloadAvatarId;
+    public string CurrentAvatarGender
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(currentDownloadAvatarId))
+                return "unknown";
+
+            var avatarData = savedData?.avatars?.Find(a => a.avatarId == currentDownloadAvatarId);
+            return avatarData != null ? avatarData.gender : "unknown";
+        }
+    }
 
     private SavedAvatarData savedData;
     private string savePath;
@@ -227,7 +241,7 @@ public class AvatarManager : MonoBehaviour
 
         uiFlowController?.UpdateDebugText($"Avatar ricevuto ({avatarInfo.Gender}) - elaborazione...");
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR
         var avatarData = new AvatarData
         {
             avatarId = avatarInfo.AvatarId,
@@ -255,7 +269,7 @@ public class AvatarManager : MonoBehaviour
         profileRouter?.ApplyGender(avatarInfo.Gender); // Applica profilo LipSync in base al genere
     }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR
     private void StartImportAndLoadMainWebGL(AvatarData avatarData)
     {
         _webglMainSessionId++;
@@ -389,7 +403,7 @@ public class AvatarManager : MonoBehaviour
 
         profileRouter?.ApplyGender(avatarData.gender);
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR
         StartLoadMainFromUrlWebGL(avatarData);
 #else
         var info = avatarData.ToAvatarInfo();
@@ -543,7 +557,6 @@ public class AvatarManager : MonoBehaviour
 
         if (idleController == null)
         {
-            Debug.LogWarning("[Anim] idleController non assegnato (AvatarManager). Rimarra' in T-pose.");
             yield break;
         }
 
@@ -592,6 +605,23 @@ public class AvatarManager : MonoBehaviour
             if (idleLook != null)
                 StartCoroutine(SetupIdleLookOnBaseNextFrame());
         }
+    }
+
+    public bool RemoveAvatarFromSavedData(string avatarId)
+    {
+        if (string.IsNullOrEmpty(avatarId) || savedData == null)
+        {
+            return false;
+        }
+
+        int removed = savedData.avatars.RemoveAll(item => item.avatarId == avatarId);
+        if (removed > 0)
+        {
+            SaveData();
+            return true;
+        }
+
+        return false;
     }
 
     private IEnumerator SetupIdleLookOnBaseNextFrame()
@@ -822,7 +852,7 @@ public class AvatarManager : MonoBehaviour
 
             uiFlowController?.NotifyMainAvatarLoadRequested();
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR
             var avatarData = new AvatarData
             {
                 avatarId = string.IsNullOrEmpty(jsonData.avatarId) ? Guid.NewGuid().ToString() : jsonData.avatarId,
@@ -965,7 +995,7 @@ public class AvatarManager : MonoBehaviour
 
     public bool DownloadPreview(AvatarData avatarData, Action<Transform> onLoaded, bool destroyDownloaderAfter)
     {
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR
         return DownloadPreviewToTransform(avatarData, transform, onLoaded, destroyDownloaderAfter);
 #else
         // Se c'è già un download in corso, lo cancelliamo per far posto al nuovo (comportamento "Last One Wins" per preview rapida)
@@ -1012,18 +1042,8 @@ public class AvatarManager : MonoBehaviour
 
     public void RequestAvatarListFromBackend(Action<List<AvatarData>> cb)
     {
-#if UNITY_WEBGL && !UNITY_EDITOR
+        // Use the backend list in all builds to match WebGL behavior.
         StartCoroutine(WebGLRequestAvatarList(cb));
-#else
-        if (savedData != null)
-        {
-            cb?.Invoke(new List<AvatarData>(savedData.avatars));
-        }
-        else
-        {
-            cb?.Invoke(new List<AvatarData>());
-        }
-#endif
     }
 
     public bool DownloadPreviewToTransform(AvatarData data, Transform parent, Action<Transform> onLoaded)
@@ -1033,7 +1053,7 @@ public class AvatarManager : MonoBehaviour
 
     public bool DownloadPreviewToTransform(AvatarData data, Transform parent, Action<Transform> onLoaded, bool destroyDownloaderAfter)
     {
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR
         if (_isPreviewDownloading)
         {
             CancelPreviewDownloads();
@@ -1167,7 +1187,6 @@ public class AvatarManager : MonoBehaviour
         Debug.Log("[AvatarManager] Preview state HARD RESET per nuova sessione libreria.");
     }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
     private IEnumerator WebGLRequestAvatarList(Action<List<AvatarData>> cb)
     {
         string url = $"{backendBaseUrl.TrimEnd('/')}/avatars/list";
@@ -1210,6 +1229,7 @@ public class AvatarManager : MonoBehaviour
         }
     }
 
+#if UNITY_WEBGL || UNITY_EDITOR
     private IEnumerator WebGLPreviewDownload(AvatarData data, Transform parent, int sessionId, Action<Transform> onLoaded)
     {
         if (data == null)
@@ -1474,6 +1494,26 @@ public class AvatarManager : MonoBehaviour
         uiFlowController?.OnAvatarDownloaded(container);
     }
 
+    [System.Serializable]
+    private class ImportRequest
+    {
+        public string avatar_id;
+        public string url;
+        public string gender;
+        public string bodyId;
+        public string urlType;
+    }
+
+    [System.Serializable]
+    private class ImportResponse
+    {
+        public bool ok;
+        public string avatar_id;
+        public string cached_glb_url;
+        public long bytes;
+    }
+#endif
+
     private List<AvatarData> BuildLocalAvatarList()
     {
         var list = new List<AvatarData>();
@@ -1484,16 +1524,23 @@ public class AvatarManager : MonoBehaviour
 
     private AvatarData CreateLocalAvatar(string avatarId, string fileName, string gender)
     {
+        var url = BuildLocalUrl(fileName);
         return new AvatarData
         {
             avatarId = avatarId,
+            url = url,
             urlType = "glb",
             bodyId = "local",
             gender = gender,
             source = "local",
             localFile = fileName,
             displayName = avatarId,
+            fileName = fileName,
+#if UNITY_WEBGL && !UNITY_EDITOR
             isWebGL = true
+#else
+            isWebGL = false
+#endif
         };
     }
 
@@ -1536,7 +1583,12 @@ public class AvatarManager : MonoBehaviour
             return null;
         }
 
+#if UNITY_WEBGL && !UNITY_EDITOR
         return $"{Application.streamingAssetsPath}/{localFile}";
+#else
+        var filePath = Path.Combine(Application.streamingAssetsPath, localFile);
+        return new Uri(filePath).AbsoluteUri;
+#endif
     }
 
     private AvatarData ConvertListItem(AvatarListItem item)
@@ -1557,10 +1609,13 @@ public class AvatarManager : MonoBehaviour
             source = item.source,
             localFile = item.local_file,
             displayName = item.display_name,
+#if UNITY_WEBGL && !UNITY_EDITOR
             isWebGL = true
+#else
+            isWebGL = false
+#endif
         };
     }
-#endif
 
     public bool IsAvatarCached(AvatarData avatarData)
     {
@@ -1639,26 +1694,6 @@ public class AvatarManager : MonoBehaviour
         public string status;
     }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
-    [System.Serializable]
-    private class ImportRequest
-    {
-        public string avatar_id;
-        public string url;
-        public string gender;
-        public string bodyId;
-        public string urlType;
-    }
-
-    [System.Serializable]
-    private class ImportResponse
-    {
-        public bool ok;
-        public string avatar_id;
-        public string cached_glb_url;
-        public long bytes;
-    }
-
     [System.Serializable]
     private class AvatarListResponse
     {
@@ -1678,5 +1713,4 @@ public class AvatarManager : MonoBehaviour
         public string bodyId;
         public string display_name;
     }
-#endif
 }

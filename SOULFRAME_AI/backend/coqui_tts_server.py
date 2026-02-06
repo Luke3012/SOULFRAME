@@ -24,6 +24,7 @@ import base64
 import io
 import os
 import re
+import struct
 import tempfile
 import time
 from pathlib import Path
@@ -32,7 +33,7 @@ from typing import Optional
 import numpy as np
 import soundfile as sf
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse, FileResponse
 from starlette.middleware.cors import CORSMiddleware
 
 # -------------------- Config --------------------
@@ -73,6 +74,14 @@ _device_used = None
 
 _AVATAR_ID_RX = re.compile(r"[^a-zA-Z0-9_\-]+")
 
+WAIT_PHRASES: list[tuple[str, str]] = [
+    ("hm", "Hm"),
+    ("beh", "Beh"),
+    ("aspetta", "Aspetta"),
+    ("si", "Sì"),
+    ("un_secondo", "Un secondo"),
+]
+
 
 def _safe_avatar_id(avatar_id: str) -> str:
     avatar_id = (avatar_id or "").strip()
@@ -87,11 +96,28 @@ def _avatar_voice_path(avatar_id: str) -> Path:
     return Path(AVATAR_VOICES_DIR) / safe / "reference.wav"
 
 
+def _wait_phrase_path(avatar_id: str, key: str) -> Path:
+    safe = _safe_avatar_id(avatar_id)
+    return Path(AVATAR_VOICES_DIR) / safe / f"wait_{key}.wav"
+
+
 def _file_has_content(path: Path, min_bytes: int = 512) -> bool:
     try:
         return path.exists() and path.is_file() and path.stat().st_size >= min_bytes
     except Exception:
         return False
+
+
+def _resolve_speaker_path(safe_avatar_id: str) -> Optional[str]:
+    avatar_ref = _avatar_voice_path(safe_avatar_id)
+    if _file_has_content(avatar_ref):
+        return str(avatar_ref)
+
+    default_ref = Path(DEFAULT_SPEAKER_WAV)
+    if _file_has_content(default_ref):
+        return str(default_ref)
+
+    return None
 
 
 def _ensure_loaded() -> None:
@@ -109,7 +135,8 @@ def _ensure_loaded() -> None:
         use_cuda = bool(torch.cuda.is_available())
 
     _device_used = "cuda" if use_cuda else "cpu"
-    _tts = TTS(MODEL_NAME, gpu=use_cuda)
+    _tts = TTS(MODEL_NAME)
+    _tts.to(_device_used)
 
 
 def _synth_to_wav_bytes(
@@ -133,6 +160,101 @@ def _synth_to_wav_bytes(
     buf = io.BytesIO()
     sf.write(buf, wav, samplerate=sample_rate, format="WAV", subtype="PCM_16")
     return buf.getvalue()
+
+
+def _wav_header(sample_rate: int, channels: int = 1, bits_per_sample: int = 16, data_size: int = 0) -> bytes:
+    byte_rate = sample_rate * channels * bits_per_sample // 8
+    block_align = channels * bits_per_sample // 8
+    return b"".join(
+        [
+            b"RIFF",
+            struct.pack("<I", 36 + data_size),
+            b"WAVE",
+            b"fmt ",
+            struct.pack("<IHHIIHH", 16, 1, channels, sample_rate, byte_rate, block_align, bits_per_sample),
+            b"data",
+            struct.pack("<I", data_size),
+        ]
+    )
+
+
+def _iter_pcm_stream(
+    chunks: list[str],
+    language: str,
+    speaker_wav_path: str,
+    sample_rate: int = OUTPUT_SAMPLE_RATE,
+):
+    yield _wav_header(sample_rate=sample_rate, channels=1, bits_per_sample=16, data_size=0)
+
+    for chunk in chunks:
+        if not chunk:
+            continue
+        wav = _tts.tts(text=chunk, speaker_wav=speaker_wav_path, language=language)  # type: ignore[attr-defined]
+        if wav is None:
+            continue
+
+        wav = np.asarray(wav, dtype=np.float32).reshape(-1)
+        if wav.size < 10:
+            continue
+
+        wav = np.clip(wav, -1.0, 1.0)
+        pcm16 = (wav * 32767.0).astype(np.int16)
+        yield pcm16.tobytes()
+
+
+def _split_text(text: str, max_chars: int = 220) -> list[str]:
+    normalized = re.sub(r"\s+", " ", (text or "").strip())
+    if not normalized:
+        return []
+    if len(normalized) <= max_chars:
+        return [normalized]
+
+    parts = re.split(r"(?<=[\.\!\?\:\;])\s+", normalized)
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if len(part) > max_chars:
+            if current:
+                chunks.append(" ".join(current))
+                current = []
+                current_len = 0
+            start = 0
+            while start < len(part):
+                end = min(start + max_chars, len(part))
+                split = part.rfind(" ", start, end)
+                if split <= start:
+                    split = end
+                chunk = part[start:split].strip()
+                if chunk:
+                    chunks.append(chunk)
+                start = split
+                while start < len(part) and part[start] == " ":
+                    start += 1
+            continue
+
+        if current_len == 0:
+            current = [part]
+            current_len = len(part)
+            continue
+
+        if current_len + 1 + len(part) <= max_chars:
+            current.append(part)
+            current_len += 1 + len(part)
+            continue
+
+        chunks.append(" ".join(current))
+        current = [part]
+        current_len = len(part)
+
+    if current:
+        chunks.append(" ".join(current))
+
+    return chunks
 
 
 # -------------------- Lifespan --------------------
@@ -206,6 +328,66 @@ def delete_avatar_voice(avatar_id: str):
     return {"ok": True, "avatar_id": safe}
 
 
+@app.post("/generate_wait_phrases")
+def generate_wait_phrases(
+    avatar_id: str = Form(...),
+    language: str = Form(DEFAULT_LANG),
+):
+    _ensure_loaded()
+
+    safe = _safe_avatar_id(avatar_id)
+    language = (language or DEFAULT_LANG).strip() or DEFAULT_LANG
+
+    speaker_path = _resolve_speaker_path(safe)
+    if speaker_path is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Nessun riferimento vocale disponibile. Usa /set_avatar_voice prima.",
+        )
+
+    output_dir = Path(AVATAR_VOICES_DIR) / safe
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    written: list[str] = []
+    for key, phrase in WAIT_PHRASES:
+        try:
+            wav_bytes = _synth_to_wav_bytes(text=phrase, language=language, speaker_wav_path=speaker_path)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Errore TTS per '{phrase}': {e}")
+
+        out_path = output_dir / f"wait_{key}.wav"
+        out_path.write_bytes(wav_bytes)
+        written.append(out_path.name)
+
+    return {
+        "ok": True,
+        "avatar_id": safe,
+        "count": len(written),
+        "files": written,
+    }
+
+
+@app.get(
+    "/wait_phrase",
+    responses={200: {"content": {"audio/wav": {}}}},
+)
+def wait_phrase(avatar_id: str, name: str):
+    safe = _safe_avatar_id(avatar_id)
+    key = (name or "").strip().lower()
+    if not key:
+        raise HTTPException(status_code=400, detail="Parametro 'name' mancante.")
+
+    allowed = {k for k, _ in WAIT_PHRASES}
+    if key not in allowed:
+        raise HTTPException(status_code=400, detail="Parametro 'name' non valido.")
+
+    path = _wait_phrase_path(safe, key)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Wait phrase non trovata.")
+
+    return FileResponse(path, media_type="audio/wav", filename=path.name)
+
+
 @app.post(
     "/tts",
     responses={200: {"content": {"audio/wav": {}}}},
@@ -277,6 +459,87 @@ async def tts(
         "X-Coqui-Lang": language,
     }
     return Response(content=wav_bytes, media_type="audio/wav", headers=headers)
+
+
+@app.post(
+    "/tts_stream",
+    responses={200: {"content": {"audio/wav": {}}}},
+)
+async def tts_stream(
+    text: str = Form(...),
+    avatar_id: str = Form("default"),
+    language: str = Form(DEFAULT_LANG),
+    speaker_wav: Optional[UploadFile] = File(None),
+    save_voice: bool = Form(False),
+    split_sentences: bool = Form(True),
+    max_chunk_chars: int = Form(220),
+):
+    _ensure_loaded()
+
+    safe = _safe_avatar_id(avatar_id)
+    language = (language or DEFAULT_LANG).strip() or DEFAULT_LANG
+
+    speaker_path: Optional[str] = None
+    tmp_path: Optional[Path] = None
+
+    if speaker_wav is not None and speaker_wav.filename:
+        data = await speaker_wav.read()
+        if data and len(data) >= 512:
+            suffix = Path(speaker_wav.filename).suffix or ".wav"
+            fd, tmp_name = tempfile.mkstemp(prefix="speaker_", suffix=suffix)
+            os.close(fd)
+            tmp_path = Path(tmp_name)
+            tmp_path.write_bytes(data)
+            speaker_path = str(tmp_path)
+
+            if save_voice:
+                out_path = _avatar_voice_path(safe)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_bytes(data)
+
+    if speaker_path is None:
+        avatar_ref = _avatar_voice_path(safe)
+        if _file_has_content(avatar_ref):
+            speaker_path = str(avatar_ref)
+
+    if speaker_path is None:
+        default_ref = Path(DEFAULT_SPEAKER_WAV)
+        if _file_has_content(default_ref):
+            speaker_path = str(default_ref)
+
+    if speaker_path is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Nessun riferimento vocale disponibile. Usa /set_avatar_voice o passa speaker_wav.",
+        )
+
+    try:
+        if not text.strip():
+            raise ValueError("Text vuoto.")
+        chunks = _split_text(text, max_chars=max(40, int(max_chunk_chars))) if split_sentences else [text]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid input: {e}")
+
+    def _cleanup():
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    def _stream():
+        try:
+            yield from _iter_pcm_stream(chunks=chunks, language=language, speaker_wav_path=speaker_path)
+        finally:
+            _cleanup()
+
+    headers = {
+        "X-Avatar-Id": safe,
+        "X-Coqui-Lang": language,
+        "X-Audio-Rate": str(OUTPUT_SAMPLE_RATE),
+        "X-Audio-Format": "pcm_s16le",
+    }
+    return StreamingResponse(_stream(), media_type="audio/wav", headers=headers)
 
 
 @app.post("/tts_json")

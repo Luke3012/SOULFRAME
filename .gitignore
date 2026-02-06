@@ -4,6 +4,7 @@
 /[Bb]uild/
 /[Bb]uilds/
 /[Ll]ogs/
+/[Pp]ackages/
 /[Uu]ser[Ss]ettings/
 /[Pp]rofiler[Cc]aptures/
 .vs/
@@ -75,3 +76,6 @@ Thumbs.db
 .git_stream_b/
 .git_stream_a
 .git_stream_b
+
+#Ignora i file bezi
+.bezisidekick/

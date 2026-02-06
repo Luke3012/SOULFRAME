@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 84a92b25f83d49b9bc132d206b370281, type: 3}
-  m_Name: keyboard_enter
+  m_Name: keyboard_delete
   m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TMP_SpriteAsset
   m_Version: 1.1.0
   m_FaceInfo:
@@ -35,14 +35,14 @@ MonoBehaviour:
     m_StrikethroughOffset: 0
     m_StrikethroughThickness: 0
     m_TabWidth: 0
-  m_Material: {fileID: 6644372439234306917}
-  spriteSheet: {fileID: 2800000, guid: 9f15395f6822eb04a9ab00b840dc7caf, type: 3}
+  m_Material: {fileID: 3538354763651715319}
+  spriteSheet: {fileID: 2800000, guid: 91b97625052bdfe489f782292b0d8a50, type: 3}
   m_SpriteCharacterTable:
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 0
     m_Scale: 1
-    m_Name: keyboard_enter_0
+    m_Name: keyboard_delete_0
   m_GlyphTable:
   - m_Index: 0
     m_Metrics:
@@ -56,27 +56,20 @@ MonoBehaviour:
       m_Y: 8
       m_Width: 48
       m_Height: 48
-    m_Scale: 1.2
+    m_Scale: 1
     m_AtlasIndex: 0
     m_ClassDefinitionType: 0
-    sprite: {fileID: -1158181798, guid: 9f15395f6822eb04a9ab00b840dc7caf, type: 3}
+    sprite: {fileID: 1013836140, guid: 91b97625052bdfe489f782292b0d8a50, type: 3}
   spriteInfoList: []
-  fallbackSpriteAssets:
-  - {fileID: 11400000, guid: e3d770f3c7de73e4a9cb2d048add4a0d, type: 2}
-  - {fileID: 11400000, guid: 0cf26b45207387a4286684deb69b6b27, type: 2}
-  - {fileID: 11400000, guid: b49bd8d94a7955940afeeceef3b35da1, type: 2}
-  - {fileID: 11400000, guid: 3db3e1455f5e09d4e991a4262a8418de, type: 2}
-  - {fileID: 11400000, guid: 10ea28dcd6d68da40a61a0e33470aed5, type: 2}
-  - {fileID: 11400000, guid: e5cb6a3959619864c809213a3d87d5cd, type: 2}
-  - {fileID: 11400000, guid: 34bbd2a9057ca3e40b1859d0ac67568a, type: 2}
---- !u!21 &6644372439234306917
+  fallbackSpriteAssets: []
+--- !u!21 &3538354763651715319
 Material:
   serializedVersion: 8
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: keyboard_enter Material
+  m_Name: keyboard_delete Material
   m_Shader: {fileID: 4800000, guid: cf81c85f95fe47e1a27f6ae460cf182c, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
@@ -93,7 +86,7 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _MainTex:
-        m_Texture: {fileID: 2800000, guid: 9f15395f6822eb04a9ab00b840dc7caf, type: 3}
+        m_Texture: {fileID: 2800000, guid: 91b97625052bdfe489f782292b0d8a50, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Ints: []

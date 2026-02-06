@@ -95,12 +95,8 @@ MonoBehaviour:
   enterAsset: {fileID: 11400000, guid: b00173e6c380a594a94c5555b1d9ab31, type: 2}
   backspaceAsset: {fileID: 11400000, guid: e3d770f3c7de73e4a9cb2d048add4a0d, type: 2}
   escapeAsset: {fileID: 11400000, guid: 0cf26b45207387a4286684deb69b6b27, type: 2}
-  baseSpriteAssetOverride: {fileID: 0}
-  arrowsVerticalSpriteName: keyboard_arrows_vertical_outline
-  arrowsHorizontalSpriteName: keyboard_arrows_horizontal_outline
-  enterSpriteName: keyboard_enter
-  backspaceSpriteName: keyboard_backspace
-  escSpriteName: keyboard_escape
+  spaceAsset: {fileID: 0}
+  spaceOutlinedAsset: {fileID: 0}
   separator: '   '
   useFallbackTextIfMissing: 1
 --- !u!1 &2019155213798390401

@@ -15,10 +15,7 @@ STORE_DIR = ROOT_DIR / "avatar_store"
 MODELS_DIR = STORE_DIR / "models"
 META_PATH = STORE_DIR / "avatars.json"
 
-ALLOWED_ORIGINS = [
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-]
+ALLOWED_ORIGINS = ["*"]
 
 LOCAL_MODELS = [
     {
