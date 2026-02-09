@@ -50,6 +50,21 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
     public float listeningFocusSpeed = 12f;
     public bool logStateChanges = false;
 
+    [Header("Listening Ear Lean")]
+    [Tooltip("Yaw leggero: avvicina un orecchio alla camera durante l'ascolto.")]
+    public float listeningEarYawDeg = 6f;
+    [Tooltip("Roll leggero: effetto \"orecchio verso la camera\".")]
+    public float listeningEarRollDeg = 5f;
+    [Range(0f, 1f)] public float listeningPitchFollow = 0.2f;
+    public float listeningPitchClampDeg = 3f;
+    public float listeningEarDeadZoneDeg = 4f;
+    public float listeningSwayDeg = 0.6f;
+    public float listeningSwaySpeed = 1.2f;
+    [Tooltip("Velocita' ingresso posa ascolto (evita scatto iniziale).")]
+    public float listeningEnterBlendSpeed = 7f;
+    [Tooltip("Velocita' uscita posa ascolto.")]
+    public float listeningExitBlendSpeed = 10f;
+
     [Header("Blink")]
     public Vector2 blinkInterval = new Vector2(2.0f, 5.0f);
     public float blinkCloseTime = 0.05f;
@@ -84,6 +99,8 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
     float _speechPitchTarget;
     float _speechYaw;
     float _speechPitch;
+    float _listeningEarSide = 1f;
+    float _listeningBlend;
 
     static readonly string[] BlinkLeftNames = { "eyeBlinkLeft", "EyeBlinkLeft", "blinkLeft", "BlinkLeft" };
     static readonly string[] BlinkRightNames = { "eyeBlinkRight", "EyeBlinkRight", "blinkRight", "BlinkRight" };
@@ -100,19 +117,19 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
 
         var allT = _avatarRoot.GetComponentsInChildren<Transform>(true);
 
-        // Head
+        // Testa
         _head = allT.FirstOrDefault(t => t.name == "Head" || t.name.ToLower().Contains("head"));
         if (_head != null)
             _headBaseLocalRot = _head.localRotation;
 
-        // Arms (LeftArm/RightArm, fallback a LeftUpperArm/RightUpperArm)
+        // Braccia (LeftArm/RightArm, fallback su LeftUpperArm/RightUpperArm)
         _leftArm = allT.FirstOrDefault(t => t.name == "LeftArm") ?? allT.FirstOrDefault(t => t.name == "LeftUpperArm");
         _rightArm = allT.FirstOrDefault(t => t.name == "RightArm") ?? allT.FirstOrDefault(t => t.name == "RightUpperArm");
 
         if (applyArmsRestPoseOnSetup)
             ApplyArmsRestPose();
 
-        // Eyes
+        // Occhi
         if (enableEyes)
         {
             _eyeL = allT.FirstOrDefault(t => IsLeftEyeName(t.name));
@@ -122,7 +139,7 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
             if (_eyeR != null) _eyeRBaseLocalRot = _eyeR.localRotation;
         }
 
-        // Blink blendshapes
+        // Blendshape di ammiccamento
         var rends = _avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)
             .Where(r => r && r.sharedMesh && r.sharedMesh.blendShapeCount > 0);
 
@@ -162,7 +179,57 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
         {
             Debug.Log($"[IdleLook] Listening={(listening ? "ON" : "OFF")}");
         }
+
+        if (listening && !_isListening)
+        {
+            _listeningEarSide = DetermineListeningEarSide();
+            // Se entriamo in ascolto, evitiamo che il ramo "speaking hold" prenda priorita' per qualche frame.
+            _speakUntil = 0f;
+        }
+
         _isListening = listening;
+    }
+
+    private float DetermineListeningEarSide()
+    {
+        // Evita "scatti" casuali: riusa il lato coerente con la posa corrente della testa.
+        if (TryGetCurrentHeadLocalEuler(out _, out float currentYaw, out _))
+        {
+            if (Mathf.Abs(currentYaw) > 0.5f)
+            {
+                return Mathf.Sign(currentYaw);
+            }
+        }
+
+        // Ripiego: lato deciso in base alla posizione camera.
+        if (_head != null && _head.parent != null && focusTarget != null)
+        {
+            GetYawPitchToTarget(_head.parent, _head.position, focusTarget.position, out float camYaw, out _);
+            if (Mathf.Abs(camYaw) > 0.5f)
+            {
+                return Mathf.Sign(camYaw);
+            }
+        }
+
+        return _listeningEarSide == 0f ? 1f : Mathf.Sign(_listeningEarSide);
+    }
+
+    private bool TryGetCurrentHeadLocalEuler(out float pitchDeg, out float yawDeg, out float rollDeg)
+    {
+        pitchDeg = 0f;
+        yawDeg = 0f;
+        rollDeg = 0f;
+
+        if (_head == null)
+        {
+            return false;
+        }
+
+        Quaternion delta = Quaternion.Inverse(_headBaseLocalRot) * _head.localRotation;
+        pitchDeg = NormalizeSignedAngle(delta.eulerAngles.x);
+        yawDeg = NormalizeSignedAngle(delta.eulerAngles.y);
+        rollDeg = NormalizeSignedAngle(delta.eulerAngles.z);
+        return true;
     }
 
     public bool TryGetHeadWorldPosition(out Vector3 worldPos)
@@ -214,6 +281,8 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
         _mainModeEnabled = false;
         _isListening = false;
         _externalLookTarget = null;
+        _listeningEarSide = 1f;
+        _listeningBlend = 0f;
     }
 
     void OnDisable() => Clear();
@@ -262,7 +331,11 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
         }
         _wasSpeaking = speaking;
 
+        float listeningSpeed = _isListening ? listeningEnterBlendSpeed : listeningExitBlendSpeed;
+        _listeningBlend = Mathf.MoveTowards(_listeningBlend, _isListening ? 1f : 0f, Time.deltaTime * Mathf.Max(0.01f, listeningSpeed));
+
         float headYaw, headPitch;
+        float headRoll = 0f;
 
         if (speaking && focusTarget != null && _head.parent != null)
         {
@@ -275,17 +348,34 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
             headYaw += _speechYaw;
             headPitch += _speechPitch;
 
-            var targetRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, 0f);
+            var targetRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, headRoll);
             _head.localRotation = Quaternion.Slerp(_head.localRotation, targetRot, Time.deltaTime * focusSpeed);
         }
         else if (_isListening && _head.parent != null)
         {
-            Vector3 target = _externalLookTarget ?? (focusTarget != null ? focusTarget.position : _head.position);
-            GetYawPitchToTarget(_head.parent, _head.position, target, out headYaw, out headPitch);
-            headYaw = Mathf.Clamp(headYaw, -externalYawClampDeg, externalYawClampDeg);
-            headPitch = Mathf.Clamp(headPitch, -externalPitchClampDeg, externalPitchClampDeg);
+            Vector3 cameraTarget = focusTarget != null ? focusTarget.position : (_head.position + _head.forward);
+            GetYawPitchToTarget(_head.parent, _head.position, cameraTarget, out float camYaw, out float camPitch);
 
-            var targetRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, 0f);
+            if (Mathf.Abs(camYaw) > listeningEarDeadZoneDeg)
+            {
+                _listeningEarSide = Mathf.Sign(camYaw);
+            }
+
+            float swayYaw = (Mathf.PerlinNoise(_seed + 503f, Time.time * listeningSwaySpeed) - 0.5f) * 2f * listeningSwayDeg;
+            float swayRoll = (Mathf.PerlinNoise(_seed + 607f, Time.time * listeningSwaySpeed) - 0.5f) * 2f * listeningSwayDeg;
+
+            float targetYaw = _listeningEarSide * listeningEarYawDeg + swayYaw;
+            float targetPitch = Mathf.Clamp(camPitch * listeningPitchFollow, -listeningPitchClampDeg, listeningPitchClampDeg);
+            float targetRoll = -_listeningEarSide * listeningEarRollDeg + swayRoll;
+
+            // Transizione progressiva verso la posa di ascolto, cosi' evitiamo scatti netti da mouse-look/parlato.
+            TryGetCurrentHeadLocalEuler(out float currentPitch, out float currentYaw, out float currentRoll);
+
+            headYaw = Mathf.Lerp(currentYaw, targetYaw, _listeningBlend);
+            headPitch = Mathf.Lerp(currentPitch, targetPitch, _listeningBlend);
+            headRoll = Mathf.Lerp(currentRoll, targetRoll, _listeningBlend);
+
+            var targetRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, headRoll);
             _head.localRotation = Quaternion.Slerp(_head.localRotation, targetRot, Time.deltaTime * listeningFocusSpeed);
         }
         else if (_mainModeEnabled && _externalLookTarget.HasValue && _head.parent != null)
@@ -294,7 +384,7 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
             headYaw = Mathf.Clamp(headYaw, -externalYawClampDeg, externalYawClampDeg);
             headPitch = Mathf.Clamp(headPitch, -externalPitchClampDeg, externalPitchClampDeg);
 
-            var targetRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, 0f);
+            var targetRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, headRoll);
             _head.localRotation = Quaternion.Slerp(_head.localRotation, targetRot, Time.deltaTime * externalLookSpeed);
         }
         else
@@ -307,7 +397,7 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
             headYaw = (Mathf.PerlinNoise(_seed, Time.time * idleSpeed) - 0.5f) * 2f * idleYawDeg;
             headPitch = (Mathf.PerlinNoise(_seed + 17f, Time.time * idleSpeed) - 0.5f) * 2f * idlePitchDeg;
 
-            var idleRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, 0f);
+            var idleRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, headRoll);
             _head.localRotation = Quaternion.Slerp(_head.localRotation, idleRot, Time.deltaTime * 2f);
         }
 
@@ -330,11 +420,13 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
             eyeYaw = Mathf.Clamp(eyeYaw, -eyeYawClampDeg, eyeYawClampDeg);
             eyePitch = Mathf.Clamp(eyePitch, -eyePitchClampDeg, eyePitchClampDeg);
         }
-        else if (_isListening && focusTarget != null && _head.parent != null)
+        else if (_isListening)
         {
-            GetYawPitchToTarget(_head.parent, _head.position, focusTarget.position, out eyeYaw, out eyePitch);
-            eyeYaw *= eyeFocusMultiplier;
-            eyePitch *= eyeFocusMultiplier;
+            float sYaw = (Mathf.PerlinNoise(_seed + 701f, Time.time * eyeSaccadeSpeed) - 0.5f) * 2f * eyeSaccadeYawDeg;
+            float sPitch = (Mathf.PerlinNoise(_seed + 809f, Time.time * eyeSaccadeSpeed) - 0.5f) * 2f * eyeSaccadePitchDeg;
+
+            eyeYaw = headYaw * eyeFollowHeadIdle + sYaw;
+            eyePitch = headPitch * eyeFollowHeadIdle + sPitch;
 
             eyeYaw = Mathf.Clamp(eyeYaw, -eyeYawClampDeg, eyeYawClampDeg);
             eyePitch = Mathf.Clamp(eyePitch, -eyePitchClampDeg, eyePitchClampDeg);
@@ -382,6 +474,14 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
         var dirLocal = Quaternion.Inverse(referenceSpace.rotation) * dirWorld.normalized;
         yawDeg = Mathf.Atan2(dirLocal.x, dirLocal.z) * Mathf.Rad2Deg;
         pitchDeg = -Mathf.Asin(Mathf.Clamp(dirLocal.y, -1f, 1f)) * Mathf.Rad2Deg;
+    }
+
+    static float NormalizeSignedAngle(float angleDeg)
+    {
+        angleDeg %= 360f;
+        if (angleDeg > 180f) angleDeg -= 360f;
+        if (angleDeg < -180f) angleDeg += 360f;
+        return angleDeg;
     }
 
     IEnumerator BlinkLoop()

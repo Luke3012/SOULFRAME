@@ -16,6 +16,13 @@ Env utili:
 - COQUI_DEFAULT_SPEAKER_WAV      (default: backend/voices/default.wav)
 - COQUI_AVATAR_VOICES_DIR        (default: backend/voices/avatars)
 - COQUI_TTS_DEVICE               (cpu|cuda) (auto se non impostato)
+- COQUI_GPT_COND_LEN             (default: 12) secondi di riferimento audio per condizionamento
+- COQUI_GPT_COND_CHUNK_LEN       (default: 4) chunk conditioning
+- COQUI_TEMPERATURE              (default: 0.65) randomness (più basso = più stabile)
+- COQUI_REPETITION_PENALTY       (default: 5.0) penalità ripetizioni
+- COQUI_LENGTH_PENALTY            (default: 1.0) penalità lunghezza
+- COQUI_TOP_K                    (default: 50) sampling top-k
+- COQUI_TOP_P                    (default: 0.85) sampling nucleus
 """
 
 from __future__ import annotations
@@ -36,7 +43,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse, FileResponse
 from starlette.middleware.cors import CORSMiddleware
 
-# -------------------- Config --------------------
+# -------------------- Configurazione --------------------
 
 HERE = Path(__file__).resolve().parent
 
@@ -45,6 +52,7 @@ DEFAULT_LANG = os.getenv("COQUI_LANG", "it")
 
 DEFAULT_SPEAKER_WAV = os.getenv("COQUI_DEFAULT_SPEAKER_WAV", str(HERE / "voices" / "default.wav"))
 AVATAR_VOICES_DIR = os.getenv("COQUI_AVATAR_VOICES_DIR", str(HERE / "voices" / "avatars"))
+LEGACY_AVATAR_VOICES_DIR = str(HERE / "voices" / "avatars")
 
 # Se vuoi forzare: cpu | cuda
 FORCE_DEVICE = os.getenv("COQUI_TTS_DEVICE", "").strip().lower()
@@ -52,7 +60,19 @@ FORCE_DEVICE = os.getenv("COQUI_TTS_DEVICE", "").strip().lower()
 # XTTS spesso lavora bene a 24k
 OUTPUT_SAMPLE_RATE = int(os.getenv("COQUI_OUTPUT_SR", "24000"))
 
-# -------------------- App --------------------
+# Parametri qualità voce XTTS v2 (tuning).
+# gpt_cond_len: secondi di audio di riferimento usati per condizionare (più alto = voce più fedele, un po' più lento)
+# temperature: casualita' nella generazione (piu' basso = piu' stabile/consistente)
+# repetition_penalty: penalizza ripetizioni (aiuta con balbuzie/stuttering)
+XTTS_GPT_COND_LEN = int(os.getenv("COQUI_GPT_COND_LEN", "12"))
+XTTS_GPT_COND_CHUNK_LEN = int(os.getenv("COQUI_GPT_COND_CHUNK_LEN", "4"))
+XTTS_TEMPERATURE = float(os.getenv("COQUI_TEMPERATURE", "0.65"))
+XTTS_REPETITION_PENALTY = float(os.getenv("COQUI_REPETITION_PENALTY", "5.0"))
+XTTS_LENGTH_PENALTY = float(os.getenv("COQUI_LENGTH_PENALTY", "1.0"))
+XTTS_TOP_K = int(os.getenv("COQUI_TOP_K", "50"))
+XTTS_TOP_P = float(os.getenv("COQUI_TOP_P", "0.85"))
+
+# -------------------- Applicazione --------------------
 
 app = FastAPI(title="SOULFRAME Coqui TTS", version="1.2.0")
 
@@ -64,12 +84,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -------------------- Globals --------------------
+# -------------------- Variabili globali --------------------
 
 _tts = None
 _device_used = None
 
-# -------------------- Helpers --------------------
+# -------------------- Helper --------------------
 
 
 _AVATAR_ID_RX = re.compile(r"[^a-zA-Z0-9_\-]+")
@@ -81,6 +101,67 @@ WAIT_PHRASES: list[tuple[str, str]] = [
     ("si", "Sì"),
     ("un_secondo", "Un secondo"),
 ]
+
+
+def _clean_tts_text(text: str) -> str:
+    """Pulisce il testo prima della sintesi TTS per evitare che la punteggiatura venga pronunciata.
+
+    XTTS v2 usa la punteggiatura per la prosodia (pause, intonazione), quindi
+    manteniamo la punteggiatura utile ma rimuoviamo quella problematica:
+    - Punti multipli ("...", "....")
+    - Punteggiatura isolata o ridondante
+    - Simboli che XTTS potrebbe vocalizzare (*, #, @, etc.)
+    - Parentesi, virgolette, trattini decorativi
+    """
+    if not text:
+        return text
+
+    s = text.strip()
+
+    # Rimuovi simboli che TTS potrebbe provare a pronunciare
+    s = re.sub(r'[*#@~^|\\{}\[\]<>]', '', s)
+
+    # Rimuovi parentesi e il loro contenuto se contengono solo punteggiatura/numeri
+    s = re.sub(r'\([^a-zA-Z\u00C0-\u00FF]*\)', '', s)
+
+    # Virgolette di ogni tipo -> rimuovi
+    s = re.sub(r'[\'\"«»„“”‟‘’]', '', s)
+
+    # Ellipsis e punti multipli -> singola virgola (pausa naturale)
+    s = re.sub(r'\.{2,}', ',', s)
+    s = re.sub(r'\u2026', ',', s)
+
+    # Trattini lunghi/decorativi -> virgola
+    s = re.sub(r'[\u2014\u2013]+', ',', s)
+
+    # Slash -> spazio
+    s = re.sub(r'/', ' ', s)
+
+    # Underscore -> spazio
+    s = re.sub(r'_', ' ', s)
+
+    # Evita letture tipo "punto effe": punti interni a token (es. "abc.def", "A.B", ecc.)
+    s = re.sub(r'(?<=\S)\.(?=\S)', ' ', s)
+
+    # Trasformiamo i punti residui in pausa morbida
+    s = re.sub(r'\.(?=\s|$)', ',', s)
+
+    # Punteggiatura ripetuta (es. !!, ??, ,,) -> singola
+    s = re.sub(r'([!?,;:]){2,}', r'\1', s)
+
+    # Punto doppio -> singolo
+    s = re.sub(r'\.\s*\.', '.', s)
+
+    # Rimuovi punteggiatura isolata (spazio + punteggiatura + spazio)
+    s = re.sub(r'\s+[.,;:!?]\s+', ' ', s)
+
+    # Normalizza spazi multipli
+    s = re.sub(r'\s{2,}', ' ', s)
+
+    # Rimuovi punteggiatura iniziale
+    s = re.sub(r'^[.,;:!?\s]+', '', s)
+
+    return s.strip()
 
 
 def _safe_avatar_id(avatar_id: str) -> str:
@@ -99,6 +180,29 @@ def _avatar_voice_path(avatar_id: str) -> Path:
 def _wait_phrase_path(avatar_id: str, key: str) -> Path:
     safe = _safe_avatar_id(avatar_id)
     return Path(AVATAR_VOICES_DIR) / safe / f"wait_{key}.wav"
+
+
+def _legacy_wait_phrase_path(avatar_id: str, key: str) -> Path:
+    safe = _safe_avatar_id(avatar_id)
+    return Path(LEGACY_AVATAR_VOICES_DIR) / safe / f"wait_{key}.wav"
+
+
+def _resolve_wait_phrase_path(avatar_id: str, key: str) -> Path:
+    primary = _wait_phrase_path(avatar_id, key)
+    legacy = _legacy_wait_phrase_path(avatar_id, key)
+
+    if _file_has_content(primary):
+        return primary
+
+    if legacy != primary and _file_has_content(legacy):
+        try:
+            primary.parent.mkdir(parents=True, exist_ok=True)
+            primary.write_bytes(legacy.read_bytes())
+            return primary
+        except Exception:
+            return legacy
+
+    return primary
 
 
 def _file_has_content(path: Path, min_bytes: int = 512) -> bool:
@@ -120,6 +224,42 @@ def _resolve_speaker_path(safe_avatar_id: str) -> Optional[str]:
     return None
 
 
+def _is_cuda_related_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    markers = (
+        "cuda",
+        "cudnn",
+        "cublas",
+        "out of memory",
+        "device-side",
+        "driver",
+        "hip",
+    )
+    return any(k in msg for k in markers)
+
+
+def _load_tts_on_device(device: str):
+    from TTS.api import TTS  # type: ignore
+
+    model = TTS(MODEL_NAME)
+    model.to(device)
+    return model
+
+
+def _switch_to_cpu_fallback(reason: Exception) -> bool:
+    global _tts, _device_used
+    if _device_used == "cpu":
+        return False
+    try:
+        _tts = _load_tts_on_device("cpu")
+        _device_used = "cpu"
+        print(f"[WARN] Coqui switched to CPU fallback: {reason}", flush=True)
+        return True
+    except Exception as cpu_exc:
+        print(f"[ERR] Coqui CPU fallback failed: {cpu_exc}", flush=True)
+        return False
+
+
 def _ensure_loaded() -> None:
     global _tts, _device_used
     if _tts is not None:
@@ -127,16 +267,53 @@ def _ensure_loaded() -> None:
 
     # Import pesanti solo qui
     import torch  # type: ignore
-    from TTS.api import TTS  # type: ignore
 
+    preferred_device = "cuda" if bool(torch.cuda.is_available()) else "cpu"
     if FORCE_DEVICE in ("cpu", "cuda"):
-        use_cuda = FORCE_DEVICE == "cuda"
-    else:
-        use_cuda = bool(torch.cuda.is_available())
+        preferred_device = FORCE_DEVICE
 
-    _device_used = "cuda" if use_cuda else "cpu"
-    _tts = TTS(MODEL_NAME)
-    _tts.to(_device_used)
+    try:
+        _tts = _load_tts_on_device(preferred_device)
+        _device_used = preferred_device
+    except Exception as e:
+        if preferred_device == "cuda" and _is_cuda_related_error(e):
+            if not _switch_to_cpu_fallback(e):
+                raise
+        else:
+            raise
+
+
+def _tts_generate(text: str, language: str, speaker_wav_path: str):
+    global _tts
+
+    synth_kwargs: dict = dict(
+        text=text,
+        speaker_wav=speaker_wav_path,
+        language=language,
+    )
+
+    def _run_once():
+        try:
+            synth_kwargs.update(
+                gpt_cond_len=XTTS_GPT_COND_LEN,
+                gpt_cond_chunk_len=XTTS_GPT_COND_CHUNK_LEN,
+                temperature=XTTS_TEMPERATURE,
+                repetition_penalty=XTTS_REPETITION_PENALTY,
+                length_penalty=XTTS_LENGTH_PENALTY,
+                top_k=XTTS_TOP_K,
+                top_p=XTTS_TOP_P,
+            )
+            return _tts.tts(**synth_kwargs)  # type: ignore[attr-defined]
+        except TypeError:
+            # Il modello non supporta parametri extra (fallback base)
+            return _tts.tts(text=text, speaker_wav=speaker_wav_path, language=language)  # type: ignore[attr-defined]
+
+    try:
+        return _run_once()
+    except Exception as e:
+        if _device_used == "cuda" and _is_cuda_related_error(e) and _switch_to_cpu_fallback(e):
+            return _run_once()
+        raise
 
 
 def _synth_to_wav_bytes(
@@ -145,11 +322,11 @@ def _synth_to_wav_bytes(
     speaker_wav_path: str,
     sample_rate: int = OUTPUT_SAMPLE_RATE,
 ) -> bytes:
-    global _tts
+    text = _clean_tts_text(text)
     if not text.strip():
         raise ValueError("Text vuoto.")
 
-    wav = _tts.tts(text=text, speaker_wav=speaker_wav_path, language=language)  # type: ignore[attr-defined]
+    wav = _tts_generate(text=text, language=language, speaker_wav_path=speaker_wav_path)
     if wav is None:
         raise RuntimeError("TTS ha restituito None.")
 
@@ -160,6 +337,26 @@ def _synth_to_wav_bytes(
     buf = io.BytesIO()
     sf.write(buf, wav, samplerate=sample_rate, format="WAV", subtype="PCM_16")
     return buf.getvalue()
+
+
+def _synth_to_pcm16_bytes(text: str, language: str, speaker_wav_path: str) -> bytes:
+    """Genera PCM16 mono (senza header WAV), utile per streaming chunk-by-chunk."""
+    text = _clean_tts_text(text)
+    if not text.strip():
+        raise ValueError("Text vuoto.")
+
+    wav = _tts_generate(text=text, language=language, speaker_wav_path=speaker_wav_path)
+
+    if wav is None:
+        raise RuntimeError("TTS ha restituito None.")
+
+    wav = np.asarray(wav, dtype=np.float32).reshape(-1)
+    if wav.size < 10:
+        raise RuntimeError("Audio generato vuoto (wav troppo corto).")
+
+    wav = np.clip(wav, -1.0, 1.0)
+    pcm16 = (wav * 32767.0).astype(np.int16)
+    return pcm16.tobytes()
 
 
 def _wav_header(sample_rate: int, channels: int = 1, bits_per_sample: int = 16, data_size: int = 0) -> bytes:
@@ -185,21 +382,30 @@ def _iter_pcm_stream(
     sample_rate: int = OUTPUT_SAMPLE_RATE,
 ):
     yield _wav_header(sample_rate=sample_rate, channels=1, bits_per_sample=16, data_size=0)
+    emitted_audio = False
 
     for chunk in chunks:
         if not chunk:
             continue
-        wav = _tts.tts(text=chunk, speaker_wav=speaker_wav_path, language=language)  # type: ignore[attr-defined]
-        if wav is None:
+        chunk = _clean_tts_text(chunk)
+        if not chunk:
             continue
 
-        wav = np.asarray(wav, dtype=np.float32).reshape(-1)
-        if wav.size < 10:
+        try:
+            pcm = _synth_to_pcm16_bytes(text=chunk, language=language, speaker_wav_path=speaker_wav_path)
+            if not pcm:
+                continue
+            emitted_audio = True
+            yield pcm
+        except Exception as e:
+            # Non interrompere l'intero stream per un singolo chunk fallito.
+            print(f"[WARN] tts_stream chunk skipped: {e}", flush=True)
             continue
 
-        wav = np.clip(wav, -1.0, 1.0)
-        pcm16 = (wav * 32767.0).astype(np.int16)
-        yield pcm16.tobytes()
+    if not emitted_audio:
+        # Restituisce un piccolo buffer di silenzio per mantenere stream WAV valido.
+        silence = np.zeros(int(sample_rate * 0.15), dtype=np.int16)
+        yield silence.tobytes()
 
 
 def _split_text(text: str, max_chars: int = 220) -> list[str]:
@@ -267,7 +473,7 @@ def _on_startup() -> None:
     return
 
 
-# -------------------- Routes --------------------
+# -------------------- Percorsi --------------------
 
 
 @app.get("/health")
@@ -372,6 +578,8 @@ def generate_wait_phrases(
     responses={200: {"content": {"audio/wav": {}}}},
 )
 def wait_phrase(avatar_id: str, name: str):
+    _ensure_loaded()
+
     safe = _safe_avatar_id(avatar_id)
     key = (name or "").strip().lower()
     if not key:
@@ -381,9 +589,24 @@ def wait_phrase(avatar_id: str, name: str):
     if key not in allowed:
         raise HTTPException(status_code=400, detail="Parametro 'name' non valido.")
 
-    path = _wait_phrase_path(safe, key)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Wait phrase non trovata.")
+    path = _resolve_wait_phrase_path(safe, key)
+    if not _file_has_content(path):
+        speaker_path = _resolve_speaker_path(safe)
+        if speaker_path is None:
+            raise HTTPException(status_code=404, detail="Wait phrase non trovata.")
+
+        phrase_map = {k: v for k, v in WAIT_PHRASES}
+        phrase = phrase_map.get(key, "")
+        if not phrase:
+            raise HTTPException(status_code=400, detail="Parametro 'name' non valido.")
+
+        try:
+            wav_bytes = _synth_to_wav_bytes(text=phrase, language=DEFAULT_LANG, speaker_wav_path=speaker_path)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Errore generazione wait phrase: {e}")
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(wav_bytes)
 
     return FileResponse(path, media_type="audio/wav", filename=path.name)
 
@@ -429,7 +652,7 @@ async def tts(
         if _file_has_content(avatar_ref):
             speaker_path = str(avatar_ref)
 
-    # 3) fallback default
+    # 3) fallback di default
     if speaker_path is None:
         default_ref = Path(DEFAULT_SPEAKER_WAV)
         if _file_has_content(default_ref):

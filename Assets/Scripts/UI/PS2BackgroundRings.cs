@@ -167,7 +167,7 @@ public class PS2BackgroundRings : MonoBehaviour
         float chaosPixels = microJitter + mixChaosBoost * mixPulse;
 
         // colore particella (HDR per far lavorare il Bloom)
-        // Se ha già PS2_RingAdditive con tinta blu, di default NON raddoppia la tinta:
+        // Se ha gia' PS2_RingAdditive con tinta blu, di default NON raddoppia la tinta:
         Color baseColor = (ringMaterial != null && !overrideMaterialColor) ? Color.white : ringTint;
         Color particleColor = new Color(
             baseColor.r * particleHDRIntensity,

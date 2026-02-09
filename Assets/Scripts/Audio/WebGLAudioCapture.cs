@@ -31,11 +31,11 @@ public class WebGLAudioCapture : MonoBehaviour, IAudioCaptureWebGL
     private static extern void WebGLAudio_CaptureFixedDuration(int durationMs, Action<IntPtr, int> callback);
 #endif
 
-    // NOTE: These static instance variables are used to track which WebGLAudioCapture instance
-    // initiated an async operation (permission request, stop, or fixed capture) so that the
-    // corresponding callback can be routed to the correct instance. Only one instance should
-    // perform each operation type at a time. Multiple instances or overlapping operations may
-    // cause unexpected behavior.
+    // Qui usiamo variabili statiche per tracciare quale istanza WebGLAudioCapture
+    // ha avviato un'operazione asincrona (richiesta permesso, stop o cattura a durata fissa),
+    // cosi' instradiamo il callback verso l'istanza corretta. Conviene usare una sola istanza
+    // per tipo di operazione alla volta: piu' istanze o operazioni sovrapposte possono
+    // generare comportamenti inattesi.
     private static WebGLAudioCapture activeInstance;
     private static WebGLAudioCapture activeStopInstance;
     private static WebGLAudioCapture activeCaptureInstance;

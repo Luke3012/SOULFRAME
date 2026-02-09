@@ -16,7 +16,7 @@ public class AvaturnSystem : MonoBehaviour
     public string subdomain = "soulframe";
     public string customUrl = "";
 
-    // RIMOSSO: private bool isIframeSetup = false;
+    // Abbiamo rimosso: private bool isIframeSetup = false;
 
     void Awake()
     {
@@ -82,7 +82,7 @@ public class AvaturnSystem : MonoBehaviour
     {
         if (avatarReceiver != null)
         {
-            // Scollega eventuali callback precedenti
+            // Scolleghiamo eventuali gestori precedenti
             avatarReceiver.SetOnReceived(null);
             // Conversione esplicita da Action<T> a UnityAction<T>
             avatarReceiver.SetOnReceived(onAvatarReceived == null ? null : new UnityAction<AvatarInfo>(onAvatarReceived));

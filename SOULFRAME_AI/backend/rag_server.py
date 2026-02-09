@@ -59,7 +59,7 @@ from rank_bm25 import BM25Okapi
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-# Patch hnswlib compatibility (chroma expects file_handle_count on Index)
+# Compatibilita' hnswlib: aggiungiamo file_handle_count atteso da chroma su Index
 try:
     import hnswlib  # type: ignore
     if not hasattr(hnswlib.Index, "file_handle_count"):
@@ -67,7 +67,7 @@ try:
 except Exception:
     pass
 
-# Optional Gemini Vision (nuovo SDK)
+# Gemini Vision opzionale (SDK nuovo)
 try:
     from google import genai
     from google.genai import types as genai_types
@@ -101,11 +101,22 @@ else:
 
 
 # -----------------------------
-# Config (env)
+# Configurazione (env)
 # -----------------------------
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
 CHAT_MODEL = os.getenv("CHAT_MODEL", "llama3:8b-instruct-q4_K_M")
+CHAT_TEMPERATURE = float(os.getenv("CHAT_TEMPERATURE", "0.45"))
+CHAT_TOP_P = float(os.getenv("CHAT_TOP_P", "0.9"))
+CHAT_REPEAT_PENALTY = float(os.getenv("CHAT_REPEAT_PENALTY", "1.08"))
+CHAT_NUM_PREDICT = int(os.getenv("CHAT_NUM_PREDICT", "220"))
 
 PERSIST_ROOT = os.getenv("RAG_DIR", os.path.join(os.path.dirname(__file__), "rag_store"))
 PERSIST_ROOT = PERSIST_ROOT.strip().strip('"')
@@ -117,6 +128,13 @@ CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "500"))
 MIN_CHUNK_CHARS = int(os.getenv("RAG_MIN_CHUNK_CHARS", "20"))
 MAX_CHROMA_ADD_BATCH = int(os.getenv("RAG_CHROMA_ADD_BATCH", "5000"))
 MAX_CONTEXT_CHARS = int(os.getenv("RAG_MAX_CONTEXT_CHARS", "6000"))
+RAG_PERSONA_TOP_K = int(os.getenv("RAG_PERSONA_TOP_K", "4"))
+RAG_PERSONA_BM25_WEIGHT = float(os.getenv("RAG_PERSONA_BM25_WEIGHT", "0.7"))
+RAG_ENFORCE_GROUNDED = _env_bool("RAG_ENFORCE_GROUNDED", True)
+RAG_PERSONA_QUERY = os.getenv(
+    "RAG_PERSONA_QUERY",
+    "tratti caratteriali personalita modo di parlare tono stile linguistico lessico espressioni ricorrenti",
+).strip()
 
 # OCR / Tesseract
 RAG_OCR_LANG = os.getenv("RAG_OCR_LANG", "ita+eng").strip()          # es: "ita" oppure "ita+eng"
@@ -128,7 +146,7 @@ OCR_DPI = int(os.getenv("RAG_OCR_DPI", "400"))  # Aumentato da 300 a 400 per tab
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 # Se non trovata in env, prova a leggerla da file
 if not GEMINI_API_KEY:
-    # Prova percorsi multiple
+    # Prova percorsi multipli
     potential_paths = [
         os.path.join(os.path.dirname(__file__), "gemini_key.txt"),
         os.path.join(os.path.dirname(__file__), "..", "gemini_key.txt"),
@@ -156,7 +174,7 @@ elif not GEMINI_API_KEY:
 
 
 # -----------------------------
-# Helpers: cleaning + quality
+# Supporto: pulizia + qualita'
 # -----------------------------
 # rimuove caratteri di controllo (ma mantiene tab/newline)
 _CTRL_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
@@ -171,7 +189,7 @@ def clean_text(s: str, ocr: bool = False) -> str:
     s = _CTRL_RE.sub("", s)
     s = _WS_RE.sub(" ", s)
     s = re.sub(r"\n{3,}", "\n\n", s)
-    # Nota: il filtro OCR è stato rimosso perché troppo aggressivo per documenti reali
+    # Abbiamo rimosso il filtro OCR perche' era troppo aggressivo sui documenti reali
     return s.strip()
 
 
@@ -194,8 +212,111 @@ def looks_like_garbage(text: str) -> bool:
     return False
 
 
+_PERSONA_STYLE_RE = re.compile(
+    r"\b("
+    r"caratter\w*|personalit\w*|temperament\w*|modo di parlare|"
+    r"tono di voce|tono|stile lingu\w*|stile comunicativ\w*|"
+    r"registro|formale|informale|iron\w*|sarcast\w*|gentil\w*|"
+    r"timid\w*|estrovers\w*|pacat\w*|dirett\w*|schiett\w*|"
+    r"slang|dialetto|espression\w* ricorrent\w*|lessico"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_SPEAKER_PREFIX_RE = re.compile(
+    r"^\s*(?:ta|utente|user|assistant|avatar|narratore|narrator)\b\s*[:>\-\]]?\s*",
+    re.IGNORECASE,
+)
+_STAGE_DIRECTION_RE = re.compile(
+    r"(\(([^()]{1,60})\)|\[([^\[\]]{1,60})\]|\*([^*]{1,60})\*)",
+    re.IGNORECASE,
+)
+_STAGE_KEYWORDS = (
+    "ride", "ridendo", "risata", "risate", "sorride", "sorridendo",
+    "sospira", "sospirando", "pausa", "silenzio", "annuisce", "annuendo",
+    "sbuffa", "sbuffando", "schiarisce la voce", "tossisce",
+    "laugh", "laughs", "laughing", "chuckle", "chuckles", "chuckling",
+    "giggle", "giggles", "giggling", "sigh", "sighs", "sighing",
+    "whisper", "whispers", "whispering", "shout", "shouts", "shouting",
+    "applause", "music", "cough", "coughs",
+)
+_LEADING_FILLER_RE = re.compile(r"^\s*(?:ahem+|ehm+|mmm+|uhm+|hmm+)\b[\s,.;:!?-]*", re.IGNORECASE)
+
+
+def _is_persona_style_text(text: str) -> bool:
+    t = clean_text(text)
+    if not t:
+        return False
+    return _PERSONA_STYLE_RE.search(t) is not None
+
+
+def _memory_role_for_text(text: str) -> str:
+    return "persona_style" if _is_persona_style_text(text) else "factual_memory"
+
+
+def _extract_persona_cues(docs: List[str], metas: List[dict], max_items: int = 5, max_chars: int = 900) -> str:
+    cues: List[str] = []
+    total = 0
+    for d, m in zip(docs, metas):
+        if not d:
+            continue
+        role = (m or {}).get("memory_role", "")
+        if role == "persona_style" or _is_persona_style_text(d):
+            snippet = clean_text(d).replace("\n", " ")
+            if not snippet:
+                continue
+            if len(snippet) > 220:
+                snippet = snippet[:220].rstrip() + "..."
+            if total + len(snippet) > max_chars:
+                break
+            cues.append(f"- {snippet}")
+            total += len(snippet)
+            if len(cues) >= max_items:
+                break
+    return "\n".join(cues)
+
+
+def _sanitize_chat_answer(text: str) -> str:
+    out = (text or "").strip()
+    if not out:
+        return ""
+
+    # Rimuove eventuali prefissi parlante tipo "TA:", "Utente:", ecc.
+    for _ in range(2):
+        cleaned = _SPEAKER_PREFIX_RE.sub("", out, count=1).strip()
+        if cleaned == out:
+            break
+        out = cleaned
+
+    def _remove_stage_direction(match: re.Match[str]) -> str:
+        whole = (match.group(0) or "").strip()
+        # Blocchi tra *...* sono quasi sempre stage-direction/azione: rimuovili sempre.
+        if whole.startswith("*") and whole.endswith("*"):
+            return ""
+
+        inner = (match.group(2) or match.group(3) or match.group(4) or "").strip().lower()
+        norm = re.sub(r"[^a-zA-Z0-9\u00C0-\u017F\s]", " ", inner)
+        norm = re.sub(r"\s+", " ", norm).strip()
+        if not norm:
+            return ""
+        # Se breve e "parentetico", tende a essere gesto/tono/effetto vocale.
+        if len(norm.split()) <= 8:
+            return ""
+        if any(k in norm for k in _STAGE_KEYWORDS):
+            return ""
+        return match.group(0)
+
+    out = _STAGE_DIRECTION_RE.sub(_remove_stage_direction, out)
+    out = _LEADING_FILLER_RE.sub("", out)
+    out = re.sub(r"[*_~`]+", "", out)
+    out = re.sub(r"\s{2,}", " ", out)
+    out = re.sub(r"\s+([,.;:!?])", r"\1", out)
+    out = out.strip(" \t\r\n\"'")
+    return out
+
+
 # -----------------------------
-# Ollama helpers
+# Supporto Ollama
 # -----------------------------
 
 def _post_json(url: str, payload: dict, timeout: int):
@@ -246,16 +367,29 @@ def _validate_embeddings(embs: List[List[float]]) -> None:
 
 
 def ollama_chat(messages: list[dict[str, str]]) -> str:
+    options: dict[str, Any] = {
+        "temperature": CHAT_TEMPERATURE,
+        "top_p": CHAT_TOP_P,
+        "repeat_penalty": CHAT_REPEAT_PENALTY,
+    }
+    if CHAT_NUM_PREDICT > 0:
+        options["num_predict"] = CHAT_NUM_PREDICT
+
     data = _post_json(
         f"{OLLAMA_HOST}/api/chat",
-        {"model": CHAT_MODEL, "messages": messages, "stream": False},
+        {
+            "model": CHAT_MODEL,
+            "messages": messages,
+            "stream": False,
+            "options": options,
+        },
         timeout=600,
     )
     return (data.get("message") or {}).get("content", "") or ""
 
 
 # -----------------------------
-# Chroma init (per-avatar persist dir)
+# Inizializzazione Chroma (cartella persistente per avatar)
 # -----------------------------
 
 _AVATAR_CLIENTS: dict[str, ChromaClientAPI] = {}
@@ -263,7 +397,7 @@ _AVATAR_LOCK = threading.Lock()
 
 def _safe_avatar_key(avatar_id: str) -> str:
     s = (avatar_id or "default").strip()
-    # solo caratteri sicuri per nomi cartelle su Windows
+    # Usiamo solo caratteri sicuri per i nomi cartella su Windows
     s = re.sub(r"[^a-zA-Z0-9_-]+", "_", s)
     if not s:
         s = "default"
@@ -281,7 +415,7 @@ def _get_client_for_avatar(avatar_id: str) -> ChromaClientAPI:
         d = os.path.join(PERSIST_ROOT, key)
         os.makedirs(d, exist_ok=True)
         try:
-            # Usa impostazioni minimaliste senza forcing API per evitare conflitti hnswlib
+            # Usiamo impostazioni minimaliste senza forzature API per evitare conflitti hnswlib
             c = chromadb.PersistentClient(path=d)
         except Exception as e:
             raise RuntimeError(
@@ -298,14 +432,14 @@ def get_collection(avatar_id: str):
 
 
 # -----------------------------
-# Chroma Windows lock helpers
+# Supporto lock Windows per Chroma
 # -----------------------------
 def _stop_chroma_system(client) -> None:
     """Prova a stoppare il 'system' condiviso di Chroma per liberare lock su Windows."""
     if client is None:
         return
 
-    # 1) stop diretto se esiste
+    # 1) stop diretto se presente
     try:
         sys = getattr(client, "_system", None)
         if sys and hasattr(sys, "stop"):
@@ -313,7 +447,7 @@ def _stop_chroma_system(client) -> None:
     except Exception:
         pass
 
-    # 2) rimuovi dal cache SharedSystemClient (se presente)
+    # 2) rimuoviamo dalla cache SharedSystemClient (se presente)
     try:
         from chromadb.api.shared_system_client import SharedSystemClient
         ident = getattr(client, "_identifier", None)
@@ -353,7 +487,7 @@ def _sanitize_metadata(meta: dict | None) -> dict:
 
 
 # -----------------------------
-# File text extraction
+# Estrazione testo file
 # -----------------------------
 
 def describe_image_with_gemini(image_bytes: bytes, prompt: str = "Descrivi dettagliatamente questa immagine in italiano.") -> str:
@@ -382,7 +516,7 @@ def describe_image_with_gemini(image_bytes: bytes, prompt: str = "Descrivi detta
         if text:
             return text
 
-        # fallback: prova a leggere da candidates (null-safe per Pylance e per SDK diversi)
+        # Ripiego: proviamo a leggere da candidates (safe su null per Pylance e per SDK diversi)
         candidates = getattr(response, "candidates", None)
         if isinstance(candidates, list) and candidates:
             try:
@@ -405,7 +539,7 @@ def _ensure_ocr_ready() -> bool:
     if pytesseract is None or Image is None:
         return False
     
-    # Configura tesseract_cmd se specificato (o usa default Windows)
+    # Configuriamo tesseract_cmd se specificato (oppure usiamo il predefinito Windows)
     tcmd = TESSERACT_CMD or DEFAULT_TESSERACT_CMD
     if tcmd and os.path.exists(tcmd):
         pytesseract.pytesseract.tesseract_cmd = tcmd
@@ -483,7 +617,7 @@ def extract_text_from_pdf(pdf_bytes: bytes, force_ocr: bool = False) -> List[Tup
                 pix = page.get_pixmap(dpi=OCR_DPI)
                 img_bytes = pix.tobytes("png")
                 ocr_text = clean_text(ocr_image_bytes(img_bytes), ocr=True)
-                # Linearizza tabelle per miglior semantic similarity
+                # Linearizziamo le tabelle per migliorare la similarita' semantica
                 ocr_text = linearize_table_text(ocr_text)
             except Exception:
                 skipped_pages.append(i + 1)
@@ -626,7 +760,7 @@ def _hybrid_search(
         return result_docs, result_metas
         
     except Exception as e:
-        # Fallback: solo vector search
+        # Ripiego: usiamo solo la ricerca vettoriale
         try:
             res = col.query(
                 query_embeddings=[query_embedding],
@@ -639,7 +773,7 @@ def _hybrid_search(
 
 
 # -----------------------------
-# API models
+# Modelli API
 # -----------------------------
 app = FastAPI(title="SOULFRAME RAG Server", version="3.0")
 
@@ -652,7 +786,7 @@ app.add_middleware(
 )
 
 
-# Exception handler globale
+# Gestore globale delle eccezioni
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     print(f"[EXCEPTION] {type(exc).__name__}: {exc}")
@@ -682,7 +816,75 @@ class ChatReq(BaseModel):
 
 
 # -----------------------------
-# Endpoints
+# Rilevamento memoria automatica
+# -----------------------------
+# Pattern che catturano frasi in cui l'utente chiede di memorizzare qualcosa.
+# Supporta italiano e inglese. Il confronto non distingue maiuscole/minuscole.
+_REMEMBER_PATTERNS = [
+    # Italiano
+    r"(?:ricorda(?:ti)?|memorizza|tieni a mente|segna(?:ti)?|annota(?:ti)?|non (?:ti )?dimenticare)\s+(?:che\s+)?(.+)",
+    r"(?:devi|dovresti)\s+(?:ricorda(?:re|rti)|memorizzare|sapere)\s+(?:che\s+)?(.+)",
+    r"(?:sappi|tieni presente)\s+(?:che\s+)?(.+)",
+    # Inglese
+    r"(?:remember|memorize|keep in mind|note|don'?t forget)\s+(?:that\s+)?(.+)",
+]
+_REMEMBER_RES = [re.compile(p, re.IGNORECASE | re.DOTALL) for p in _REMEMBER_PATTERNS]
+
+
+def _detect_remember_intent(text: str) -> Optional[str]:
+    """Controlla se il testo contiene un intento 'ricorda'.
+    Ritorna il contenuto da memorizzare (gruppo catturato) oppure None.
+    """
+    t = (text or "").strip()
+    if not t:
+        return None
+    for pattern in _REMEMBER_RES:
+        m = pattern.search(t)
+        if m:
+            content = m.group(1).strip().rstrip(".")
+            # Deve avere almeno qualche contenuto significativo
+            if len(content) >= 5:
+                return content
+    return None
+
+
+def _auto_remember(avatar_id: str, original_text: str, remember_content: str, col: Any) -> Optional[str]:
+    """Salva automaticamente il contenuto nella memoria RAG.
+    Ritorna l'ID del documento salvato, oppure None in caso di errore.
+    """
+    try:
+        txt = clean_text(remember_content)
+        if len(txt) < MIN_CHUNK_CHARS:
+            # Testo troppo corto, usa il messaggio originale intero
+            txt = clean_text(original_text)
+        if len(txt) < MIN_CHUNK_CHARS or looks_like_garbage(txt):
+            return None
+
+        emb = ollama_embed_many([txt])[0]
+        _id = str(uuid.uuid4())
+        meta: dict[str, Any] = {
+            "source_type": "auto_remember_voice",
+            "memory_role": _memory_role_for_text(txt),
+            "avatar_id": avatar_id,
+            "ts": int(time.time()),
+            "original_utterance": original_text[:500], #
+        }
+        col.add(
+            ids=[_id],
+            embeddings=[emb],
+            documents=[txt],
+            metadatas=[cast(ChromaMetadata, meta)],
+        )
+        print(f"[AUTO-REMEMBER] avatar={avatar_id} saved id={_id} text={txt[:80]}...")
+        return _id
+    except Exception as e:
+        print(f"[AUTO-REMEMBER] Errore: {e}")
+        traceback.print_exc()
+        return None
+
+
+# -----------------------------
+# Endpoint
 # -----------------------------
 @app.get("/health")
 def health():
@@ -698,6 +900,11 @@ def health():
         "pdf": bool(fitz),
         "ocr_lang": RAG_OCR_LANG,
         "gemini_vision": bool(_gemini_client and GEMINI_API_KEY),
+        "chat_temperature": CHAT_TEMPERATURE,
+        "chat_top_p": CHAT_TOP_P,
+        "chat_repeat_penalty": CHAT_REPEAT_PENALTY,
+        "persona_top_k": RAG_PERSONA_TOP_K,
+        "grounded_mode": RAG_ENFORCE_GROUNDED,
     }
 
 
@@ -730,6 +937,7 @@ def remember(req: RememberReq):
 
     meta = _sanitize_metadata(req.meta or {})
     meta.setdefault("source_type", "manual")
+    meta.setdefault("memory_role", _memory_role_for_text(txt))
     meta.setdefault("avatar_id", req.avatar_id)
     meta.setdefault("ts", int(time.time()))
 
@@ -763,7 +971,7 @@ def recall(req: RecallReq):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore embedding: {e}")
 
-    # Hybrid search ottimizzata
+    # Ricerca ibrida ottimizzata
     try:
         docs_hybrid, metas_hybrid = _hybrid_search(
             query=q,
@@ -781,7 +989,7 @@ def recall(req: RecallReq):
             "ids": [[f"doc_{i}" for i in range(len(docs_hybrid))]],
         }
     except Exception as e:
-        # Fallback a ricerca standard se hybrid fallisce
+        # Ripiego alla ricerca standard se la modalita' ibrida fallisce
         res = col.query(
             query_embeddings=[qemb],
             n_results=req.top_k,
@@ -798,6 +1006,14 @@ def chat(req: ChatReq):
     if not q:
         raise HTTPException(status_code=400, detail="Messaggio vuoto.")
 
+    # --- Memoria automatica: rileviamo l'intento "ricorda che..." ---
+    auto_remembered = False
+    auto_remember_id = None
+    remember_content = _detect_remember_intent(q)
+    if remember_content:
+        auto_remember_id = _auto_remember(req.avatar_id, q, remember_content, col)
+        auto_remembered = auto_remember_id is not None
+
     try:
         count = col.count()
     except Exception:
@@ -810,7 +1026,7 @@ def chat(req: ChatReq):
             raise HTTPException(status_code=500, detail=f"Errore embedding: {e}")
 
         try:
-            # Hybrid search ottimizzata
+            # Ricerca ibrida ottimizzata
             docs, metas = _hybrid_search(
                 query=q,
                 query_embedding=qemb,
@@ -818,12 +1034,27 @@ def chat(req: ChatReq):
                 top_k=req.top_k,
                 bm25_weight=0.6,
             )
+
+            # Recupera in parallelo anche memorie di "stile/persona" per replicare meglio il modo di parlare
+            if RAG_PERSONA_TOP_K > 0 and RAG_PERSONA_QUERY:
+                persona_query = f"{q}\n{RAG_PERSONA_QUERY}"
+                persona_emb = ollama_embed_many([persona_query])[0]
+                p_docs, p_metas = _hybrid_search(
+                    query=persona_query,
+                    query_embedding=persona_emb,
+                    col=col,
+                    top_k=max(1, RAG_PERSONA_TOP_K),
+                    bm25_weight=RAG_PERSONA_BM25_WEIGHT,
+                )
+                if p_docs:
+                    docs.extend(p_docs)
+                    metas.extend(p_metas)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Errore query memoria: {e}")
     else:
         docs, metas = [], []
 
-    # deduplica per ridurre overlap/duplicati
+    # Deduplichiamo per ridurre sovrapposizioni e duplicati
     docs, metas = _dedupe_chunks(docs, metas)
 
     # contesto compatto con sorgente
@@ -845,25 +1076,45 @@ def chat(req: ChatReq):
         total += len(piece)
 
     context = "\n\n".join(ctx_parts)
+    persona_cues = _extract_persona_cues(docs, metas)
 
     system = req.system or (
-        "Sei l'avatar stesso, non un assistente. Parla SEMPRE in PRIMA PERSONA come se tu fossi la persona. "
-        "Usa il CONTESTO come la tua memoria personale: sono ricordi, esperienze, informazioni su di te. "
-        "Rispondi nella TUA LINGUA (indicata nel contesto se presente), altrimenti in italiano. "
-        "Sii naturale e diretto, come farebbe una persona vera. "
-        "NON dire 'secondo il contesto' o 'l'utente': rispondi come se fossi TU quella persona. "
-        "Esempi: 'Odio i maccheroni' (NON 'l'utente odia'), 'Mi chiamo Luca' (NON 'si chiama Luca'). "
-        "Se non sai qualcosa, dillo semplicemente: 'Non ricordo' o 'Non lo so'."
+        "Sei l'avatar stesso, non un assistente. Parla sempre in prima persona come se fossi la persona reale. "
+        "Usa il contesto RAG come memoria personale e prioritaria. "
+        "Sii naturale, umano e colloquiale, ma resta accurato. "
+        "Non usare frasi meta come 'dal contesto' o 'l'utente'. "
+        "Non inserire indicazioni sceniche tra parentesi/asterischi (es. '(ride)', '*sospira*') "
+        "e non usare etichette parlante tipo 'TA:' o 'Assistant:'. "
+        "Non descrivere gesti, suoni, onomatopee o azioni fisiche (es. '*ahem*', '*si tocca la testa*'). "
+        "Se il contesto non basta, di chiaramente 'Non ricordo' o 'Non lo so' e chiedi un dettaglio utile."
     )
+    if RAG_ENFORCE_GROUNDED and req.top_k > 0:
+        system += (
+            " Regole anti-allucinazione: non inventare fatti, nomi, date, luoghi, relazioni, gusti o eventi non presenti in memoria. "
+            "Se due ricordi sono in conflitto, dichiaralo in modo trasparente senza inventare la versione corretta."
+        )
 
-    user = f"CONTESTO (memoria RAG):\n{context}\n\nUTENTE:\n{q}"
+    if not context:
+        context = "(Nessuna memoria rilevante recuperata.)"
+    if not persona_cues:
+        persona_cues = "- Nessun tratto esplicito trovato nella memoria recente."
 
-    answer = ollama_chat(
+    user = (
+        f"MEMORIA RAG (usala come base dei fatti):\n{context}\n\n"
+        f"TRATTI DI PERSONALITA/MODO DI PARLARE (se presenti, replicali con naturalezza):\n{persona_cues}\n\n"
+        f"MESSAGGIO UTENTE:\n{q}\n\n"
+        "Rispondi in modo naturale e umano. Se mancano informazioni in memoria, evita di inventare e dillo chiaramente."
+    )
+    if auto_remembered:
+        user += "\n\n[SISTEMA: L'utente ha chiesto di ricordare qualcosa e l'informazione è stata salvata nella tua memoria. Conferma brevemente che ricorderai.]"
+
+    raw_answer = ollama_chat(
         [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
     ).strip()
+    answer = _sanitize_chat_answer(raw_answer) or "Non lo so."
 
     rag_used = []
     for d, m in zip(docs, metas):
@@ -871,7 +1122,7 @@ def chat(req: ChatReq):
             continue
         rag_used.append({"text": d, "meta": m or {}})
 
-    return {"text": answer, "rag_used": rag_used}
+    return {"text": answer, "rag_used": rag_used, "auto_remembered": auto_remembered}
 
 
 @app.post("/clear_avatar")
@@ -912,7 +1163,7 @@ def clear_avatar(avatar_id: str = Form(...), hard: bool = Form(True)):
     except Exception:
         pass
 
-    # stop system per liberare lock su Windows
+    # fermiamo il sistema per liberare i lock su Windows
     _stop_chroma_system(client)
     del client
     gc.collect()
@@ -1011,7 +1262,7 @@ async def describe_image(
 
     description = describe_image_with_gemini(raw, prompt)
 
-    # Initialize response fields before conditional block
+    # Inizializziamo i campi di risposta prima del blocco condizionale
     saved = False
     save_error = None
     if avatar_id and remember:
@@ -1026,6 +1277,7 @@ async def describe_image(
             _id = str(uuid.uuid4())
             meta = {
                 "source_type": "image_description",
+                "memory_role": _memory_role_for_text(txt),
                 "source_filename": filename,
                 "avatar_id": avatar_id,
                 "ts": int(time.time()),
@@ -1078,14 +1330,14 @@ async def ingest_file(
         if not sections:
             raise HTTPException(status_code=400, detail="Nessun testo estratto dal PDF (OCR fallito o testo illeggibile).")
 
-    # Images
+    # Immagini
     elif ext in (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"):
         txt = ocr_image_bytes(raw)
         if not txt or looks_like_garbage(txt):
             raise HTTPException(status_code=400, detail="OCR non ha prodotto testo utile dall'immagine.")
         sections = [(txt, {"page": 1, "ocr": True})]
 
-    # Plain-ish text
+    # Testo semplice
     else:
         txt = extract_text_from_plain(raw)
         if not txt or looks_like_garbage(txt):
@@ -1102,7 +1354,7 @@ async def ingest_file(
     for text, meta in sections:
         chunks = chunk_text(text)
         for idx, ch in enumerate(chunks):
-            # Deduplicate: skip if we've already seen this chunk
+            # Deduplichiamo: saltiamo il chunk se lo abbiamo gia' visto
             if ch in seen_chunks:
                 continue
             seen_chunks.add(ch)
@@ -1114,6 +1366,7 @@ async def ingest_file(
             m.update(
                 {
                     "source_type": "file",
+                    "memory_role": _memory_role_for_text(ch),
                     "source_filename": filename,
                     "chunk": idx,
                     "ts": int(time.time()),
@@ -1125,7 +1378,7 @@ async def ingest_file(
     if not docs:
         raise HTTPException(status_code=400, detail="Nessun chunk valido generato dal file.")
 
-    # embed in batch piccoli
+    # Calcoliamo embedding in batch piccoli
     embeddings: List[ChromaEmbedding] = []
     batch = 16
     for i in range(0, len(docs), batch):
@@ -1156,7 +1409,7 @@ if __name__ == "__main__":
     import sys
     try:
         print("[INFO] Avvio server su 127.0.0.1:8002", file=sys.stderr, flush=True)
-        # Usa reload=False per evitare problemi di multiprocessing
+        # Usiamo la ricarica automatica disattivata per evitare problemi di processi multipli
         uvicorn.run(app, host="127.0.0.1", port=8002, reload=False)
     except Exception as e:
         print(f"[FATAL] Errore server: {e}", file=sys.stderr, flush=True)

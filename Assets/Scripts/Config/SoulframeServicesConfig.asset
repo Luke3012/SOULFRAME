@@ -18,4 +18,3 @@ MonoBehaviour:
   coquiBaseUrl: http://127.0.0.1:8004
   requestTimeoutSeconds: 15
   retryCount: 1
-  corsSafeMode: 1

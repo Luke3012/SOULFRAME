@@ -1,7 +1,95 @@
 # SOULFRAME
 
-## Italiano
-Work in progress. Questo progetto sviluppa un ambiente virtuale per ridurre la solitudine nella popolazione anziana. Struttura e contenuti sono in evoluzione.
+SOULFRAME e' una piattaforma WebGL con avatar interattivi e backend AI.
+L'idea e' semplice: scegli o crei un avatar, parli, il sistema capisce la voce, ragiona con memoria contestuale e risponde in audio.
 
-## English
-Work in progress. This project develops a virtual environment to reduce loneliness in the elderly population. Structure and contents are evolving.
+## Cosa fa, in pratica
+
+- Gestione avatar 3D locali e importati (con cache server-side degli asset `.glb`).
+- Conversazione vocale end-to-end: registrazione, trascrizione, risposta, sintesi vocale.
+- Memoria per avatar con RAG persistente (documenti, immagini, note testuali).
+- Deploy sia locale (Windows) sia server (Ubuntu) con script dedicati.
+
+## Dove gira
+
+### 1) Locale su Windows
+
+- Setup ambiente con `SOULFRAME_SETUP/setup_soulframe_windows.bat`.
+- Avvio/stop/restart servizi con `SOULFRAME_AI/ai_services.cmd`.
+- Workflow tipico: sviluppo rapido e test funzionali in locale.
+
+### 2) Setup automatico su Ubuntu
+
+- Installazione e provisioning con `SOULFRAME_SETUP/setup_soulframe_ubuntu.sh`.
+- Gestione operativa con `SOULFRAME_SETUP/sf_admin_ubuntu.sh` (alias `sfadmin`).
+- Include servizi `systemd`, reverse proxy Caddy, update guidati da `soulframe_update` (Build.zip + backend/setup), backup e opzioni di shutdown.
+
+## Python e requirements
+
+- Versioni consigliate: Python 3.11 e 3.12.
+- Su Windows, lo script crea il venv con `py -3.11` di default.
+- Su Ubuntu, il setup seleziona automaticamente la versione disponibile (priorita: 3.12, poi 3.11, poi 3.10).
+- I requirements sono allineati tra ambienti:
+  - `SOULFRAME_AI/backend/requirements.txt` (deploy backend)
+  - `SOULFRAME_SETUP/requirements.txt` (riferimento setup Linux)
+
+## Design interattivo e UX
+
+Il frontend Unity e' pensato per essere diretto da usare:
+
+- comandi da tastiera chiari (es. `SPACE` per parlare, `Enter` per confermare, `Esc/Back` per tornare),
+- hint contestuali a schermo (hint bar) in base allo stato UI,
+- transizioni leggere e piccole animazioni per non spezzare il flusso,
+- background rings dinamici che accompagnano boot, setup e operazioni lunghe.
+
+## Pipeline AI (STT, RAG, TTS)
+
+- STT: Whisper trascrive l'audio (`/transcribe`).
+- RAG: il backend usa Ollama + ChromaDB per memoria per-avatar, con ricerca ibrida semantica + keyword.
+- TTS: Coqui XTTS v2 genera la risposta vocale (`/tts`, `/tts_stream`).
+
+### Setup voce (profilo vocale avatar)
+
+Nel setup voce:
+
+- viene generata una frase italiana lunga (target 50-80 parole),
+- la trascrizione della tua lettura viene confrontata con la frase attesa,
+- se la similarita' e' almeno del 70%, il riferimento vocale viene salvato per quell'avatar,
+- subito dopo vengono generate anche le wait phrases (es. "hm", "un_secondo") per la conversazione.
+
+## Memoria: cosa puo' salvare
+
+La memoria RAG puo' essere alimentata da:
+
+- testo libero/note,
+- documenti (PDF, TXT),
+- immagini.
+
+Dettagli importanti:
+
+- per i PDF viene usato OCR in modo esplicito, non solo testo embedded;
+- per le immagini c'e' OCR e, quando configurato, descrizione semantica con Gemini Vision;
+- tutto viene salvato per avatar, quindi ogni profilo mantiene il suo contesto separato.
+
+## MainMode
+
+MainMode e' la fase operativa della conversazione:
+
+1. tieni premuto `SPACE` per parlare,
+2. rilascio -> trascrizione Whisper,
+3. richiesta al RAG con memoria dell'avatar,
+4. risposta vocale in streaming via Coqui TTS,
+5. UI aggiornata con stato, testo utente e risposta.
+
+Da MainMode puoi anche tornare rapidamente a setup voce/setup memoria se vuoi aggiornare il profilo.
+
+## Struttura repo
+
+- `Assets/`: frontend Unity (UI flow, avatar management, WebGL bridge).
+- `SOULFRAME_AI/`: servizi AI (Whisper, RAG, TTS, Avatar Asset Server).
+- `SOULFRAME_SETUP/`: script setup e amministrazione Windows/Linux.
+
+## Documentazione tecnica
+
+- Setup Linux/Ubuntu: `SOULFRAME_SETUP/README.md`
+- Backend AI (Whisper/RAG/TTS/Avatar): `SOULFRAME_AI/README.md`

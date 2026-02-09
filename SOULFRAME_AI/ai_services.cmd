@@ -6,12 +6,13 @@ REM SOULFRAME - AI Services Launcher
 REM  Args:
 REM   ai_services.cmd 1  -> start
 REM   ai_services.cmd 2  -> stop (kill per porta - SOLO python)
+REM   ai_services.cmd 3  -> restart
 REM   ai_services.cmd    -> menu
 REM ============================================================
 
 set "ROOT=%~dp0"
 set "BACKEND=%ROOT%backend"
-set "BUILD_DIR=C:\Users\lucat\Realta Virtuale\SOULFRAME\Build"
+set "BUILD_DIR=%ROOT%..\Build"
 
 REM Prefer backend\venv, fallback backend\.venv
 set "VENV_DIR=%BACKEND%\venv"
@@ -32,14 +33,28 @@ set "AVATAR_ASSET_PORT=8003"
 set "OLLAMA_PORT=11434"
 set "BUILD_PORT=8000"
 
+set "RAG_DIR=%BACKEND%\rag_store"
+set "RAG_OCR_LANG=ita+eng"
+set "OLLAMA_HOST=http://127.0.0.1:11434"
+set "EMBED_MODEL=nomic-embed-text"
+set "CHAT_MODEL=llama3:8b-instruct-q4_K_M"
+set "CHAT_TEMPERATURE=0.45"
+set "CHAT_TOP_P=0.9"
+set "CHAT_REPEAT_PENALTY=1.08"
+set "CHAT_NUM_PREDICT=220"
+set "WHISPER_MODEL=small"
+
 REM Coqui XTTS v2 (se coqui_tts_server.py legge queste env)
 set "TTS_HOME=%ROOT%models\coqui_tts"
 set "COQUI_TTS_MODEL=tts_models/multilingual/multi-dataset/xtts_v2"
 set "COQUI_LANG=it"
 set "COQUI_DEFAULT_SPEAKER_WAV=%BACKEND%\voices\default.wav"
+set "COQUI_AVATAR_VOICES_DIR=%BACKEND%\voices\avatars"
+set "COQUI_TTS_DEVICE=cuda"
 
 if "%~1"=="1" goto START
 if "%~1"=="2" goto STOP
+if "%~1"=="3" goto RESTART
 goto MENU
 
 :MENU
@@ -49,10 +64,12 @@ echo    SOULFRAME AI Services
 echo ============================================
 echo [1] Start servizi
 echo [2] Stop  servizi (kill per porta)
+echo [3] Restart servizi
 echo.
 set /p "CHOICE=> "
 if "%CHOICE%"=="1" goto START
 if "%CHOICE%"=="2" goto STOP
+if "%CHOICE%"=="3" goto RESTART
 exit /b 0
 
 :START
@@ -133,6 +150,11 @@ REM Kill Ollama (speciale, non e' python)
 call :KILL_PORT_FORCE %OLLAMA_PORT%
 
 echo Fatto.
+exit /b 0
+
+:RESTART
+call :STOP
+call :START
 exit /b 0
 
 REM ========================= HELPERS =========================

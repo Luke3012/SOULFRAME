@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class UIHintBar : MonoBehaviour
 {
-    public enum HintIcon { Arrows, Enter, Backspace, Esc, Space, Delete }
+    public enum HintIcon { Arrows, Enter, Backspace, Esc, Space, Delete, Any, Ins }
 
     [System.Serializable]
     public struct HintItem
@@ -26,6 +26,8 @@ public class UIHintBar : MonoBehaviour
     [SerializeField] private TMP_SpriteAsset spaceAsset;
     [SerializeField] private TMP_SpriteAsset spaceOutlinedAsset;
     [SerializeField] private TMP_SpriteAsset deleteAsset;
+    [SerializeField] private TMP_SpriteAsset anyAsset;
+    [SerializeField] private TMP_SpriteAsset insAsset;
 
     [Header("Formatting")]
     [SerializeField] private string separator = "   ";
@@ -33,8 +35,8 @@ public class UIHintBar : MonoBehaviour
 
     private bool useHorizontalArrows = false;
 
-    // cache nomi reali dentro gli asset (spesso finiscono con _0)
-    private string arrowsVertName, arrowsHorizName, enterName, backspaceName, escName, spaceName, spaceOutlinedName, deleteName;
+    // Memorizziamo in cache i nomi reali negli asset (spesso finiscono con _0).
+    private string arrowsVertName, arrowsHorizName, enterName, backspaceName, escName, spaceName, spaceOutlinedName, deleteName, anyName, insName;
     private bool spacePressed;
 
     public void SetArrowsHorizontal(bool horizontal) => useHorizontalArrows = horizontal;
@@ -82,12 +84,12 @@ public class UIHintBar : MonoBehaviour
 
         hintText.richText = true;
 
-        // IMPORTANTISSIMO: TMP usa un SOLO spriteAsset "base"
+        // In TMP usiamo un solo spriteAsset "base".
         // e poi cerca negli eventuali fallback
         if (hintText.spriteAsset == null)
             hintText.spriteAsset = enterAsset;
 
-        // cache nomi reali delle sprite (primo elemento della Sprite Character Table)
+        // Memorizziamo in cache i nomi reali delle sprite (primo elemento della tabella Sprite Character)
         arrowsVertName ??= GetFirstSpriteName(arrowsVerticalAsset);
         arrowsHorizName ??= GetFirstSpriteName(arrowsHorizontalAsset);
         enterName ??= GetFirstSpriteName(enterAsset);
@@ -96,6 +98,8 @@ public class UIHintBar : MonoBehaviour
         spaceName ??= GetFirstSpriteName(spaceAsset);
         spaceOutlinedName ??= GetFirstSpriteName(spaceOutlinedAsset);
         deleteName ??= GetFirstSpriteName(deleteAsset);
+        anyName ??= GetFirstSpriteName(anyAsset);
+        insName ??= GetFirstSpriteName(insAsset);
     }
 
     private string BuildIconToken(HintIcon icon)
@@ -109,6 +113,8 @@ public class UIHintBar : MonoBehaviour
             HintIcon.Esc => escName,
             HintIcon.Space => spaceSprite,
             HintIcon.Delete => deleteName,
+            HintIcon.Any => anyName,
+            HintIcon.Ins => insName,
             _ => null
         };
 
@@ -127,6 +133,8 @@ public class UIHintBar : MonoBehaviour
             HintIcon.Esc => "[ESC]",
             HintIcon.Space => spacePressed ? "[SPACE_OUTLINED]" : "[SPACE]",
             HintIcon.Delete => "[DELETE]",
+            HintIcon.Any => "[ANY]",
+            HintIcon.Ins => "[INS]",
             _ => "[KEY]"
         };
     }

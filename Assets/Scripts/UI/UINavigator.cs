@@ -121,7 +121,7 @@ public class UINavigator : MonoBehaviour
             return;
         }
 
-        // FIX: Gestisci Back/Exit PRIMA del check items (permette Backspace da stati senza selectables)
+        // Qui gestiamo Indietro/Uscita prima del controllo elementi, cosi' Backspace funziona anche senza elementi selezionabili.
         if (HandleBack())
         {
             return;

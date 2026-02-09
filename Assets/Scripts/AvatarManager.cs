@@ -67,12 +67,12 @@ public class AvatarManager : MonoBehaviour
                 return new AvatarInfo(url, urlType, bodyId, gender, avatarId);
             }
 
-            // Fallback 1, se esiste salvataggio
+            // Ripiego 1: se esiste un salvataggio, usiamo quello.
             var path = Path.Combine(Application.persistentDataPath, fileName);
             if (File.Exists(path))
                 return new AvatarInfo($"file://{path}", urlType, bodyId, gender, avatarId);
 
-            // Ultimo fallback: prova comunque l'url salvato
+            // Ultimo fallback: proviamo comunque l'URL salvato.
             return new AvatarInfo(url, urlType, bodyId, gender, avatarId);
         }
     }
@@ -117,7 +117,7 @@ public class AvatarManager : MonoBehaviour
     public SavedAvatarData SavedData => savedData;
     public bool IsDownloading => _isMainDownloading;
     public bool IsPreviewDownloading => _isPreviewDownloading;
-    // Legacy support property, though mostly unused now
+    // Proprieta' legacy di compatibilita', ormai quasi inutilizzata.
     public bool IsPreviewDownloadActive => _isPreviewDownloading;
     public string CurrentAvatarId => currentDownloadAvatarId;
     public string CurrentAvatarGender
@@ -136,7 +136,7 @@ public class AvatarManager : MonoBehaviour
     private string savePath;
     private GameObject currentAvatar;
     
-    // Split downloading states
+    // Stati download separati.
     private bool _isMainDownloading;
     private bool _isPreviewDownloading;
     private int _previewSessionId;
@@ -167,6 +167,8 @@ public class AvatarManager : MonoBehaviour
         Debug.Log($"[AvatarManager] persistentDataPath={Application.persistentDataPath}");
 
 #if UNITY_WEBGL && !UNITY_EDITOR
+        backendBaseUrl = NormalizeAvatarBackendBaseUrl(backendBaseUrl);
+        Debug.Log($"[AvatarManager] WebGL backendBaseUrl={backendBaseUrl}");
         StartCoroutine(WebGLPopulateAndLoad());
         if (downloadAvatar != null)
         {
@@ -177,8 +179,8 @@ public class AvatarManager : MonoBehaviour
         if (addLocalTestModels)
             EnsureLocalModelInList();
 
-    // WebGL-only tunables: keep serialized & editable, but they are only used in WebGL builds.
-    // Touch them here to avoid CS0414 warnings in Editor/Standalone compiles.
+    // Parametri WebGL: restano serializzati/modificabili, ma li usiamo solo nelle build WebGL.
+    // Li tocchiamo qui per evitare avvisi CS0414 in compilazione Editor/Standalone.
     _ = backendBaseUrl;
     _ = webglRequestTimeoutSeconds;
     _ = minGlbBytes;
@@ -187,7 +189,7 @@ public class AvatarManager : MonoBehaviour
         if (downloadAvatar != null)
             downloadAvatar.SetOnDownloaded(OnMainAvatarDownloaded);
 
-        // --- FIX 1: cache pose relativa al parent reale (evita teleport) ---
+        // Qui memorizziamo in cache la posa relativa al parent reale, cosi' evitiamo teletrasporti.
         if (avatarAnchor != null)
             _anchorParent = avatarAnchor;
         else if (baseModelToReplace != null)
@@ -220,13 +222,107 @@ public class AvatarManager : MonoBehaviour
             _anchorPoseCached = true;
             Debug.Log($"[AvatarManager] Anchor pose cached: parent={_anchorParent.name} pos={_anchorLocalPos}");
         }
-        // --- fine FIX 1 ---
+        // Qui chiudiamo la gestione della cache posa.
+    }
+
+    private static string NormalizeAvatarBackendBaseUrl(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "/api/avatar";
+        }
+
+        string trimmed = value.Trim().TrimEnd('/');
+        if (trimmed.StartsWith("/"))
+        {
+            return trimmed;
+        }
+
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out Uri uri))
+        {
+            return trimmed;
+        }
+
+        string host = uri.Host.ToLowerInvariant();
+        bool isLoopback = host == "127.0.0.1" || host == "localhost" || host == "::1";
+        if (isLoopback && uri.Port == 8003)
+        {
+            return IsCurrentWebPageLoopbackHost() ? trimmed : "/api/avatar";
+        }
+
+        return trimmed;
+    }
+
+    private static bool IsCurrentWebPageLoopbackHost()
+    {
+        string currentUrl = Application.absoluteURL;
+        if (string.IsNullOrWhiteSpace(currentUrl))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(currentUrl, UriKind.Absolute, out Uri uri))
+        {
+            return false;
+        }
+
+        string host = uri.Host.ToLowerInvariant();
+        return host == "127.0.0.1" || host == "localhost" || host == "::1";
+    }
+
+    private string BuildAvatarServiceUrl(string pathAndQuery)
+    {
+        string baseUrl = string.IsNullOrWhiteSpace(backendBaseUrl) ? "/api/avatar" : backendBaseUrl.Trim().TrimEnd('/');
+        if (!pathAndQuery.StartsWith("/"))
+        {
+            pathAndQuery = "/" + pathAndQuery;
+        }
+        return baseUrl + pathAndQuery;
+    }
+
+    private static bool IsLegacyAvatarPath(string path)
+    {
+        return !string.IsNullOrEmpty(path) &&
+               path.StartsWith("/avatars/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string NormalizeCachedAvatarUrl(string rawUrl)
+    {
+        if (string.IsNullOrWhiteSpace(rawUrl))
+        {
+            return rawUrl;
+        }
+
+        string trimmed = rawUrl.Trim();
+        if (trimmed.StartsWith("avatars/", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildAvatarServiceUrl(trimmed);
+        }
+
+        if (IsLegacyAvatarPath(trimmed))
+        {
+            return BuildAvatarServiceUrl(trimmed.TrimStart('/'));
+        }
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out Uri absoluteUri))
+        {
+            string host = absoluteUri.Host.ToLowerInvariant();
+            bool isLoopback = host == "127.0.0.1" || host == "localhost" || host == "::1";
+            bool legacyLoopback = isLoopback && absoluteUri.Port == 8003;
+            bool legacyPath = IsLegacyAvatarPath(absoluteUri.AbsolutePath);
+            if (legacyLoopback || legacyPath)
+            {
+                return BuildAvatarServiceUrl(absoluteUri.PathAndQuery.TrimStart('/'));
+            }
+        }
+
+        return trimmed;
     }
 
     void Start()
     {
-        // IMPORTANT: DownloadAvatar può reimpostare i callback in Start().
-        // Ri-agganciamo qui per essere sicuri che OnMainAvatarDownloaded venga chiamato.
+        // DownloadAvatar puo' reimpostare i gestori in Start().
+        // Li ri-agganciamo qui per essere sicuri che OnMainAvatarDownloaded venga chiamato.
         if (downloadAvatar != null)
         {
             downloadAvatar.SetOnDownloaded(OnMainAvatarDownloaded);
@@ -302,7 +398,7 @@ public class AvatarManager : MonoBehaviour
         uiFlowController?.OnAvatarDownloadStarted(avatarInfo);
         _isMainDownloading = true;
         currentDownloadAvatarId = avatarInfo.AvatarId;
-        StartWatchdog(mainTimeoutSeconds);
+        StartWatchdog(GetMainWatchdogSeconds());
 
         string cachedUrl = null;
         if (avatarData.source == "avaturn" && !string.IsNullOrEmpty(avatarData.sourceUrl))
@@ -347,7 +443,7 @@ public class AvatarManager : MonoBehaviour
         uiFlowController?.OnAvatarDownloadStarted(avatarInfo);
         _isMainDownloading = true;
         currentDownloadAvatarId = avatarInfo.AvatarId;
-        StartWatchdog(mainTimeoutSeconds);
+        StartWatchdog(GetMainWatchdogSeconds());
 
         string cachedUrl = avatarData.url;
         if (avatarData.source == "local")
@@ -372,9 +468,9 @@ public class AvatarManager : MonoBehaviour
         {
             cancelPendingDownloads = false;
             
-            // Se c'è un download preview in corso, NON lo blocchiamo, ma potremmo voler gestire la priorità.
-            // In questo design, Main e Preview sono indipendenti. 
-            // Tuttavia, se Main è già in corso, evitiamo di farne partire un altro sopra.
+            // Se c'e' un download anteprima in corso, NON lo blocchiamo, ma possiamo gestire la priorita'.
+            // In questa logica, download principale e anteprima sono indipendenti.
+            // Se il principale e' gia' in corso, evitiamo di avviarne un altro sopra.
             if (_isMainDownloading)
             {
                 Debug.LogWarning("[AvatarManager] Main download già in corso, ignoro richiesta duplicata/ravvicinata.");
@@ -387,7 +483,7 @@ public class AvatarManager : MonoBehaviour
             currentDownloadAvatarId = avatarInfo.AvatarId;
             
             Debug.Log($"[AvatarManager] [MAIN] Download start avatarId={currentDownloadAvatarId}");
-            StartWatchdog(mainTimeoutSeconds); 
+            StartWatchdog(GetMainWatchdogSeconds());
             downloadAvatar.Download(avatarInfo);
         }
         else
@@ -413,7 +509,7 @@ public class AvatarManager : MonoBehaviour
 
     public void OnMainAvatarDownloaded(Transform loaderTransform)
     {
-        // FIX 2: Invalida watchdog se completa normalmente
+        // Invalida watchdog se completa normalmente
         _watchId++;
 
         _isMainDownloading = false;
@@ -426,7 +522,7 @@ public class AvatarManager : MonoBehaviour
 
         if (cancelPendingDownloads)
         {
-            // CRITICAL FIX: Se loaderTransform è il GameObject che contiene DownloadAvatar, NON distruggerlo!
+            // Se loaderTransform è il GameObject che contiene DownloadAvatar, NON distruggerlo!
             // Distruggi solo i figli (il modello caricato).
             if (downloadAvatar != null && loaderTransform == downloadAvatar.transform)
             {
@@ -445,7 +541,7 @@ public class AvatarManager : MonoBehaviour
 
         Debug.Log($"[AvatarManager] [MAIN] OnMainAvatarDownloaded avatarId={currentDownloadAvatarId} loader={loaderTransform.name} children={loaderTransform.childCount}");
 
-        // FIX: Strip Lights/Cameras from Main Avatar to prevent blinding light or extra cameras
+        // Rimuoviamo luci/camere dall'avatar principale per evitare abbagliamento o camere extra.
         CleanupConflictingComponents(loaderTransform.gameObject, keepAnimator: true);
 
         if (loaderTransform.childCount == 0)
@@ -477,7 +573,7 @@ public class AvatarManager : MonoBehaviour
 
         if (currentAvatar != null) Destroy(currentAvatar);
 
-        // FIX 3 REVISED: 
+        // Qui usiamo la versione rivista del reparenting.
         // Se loaderTransform è il DownloadAvatar stesso, NON reparentarlo dentro CurrentAvatar,
         // altrimenti verrà distrutto quando distruggeremo CurrentAvatar!
         // Invece, spostiamo i figli (il modello) dentro un nuovo oggetto "Model" dentro container.
@@ -496,7 +592,7 @@ public class AvatarManager : MonoBehaviour
             modelRootGO.transform.localScale = Vector3.one;
 
             // Sposta tutti i figli
-            // Nota: Iteriamo al contrario o usiamo while per sicurezza mentre reparentiamo
+            // Iteriamo al contrario o usiamo while per sicurezza mentre reparentiamo
             while (loaderTransform.childCount > 0)
             {
                 Transform child = loaderTransform.GetChild(0);
@@ -520,7 +616,7 @@ public class AvatarManager : MonoBehaviour
             r.enabled = true;
 
         currentAvatar = container.gameObject;
-        // currentDownloadMode = DownloadMode.Main; // Removed to fix compilation error
+        // currentDownloadMode = DownloadMode.Main; // Riga rimossa per risolvere un errore di compilazione
 
         StartCoroutine(SetupAnimatorNextFrame(currentAvatar));
 
@@ -538,7 +634,7 @@ public class AvatarManager : MonoBehaviour
             baseModelToReplace.gameObject.SetActive(false);
         }
 
-        // Debug utilissimo: ora deve essere vicino allo spawnpoint
+        // Debug utile: ora deve essere vicino allo spawnpoint.
         Debug.Log($"[Avatar] container world={container.position} local={container.localPosition} children={container.childCount}");
 
         uiFlowController?.OnAvatarDownloaded(container);
@@ -546,7 +642,7 @@ public class AvatarManager : MonoBehaviour
 
     private IEnumerator SetupLipSyncNextFrame(Transform avatarRoot)
     {
-        // aspetta 1 frame: su WebGL/GLTFast evita edge-case mentre Unity finalizza renderer/mesh
+        // Aspettiamo 1 frame: su WebGL/GLTFast evitiamo casi limite mentre Unity finalizza renderer/mesh.
         yield return null;
         lipSyncBinder.Setup(avatarRoot);
     }
@@ -566,10 +662,10 @@ public class AvatarManager : MonoBehaviour
         animator.applyRootMotion = animatorApplyRootMotion;
         animator.runtimeAnimatorController = idleController;
 
-        // chiave: costruisce l’Avatar humanoid a runtime
+        // Punto chiave: costruiamo l'Avatar umanoide a runtime.
         animator.avatar = HumanoidAvatarBuilder.Build(avatarGO);
 
-        // utile in WebGL / camera lontane
+        // Utile in WebGL o con camera lontane.
         animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
         Debug.Log("[Anim] Animator pronto: Idle in play.");
@@ -585,7 +681,7 @@ public class AvatarManager : MonoBehaviour
 
     public void RemoveCurrentAvatar()
     {
-        // Ferma logiche legate all’avatar runtime
+        // Fermiamo le logiche legate all'avatar runtime.
         if (idleLook != null) idleLook.Clear();
 
         if (lipSyncBinder != null)
@@ -646,7 +742,7 @@ public class AvatarManager : MonoBehaviour
         try
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            // WebGL: avatar list is now backend-driven, so persistent file caching is skipped.
+            // In WebGL la lista avatar arriva dal backend, quindi saltiamo la cache file persistente.
             return;
 #else
             string json = JsonUtility.ToJson(savedData, true);
@@ -743,7 +839,7 @@ public class AvatarManager : MonoBehaviour
         if (addLocalTestModels)
             EnsureLocalModelInList();
             
-        // Se c'era un save in sospeso, eseguilo ora
+        // Se c'era un salvataggio in sospeso, lo eseguiamo ora.
         if (pendingSave)
         {
             pendingSave = false;
@@ -772,10 +868,10 @@ public class AvatarManager : MonoBehaviour
         string url;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-        // In WebGL StreamingAssets è già un URL (stessa origin del build)
+        // In WebGL StreamingAssets e' gia' un URL (stessa origine della build).
         url = $"{Application.streamingAssetsPath}/{fileName}";
 #else
-        // In editor/standalone è un path su disco: serve file:// con slash corretti
+        // In editor/standalone e' un percorso su disco: serve file:// con slash corretti.
         var filePath = Path.Combine(Application.streamingAssetsPath, fileName);
         url = new Uri(filePath).AbsoluteUri;
 #endif
@@ -887,9 +983,9 @@ public class AvatarManager : MonoBehaviour
 
     private void CreatePreviewDownloader(bool forceFresh)
     {
-        // By default we used to always destroy/recreate the downloader.
-        // For carousel previews we may want to KEEP the downloader alive, because some SDKs
-        // cleanup runtime textures/materials in OnDestroy, which would invalidate already reparented models.
+        // Di base distruggiamo e ricreiamo sempre il downloader.
+        // Per le anteprime del carosello conviene mantenerlo vivo, perche' alcuni SDK
+        // puliscono texture/materiali runtime in OnDestroy e invalidano modelli gia' riparentati.
         if (forceFresh && _previewDownloader != null)
         {
             if (_previewDownloader.gameObject != null) Destroy(_previewDownloader.gameObject);
@@ -909,7 +1005,7 @@ public class AvatarManager : MonoBehaviour
 
         try
         {
-            // Case 1: downloadAvatar is a separate object/prefab (Standard case)
+            // Caso 1: downloadAvatar e' un oggetto/prefab separato (caso standard).
             if (downloadAvatar.gameObject != this.gameObject)
             {
                 var go = Instantiate(downloadAvatar.gameObject, transform);
@@ -917,7 +1013,7 @@ public class AvatarManager : MonoBehaviour
                 _previewDownloader = go.GetComponent<DownloadAvatar>();
                 go.SetActive(true);
             }
-            // Case 2: downloadAvatar is attached to THIS AvatarManager (Edge case)
+            // Caso 2: downloadAvatar e' agganciato a QUESTO AvatarManager (caso limite).
             else
             {
                 var go = new GameObject("PreviewDownloader_Temp");
@@ -930,7 +1026,7 @@ public class AvatarManager : MonoBehaviour
                 go.SetActive(true);
             }
 
-            // Strip everything from the container itself
+            // Rimuoviamo tutto dal contenitore stesso.
             CleanupConflictingComponents(_previewDownloader.gameObject, keepAnimator: false);
         }
         catch (Exception e)
@@ -943,7 +1039,7 @@ public class AvatarManager : MonoBehaviour
     {
         if (root == null) return;
 
-        // Detach first so the hierarchy is clean immediately, then destroy.
+        // Stacchiamo prima, cosi' la gerarchia resta subito pulita, poi distruggiamo.
         while (root.childCount > 0)
         {
             var child = root.GetChild(0);
@@ -968,7 +1064,7 @@ public class AvatarManager : MonoBehaviour
         var reflectionProbes = go.GetComponentsInChildren<ReflectionProbe>(true);
         foreach (var rp in reflectionProbes) DestroyImmediate(rp);
 
-        // GLTFast/DownloadAvatar needs a clean slate. 
+        // GLTFast/DownloadAvatar richiede uno stato pulito.
         if (!keepAnimator)
         {
             var animators = go.GetComponentsInChildren<Animator>(true);
@@ -998,7 +1094,7 @@ public class AvatarManager : MonoBehaviour
 #if UNITY_WEBGL || UNITY_EDITOR
         return DownloadPreviewToTransform(avatarData, transform, onLoaded, destroyDownloaderAfter);
 #else
-        // Se c'è già un download in corso, lo cancelliamo per far posto al nuovo (comportamento "Last One Wins" per preview rapida)
+        // Se c'e' gia' un download in corso, lo cancelliamo: nella preview rapida vince l'ultima richiesta.
         if (_isPreviewDownloading)
         {
             CancelPreviewDownloads();
@@ -1011,38 +1107,38 @@ public class AvatarManager : MonoBehaviour
             return false;
         }
 
-        // Ensure a clean slate for the new import
+        // Garantiamo uno stato pulito per il nuovo import.
         DetachAndDestroyChildren(_previewDownloader.transform);
 
-        // Increment session ID for new session
+        // Incrementiamo l'ID sessione per la nuova sessione.
         _previewSessionId++;
         int currentSession = _previewSessionId;
         _isPreviewDownloading = true;
 
-        // UI Feedback: Nascondi HintBar/Title
+        // Feedback UI: nascondiamo HintBar/Title.
         uiFlowController?.SetPreviewModeUI(true);
 
         Debug.Log($"[AvatarManager] [PREVIEW gen={currentSession}] start avatarId={avatarData.avatarId}");
 
-        // Capture specific instance for this session
+        // Catturiamo l'istanza specifica per questa sessione.
         var currentDownloader = _previewDownloader;
 
-        // Imposta callback
+        // Impostiamo il callback.
         currentDownloader.SetOnDownloaded(loader => OnPreviewDownloaded(loader, currentSession, onLoaded, currentDownloader, destroyDownloaderAfter));
 
-        // Start
+        // Avvio.
         var info = avatarData.ToAvatarInfo();
         currentDownloader.Download(info);
         
-        // Watchdog per preview
-        StartWatchdog(previewTimeoutSeconds);
+        // Controllo timeout per anteprima.
+        StartWatchdog(GetPreviewWatchdogSeconds());
         return true;
 #endif
     }
 
     public void RequestAvatarListFromBackend(Action<List<AvatarData>> cb)
     {
-        // Use the backend list in all builds to match WebGL behavior.
+        // Usiamo la lista backend in tutte le build per allineare il comportamento WebGL.
         StartCoroutine(WebGLRequestAvatarList(cb));
     }
 
@@ -1064,7 +1160,7 @@ public class AvatarManager : MonoBehaviour
         _isPreviewDownloading = true;
 
         uiFlowController?.SetPreviewModeUI(true);
-        StartWatchdog(previewTimeoutSeconds);
+        StartWatchdog(GetPreviewWatchdogSeconds());
 
         StartCoroutine(WebGLPreviewDownload(data, parent, sessionId, onLoaded));
         return true;
@@ -1094,20 +1190,20 @@ public class AvatarManager : MonoBehaviour
         if (usedDownloader == null)
         {
              Debug.LogWarning($"[AvatarManager] [PREVIEW gen={sessionId}] usedDownloader è null.");
-             // UI reset for safety
+             // Ripristino UI di sicurezza.
              uiFlowController?.SetPreviewModeUI(false);
              _isPreviewDownloading = false;
              return;
         }
 
-        // 3. Cleanup stato
+        // 3. Pulizia stato
         _isPreviewDownloading = false;
         uiFlowController?.SetPreviewModeUI(false); // Restore UI
 
         // 4. Elaborazione modello
         if (loader != null)
         {
-            // Strip components safely
+            // Rimuoviamo i componenti in sicurezza.
             CleanupConflictingComponents(loader.gameObject, keepAnimator: false);
             
             Debug.Log($"[AvatarManager] [PREVIEW gen={sessionId}] Complete. Children: {loader.childCount}");
@@ -1126,7 +1222,7 @@ public class AvatarManager : MonoBehaviour
              Debug.LogWarning($"[AvatarManager] [PREVIEW gen={sessionId}] Loader is null?");
         }
 
-        // 5. Cleanup finale del downloader temporaneo
+        // 5. Pulizia finale del downloader temporaneo
         if (destroyDownloaderAfter)
         {
             if (usedDownloader != null)
@@ -1144,7 +1240,7 @@ public class AvatarManager : MonoBehaviour
 
     public void CancelPreviewDownloads()
     {
-        // HARD CANCEL
+        // Annullamento forzato
         _previewSessionId++; // Invalida i callback pendenti
         _isPreviewDownloading = false;
 
@@ -1316,7 +1412,7 @@ public class AvatarManager : MonoBehaviour
             }
 
             var response = JsonUtility.FromJson<ImportResponse>(request.downloadHandler.text);
-            onCachedUrl?.Invoke(response != null ? response.cached_glb_url : null);
+            onCachedUrl?.Invoke(response != null ? NormalizeCachedAvatarUrl(response.cached_glb_url) : null);
         }
     }
 
@@ -1398,8 +1494,8 @@ public class AvatarManager : MonoBehaviour
     private async Task<Transform> LoadGltfBytesAsync(byte[] bytes, Transform parent, string rootName)
     {
         var gltf = new GltfImport();
-        // The second parameter is an optional base URI for resolving external resources; null is correct here
-        // because this avatar GLB is fully self-contained and loaded from in-memory bytes only.
+        // Il secondo parametro e' un URI base opzionale per risolvere risorse esterne; qui null e' corretto
+        // perche' questo GLB avatar e' autosufficiente e viene caricato solo da byte in memoria.
         bool success = await gltf.Load(bytes, null);
         if (!success)
         {
@@ -1601,7 +1697,7 @@ public class AvatarManager : MonoBehaviour
         return new AvatarData
         {
             avatarId = item.avatar_id,
-            url = item.cached_glb_url,
+            url = NormalizeCachedAvatarUrl(item.cached_glb_url),
             sourceUrl = item.url_originale,
             urlType = string.IsNullOrEmpty(item.urlType) ? "glb" : item.urlType,
             bodyId = item.bodyId,
@@ -1646,7 +1742,31 @@ public class AvatarManager : MonoBehaviour
         }
     }
 
-    // --- FIX 2: Watchdog per timeout di download ---
+    // Qui gestiamo il watchdog timeout dei download.
+    private float GetPreviewWatchdogSeconds()
+    {
+        float configured = Mathf.Max(5f, previewTimeoutSeconds);
+#if UNITY_WEBGL || UNITY_EDITOR
+        // In WebGL il flusso preview puo' includere:
+        // 1) import backend, 2) download GLB, 3) parse/instantiate runtime.
+        // Un timeout troppo basso sblocca in anticipo mentre la rete sta ancora lavorando.
+        float webglBudget = Mathf.Max(20f, (webglRequestTimeoutSeconds * 2f) + 20f);
+        configured = Mathf.Max(configured, webglBudget);
+#endif
+        return configured;
+    }
+
+    private float GetMainWatchdogSeconds()
+    {
+        float configured = Mathf.Max(10f, mainTimeoutSeconds);
+#if UNITY_WEBGL || UNITY_EDITOR
+        // Anche il main mode puo' fare import + download in sequenza.
+        float webglBudget = Mathf.Max(30f, (webglRequestTimeoutSeconds * 2f) + 30f);
+        configured = Mathf.Max(configured, webglBudget);
+#endif
+        return configured;
+    }
+
     private void StartWatchdog(float timeoutSeconds)
     {
         int id = ++_watchId;
@@ -1665,7 +1785,7 @@ public class AvatarManager : MonoBehaviour
         {
             Debug.LogWarning($"[AvatarManager] Download timeout dopo {timeoutSeconds} secondi. Forcing unlock.");
             
-            // Log dettagliato per debugging
+            // Log dettagliato per debug.
             if (_isMainDownloading)
                 Debug.LogWarning("[AvatarManager] Main download in timeout.");
             if (_isPreviewDownloading)
@@ -1673,14 +1793,14 @@ public class AvatarManager : MonoBehaviour
                 
             _isMainDownloading = false;
             
-            // Per preview, il timeout agisce come un cancel
+            // Per l'anteprima, il timeout agisce come annullamento.
             if (_isPreviewDownloading)
             {
                  CancelPreviewDownloads();
             }
         }
     }
-    // --- fine FIX 2 ---
+    // Fine gestione watchdog timeout.
 
 
     [System.Serializable]

@@ -31,7 +31,7 @@ public sealed class WebGLFullscreenPostprocessor : IPostprocessBuildWithReport
         var original = File.ReadAllText(indexHtmlPath, Encoding.UTF8);
         var updated = original;
 
-        // Remove fixed width/height attributes from the Unity canvas tag, if present.
+        // Rimuoviamo gli attributi width/height fissi dal tag canvas di Unity, se presenti.
         updated = Regex.Replace(
             updated,
             @"<canvas\b[^>]*\bid\s*=\s*""unity-canvas""[^>]*>",
@@ -42,7 +42,7 @@ public sealed class WebGLFullscreenPostprocessor : IPostprocessBuildWithReport
                 RegexOptions.IgnoreCase),
             RegexOptions.IgnoreCase);
 
-        // Ensure any JS sizing sets canvas to fullscreen instead of a fixed pixel size.
+        // Garantiamo che il ridimensionamento JS imposti il canvas a schermo pieno, non a pixel fissi.
         updated = Regex.Replace(
             updated,
             @"canvas\.style\.width\s*=\s*""[^""]*""\s*;",

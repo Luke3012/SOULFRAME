@@ -8,14 +8,14 @@ public class WebcamFaceApply : MonoBehaviour
 
     void Start()
     {
-        // 1. Avvia la Webcam
+        // 1) Avviamo la webcam.
         webcam = new WebCamTexture();
         webcam.Play();
     }
 
     void Update()
     {
-        // 2. Se premi SPAZIO, scatta e applica
+        // 2) Se premiamo SPAZIO, scattiamo e applichiamo.
         if (Input.GetKeyDown(KeyCode.Space))
         {
             ApplyPhotoToFace();
@@ -30,12 +30,12 @@ public class WebcamFaceApply : MonoBehaviour
         savedPhoto.Apply();
 
         // Trova il materiale della faccia e sostituisci la texture
-        // NOTA: Funziona meglio se il modello ha una mappatura UV frontale
+        // Otteniamo risultati migliori se il modello ha una mappatura UV frontale.
         targetHead.material.mainTexture = savedPhoto;
 
         Debug.Log("Faccia applicata!");
 
         // (Opzionale) Ferma la webcam per risparmiare risorse
-        // webcam.Stop(); 
+        // Se vogliamo, fermiamo la webcam: webcam.Stop();
     }
 }

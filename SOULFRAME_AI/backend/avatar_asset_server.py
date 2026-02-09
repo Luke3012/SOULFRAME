@@ -97,6 +97,47 @@ def get_avatar_by_hash(data: Dict[str, Any], url_hash: str) -> Optional[Dict[str
     return None
 
 
+def resolve_avatar_file_path(item: Dict[str, Any]) -> Optional[Path]:
+    raw_path = str(item.get("file_path", "")).strip()
+    if raw_path:
+        p = Path(raw_path)
+        if p.exists():
+            return p
+        if not p.is_absolute():
+            rel = MODELS_DIR / p
+            if rel.exists():
+                return rel
+
+    avatar_id = str(item.get("avatar_id", "")).strip()
+    if avatar_id:
+        candidates = sorted(MODELS_DIR.glob(f"*_{avatar_id}.glb"), key=lambda x: x.stat().st_mtime, reverse=True)
+        if candidates:
+            return candidates[0]
+
+    url_hash = str(item.get("url_hash", "")).strip()
+    if url_hash:
+        candidates = sorted(MODELS_DIR.glob(f"{url_hash}_*.glb"), key=lambda x: x.stat().st_mtime, reverse=True)
+        if candidates:
+            return candidates[0]
+
+    return None
+
+
+def build_public_base_url(request: Request, default_prefix: str = "/api/avatar") -> str:
+    base_url = str(request.base_url).rstrip("/")
+    forwarded_prefix = request.headers.get("x-forwarded-prefix", "").strip()
+    if forwarded_prefix:
+        prefix = "/" + forwarded_prefix.strip("/")
+        return f"{base_url}{prefix}"
+
+    host = (request.url.hostname or "").lower()
+    is_loopback = host in {"127.0.0.1", "localhost", "::1"}
+    if is_loopback:
+        return base_url
+
+    return f"{base_url}{default_prefix}"
+
+
 def next_unique_avatar_id(data: Dict[str, Any], base_id: str) -> str:
     existing = {item.get("avatar_id") for item in data.get("avatars", [])}
     if base_id not in existing:
@@ -151,16 +192,31 @@ def health() -> Dict[str, Any]:
 @app.get("/avatars/list")
 def list_avatars(request: Request) -> Dict[str, Any]:
     data = load_metadata()
-    base_url = str(request.base_url).rstrip("/")
+    public_base = build_public_base_url(request)
 
     items: List[Dict[str, Any]] = []
     items.extend(LOCAL_MODELS)
+    metadata_changed = False
+    valid_entries: List[Dict[str, Any]] = []
 
     for item in data.get("avatars", []):
-        cached_url = f"{base_url}/avatars/{item['avatar_id']}/model.glb"
+        resolved = resolve_avatar_file_path(item)
+        if resolved is None:
+            metadata_changed = True
+            continue
+        if str(item.get("file_path", "")) != str(resolved):
+            item["file_path"] = str(resolved)
+            metadata_changed = True
+
+        cached_url = f"{public_base}/avatars/{item['avatar_id']}/model.glb"
         item_copy = dict(item)
         item_copy["cached_glb_url"] = cached_url
         items.append(item_copy)
+        valid_entries.append(item)
+
+    if metadata_changed:
+        data["avatars"] = valid_entries
+        save_metadata(data)
 
     return {"avatars": items}
 
@@ -170,18 +226,20 @@ def import_avatar(payload: ImportRequest, request: Request) -> Dict[str, Any]:
     if not is_valid_http_url(payload.url):
         raise HTTPException(status_code=400, detail="Invalid url (http/https required)")
 
+    public_base = build_public_base_url(request)
     data = load_metadata()
     url_hash = compute_hash(payload.url)
     existing = get_avatar_by_hash(data, url_hash)
     if existing:
-        existing_path = Path(existing.get("file_path", ""))
-        if existing_path.exists():
+        existing_path = resolve_avatar_file_path(existing)
+        if existing_path is not None:
+            existing["file_path"] = str(existing_path)
             existing["last_access"] = utc_now()
             save_metadata(data)
             return {
                 "ok": True,
                 "avatar_id": existing["avatar_id"],
-                "cached_glb_url": f"{str(request.base_url).rstrip('/')}/avatars/{existing['avatar_id']}/model.glb",
+                "cached_glb_url": f"{public_base}/avatars/{existing['avatar_id']}/model.glb",
                 "bytes": existing.get("bytes", 0),
                 "dedup": True,
             }
@@ -218,7 +276,7 @@ def import_avatar(payload: ImportRequest, request: Request) -> Dict[str, Any]:
     return {
         "ok": True,
         "avatar_id": avatar_id,
-        "cached_glb_url": f"{str(request.base_url).rstrip('/')}/avatars/{avatar_id}/model.glb",
+        "cached_glb_url": f"{public_base}/avatars/{avatar_id}/model.glb",
         "bytes": bytes_written,
         "dedup": False,
     }
@@ -231,10 +289,13 @@ def get_avatar_model(avatar_id: str) -> FileResponse:
     if not item:
         raise HTTPException(status_code=404, detail="Avatar not found")
 
-    path = Path(item.get("file_path", ""))
-    if not path.exists():
+    path = resolve_avatar_file_path(item)
+    if path is None:
+        data["avatars"] = [entry for entry in data.get("avatars", []) if entry.get("avatar_id") != avatar_id]
+        save_metadata(data)
         raise HTTPException(status_code=404, detail="File missing")
 
+    item["file_path"] = str(path)
     item["last_access"] = utc_now()
     save_metadata(data)
 

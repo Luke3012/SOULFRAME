@@ -24,6 +24,14 @@
       },
       "hash": "e2be3c930826d5eba3bced038cc68d08e53667c4"
     },
+    "com.bezi.sidekick": {
+      "version": "file:com.bezi.sidekick",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.unity.nuget.newtonsoft-json": "3.2.1"
+      }
+    },
     "com.hecomi.ulipsync": {
       "version": "https://github.com/hecomi/uLipSync.git#upm",
       "depth": 0,

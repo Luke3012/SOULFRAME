@@ -125,15 +125,19 @@ public class AvaturnULipSyncBinder : MonoBehaviour
             }
         }
 
-        _a = Mathf.Lerp(_a, a, Time.deltaTime * smooth);
-        _i = Mathf.Lerp(_i, i, Time.deltaTime * smooth);
-        _u = Mathf.Lerp(_u, u, Time.deltaTime * smooth);
-        _e = Mathf.Lerp(_e, e, Time.deltaTime * smooth);
-        _o = Mathf.Lerp(_o, o, Time.deltaTime * smooth);
-        _n = Mathf.Lerp(_n, n, Time.deltaTime * smooth);
+        // Smussatura indipendente dal frame-rate: in WebGL evita una bocca "scattosa" con FPS variabile.
+        float dt = Mathf.Max(0f, Time.unscaledDeltaTime);
+        float blend = 1f - Mathf.Exp(-smooth * dt);
+
+        _a = Mathf.Lerp(_a, a, blend);
+        _i = Mathf.Lerp(_i, i, blend);
+        _u = Mathf.Lerp(_u, u, blend);
+        _e = Mathf.Lerp(_e, e, blend);
+        _o = Mathf.Lerp(_o, o, blend);
+        _n = Mathf.Lerp(_n, n, blend);
 
         var speechAmount = Mathf.Clamp01((_a + _i + _u + _e + _o + _n) * 0.5f);
-        _jaw = Mathf.Lerp(_jaw, speechAmount, Time.deltaTime * smooth);
+        _jaw = Mathf.Lerp(_jaw, speechAmount, blend);
     }
 
     private void LateUpdate()

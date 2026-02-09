@@ -9,18 +9,6 @@ public class GitWindow : EditorWindow
 {
     string commitMessage = "";
 
-    string patchContent = "";
-    Vector2 patchScrollPos;
-    bool forcePatchApply = false;
-    bool sanitizePatch = true;
-    bool fixWhitespace = true;
-    bool allow3Way = true;
-    bool ignoreWhitespace = false;
-    bool autoStripLevel = true;
-    int stripLevel = 1;
-    string patchDiagnostics = "";
-    string lastPatchLog = "";
-
     Vector2 commitHistoryScroll;
     List<CommitInfo> commitHistory = new List<CommitInfo>();
     int selectedCommitIndex = -1;
@@ -99,67 +87,6 @@ public class GitWindow : EditorWindow
             UnityEngine.Debug.Log("[VCS] Avvio Pull...");
             RunCmd("/C git pull");
         }
-
-        GUILayout.Space(15);
-        GUILayout.Label("Applica Patch Git", EditorStyles.boldLabel);
-        GUILayout.Label("Incolla qui la patch (formato git diff):");
-
-        patchScrollPos = GUILayout.BeginScrollView(patchScrollPos, GUILayout.Height(150));
-        patchContent = EditorGUILayout.TextArea(patchContent, GUILayout.ExpandHeight(true));
-        GUILayout.EndScrollView();
-
-        if (sanitizePatch && !string.IsNullOrEmpty(patchContent))
-        {
-            PatchStats stats;
-            SanitizePatch(patchContent, out stats);
-            patchDiagnostics = BuildPatchDiagnostics(stats);
-        }
-        else if (string.IsNullOrEmpty(patchContent))
-        {
-            patchDiagnostics = "";
-        }
-
-        sanitizePatch = EditorGUILayout.Toggle("Sanitize patch (recommended)", sanitizePatch);
-        fixWhitespace = EditorGUILayout.Toggle("Fix whitespace (--whitespace=fix)", fixWhitespace);
-        allow3Way = EditorGUILayout.Toggle("Allow 3-way fallback", allow3Way);
-        ignoreWhitespace = EditorGUILayout.Toggle("Ignore whitespace (last resort)", ignoreWhitespace);
-        autoStripLevel = EditorGUILayout.Toggle("Auto -p level", autoStripLevel);
-        if (!autoStripLevel)
-        {
-            stripLevel = EditorGUILayout.IntSlider("Strip level (-p)", stripLevel, 0, 2);
-        }
-        forcePatchApply = EditorGUILayout.Toggle("Force Apply (ignora errori)", forcePatchApply);
-
-        if (!sanitizePatch)
-        {
-            patchDiagnostics = "";
-        }
-
-        if (!string.IsNullOrEmpty(patchDiagnostics))
-        {
-            EditorGUILayout.HelpBox(patchDiagnostics, MessageType.Info);
-        }
-
-        GUILayout.BeginHorizontal();
-        if (GUILayout.Button("Apply (Safe)"))
-        {
-            ApplyPatch(false);
-        }
-        if (GUILayout.Button("Apply (Force)"))
-        {
-            ApplyPatch(true);
-        }
-        if (GUILayout.Button("Clear"))
-        {
-            patchContent = "";
-        }
-        GUILayout.EndHorizontal();
-
-        if (!string.IsNullOrEmpty(lastPatchLog))
-        {
-            EditorGUILayout.HelpBox(lastPatchLog, MessageType.None);
-        }
-
         GUILayout.Space(15);
         GUILayout.Label("Revert a Commit", EditorStyles.boldLabel);
 
@@ -269,232 +196,6 @@ public class GitWindow : EditorWindow
         LoadCommitHistory();
     }
 
-    void ApplyPatch(bool force)
-    {
-        if (string.IsNullOrWhiteSpace(patchContent))
-        {
-            UnityEngine.Debug.LogWarning("[VCS] Patch vuota, inserisci il contenuto della patch.");
-            EditorUtility.DisplayDialog("Patch Git", "Il campo patch è vuoto!\nIncolla il contenuto della patch prima di applicarla.", "OK");
-            return;
-        }
-
-        string root = Directory.GetParent(Application.dataPath).FullName;
-        string tempPatchFile = Path.Combine(root, "temp_patch.patch");
-
-        string sanitized = patchContent;
-        PatchStats stats = new PatchStats();
-        if (sanitizePatch)
-        {
-            sanitized = SanitizePatch(patchContent, out stats);
-            patchDiagnostics = BuildPatchDiagnostics(stats);
-        }
-        else
-        {
-            patchDiagnostics = "";
-        }
-
-        if (string.IsNullOrWhiteSpace(sanitized))
-        {
-            EditorUtility.DisplayDialog("Patch Git", "Patch vuota dopo sanitizzazione.", "OK");
-            return;
-        }
-
-        try
-        {
-            File.WriteAllText(tempPatchFile, sanitized, new UTF8Encoding(false));
-            EnsureNewlineAtEnd(tempPatchFile);
-
-            var dirtyCheck = RunCmdWithResult("/C git status --porcelain");
-            if (!string.IsNullOrEmpty(dirtyCheck.StdOut))
-            {
-                bool proceed = EditorUtility.DisplayDialog("Working tree non pulito",
-                    "Sono presenti modifiche non committate. Applicare comunque la patch?",
-                    "Continua", "Annulla");
-                if (!proceed)
-                {
-                    return;
-                }
-            }
-
-            int pLevel = autoStripLevel ? DetectStripLevel(sanitized) : stripLevel;
-            string baseOptions = BuildApplyBaseOptions(pLevel);
-            string whitespaceOptions = fixWhitespace ? " --whitespace=fix" : " --whitespace=nowarn";
-            string patchPath = " temp_patch.patch";
-
-            var checkResult = RunCmdWithResult($"/C git apply --check{baseOptions}{whitespaceOptions}{patchPath}");
-            lastPatchLog = FormatCmdResult("git apply --check", checkResult);
-
-            if (checkResult.ExitCode != 0)
-            {
-                UnityEngine.Debug.LogWarning("[VCS] git apply --check fallito, provo fallback applicazione.");
-            }
-
-            var attempts = new List<ApplyAttempt>
-            {
-                new ApplyAttempt("apply --reject --recount", $"/C git apply --reject --recount{baseOptions}{whitespaceOptions}{patchPath}")
-            };
-
-            if (allow3Way)
-            {
-                attempts.Add(new ApplyAttempt("apply --3way", $"/C git apply --3way{baseOptions}{whitespaceOptions}{patchPath}"));
-            }
-
-            if (ignoreWhitespace || force || forcePatchApply)
-            {
-                attempts.Add(new ApplyAttempt("apply --ignore-space-change --ignore-whitespace",
-                    $"/C git apply --ignore-space-change --ignore-whitespace{baseOptions}{whitespaceOptions}{patchPath}"));
-            }
-
-            CmdResult finalResult = default;
-            bool applied = false;
-            foreach (var attempt in attempts)
-            {
-                finalResult = RunCmdWithResult(attempt.Command);
-                lastPatchLog = FormatCmdResult(attempt.Label, finalResult);
-                if (finalResult.ExitCode == 0)
-                {
-                    applied = true;
-                    break;
-                }
-            }
-
-            if (!applied)
-            {
-                EditorUtility.DisplayDialog("Patch Git",
-                    "Patch non applicata. Controlla l'output nei log e prova con opzioni diverse.",
-                    "OK");
-                return;
-            }
-
-            UnityEngine.Debug.Log("[VCS] Patch applicata. Ricordati di fare commit e push se vuoi condividere le modifiche.");
-            
-            string msgExtra = "\n\nSe ci sono conflitti, troverai file .rej con le parti non applicate.";
-            EditorUtility.DisplayDialog("Patch Git", $"Patch applicata con successo!{msgExtra}\n\nRicorda:\n- I file sono stati modificati\n- Fai commit per salvare le modifiche\n- Fai push per condividerle", "OK");
-            
-            patchContent = "";
-        }
-        catch (System.Exception e)
-        {
-            UnityEngine.Debug.LogError($"[VCS] Errore nell'applicazione della patch: {e.Message}");
-            EditorUtility.DisplayDialog("Errore Patch", $"Errore durante l'applicazione della patch:\n{e.Message}", "OK");
-        }
-        finally
-        {
-            if (File.Exists(tempPatchFile))
-            {
-                try { File.Delete(tempPatchFile); } catch { }
-            }
-        }
-    }
-
-    string SanitizePatch(string input, out PatchStats stats)
-    {
-        stats = new PatchStats();
-        if (string.IsNullOrEmpty(input))
-            return string.Empty;
-
-        stats.HasCRLF = input.Contains("\r\n");
-        string normalized = input.Replace("\r\n", "\n").Replace("\r", "\n");
-        stats.LineCount = normalized.Split('\n').Length;
-        stats.HasDiffHeader = normalized.Contains("diff --git");
-        stats.HasFence = normalized.Contains("```");
-        stats.HasCopyPatch = normalized.ToLower().Contains("copy patch");
-        stats.HasUnityYaml = normalized.Contains(".unity") || normalized.Contains(".prefab");
-
-        normalized = normalized.Replace("\u00A0", " ").Replace("\u200B", "");
-
-        var sb = new StringBuilder();
-        using (var reader = new StringReader(normalized))
-        {
-            string line;
-            while ((line = reader.ReadLine()) != null)
-            {
-                string trimmed = line.Trim();
-                if (trimmed.StartsWith("```"))
-                    continue;
-                if (string.Equals(trimmed, "copy patch", System.StringComparison.OrdinalIgnoreCase))
-                    continue;
-                sb.AppendLine(line);
-            }
-        }
-
-        string result = sb.ToString();
-        if (!result.EndsWith("\n"))
-            result += "\n";
-
-        return result;
-    }
-
-    string BuildPatchDiagnostics(PatchStats stats)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine($"Righe: {stats.LineCount}");
-        sb.AppendLine($"diff --git: {(stats.HasDiffHeader ? "sì" : "no")}");
-        if (stats.HasCRLF)
-            sb.AppendLine("CRLF rilevati: normalizzati a LF.");
-        if (stats.HasFence)
-            sb.AppendLine("Fence ``` rilevate e rimosse.");
-        if (stats.HasCopyPatch)
-            sb.AppendLine("\"copy patch\" rilevato e rimosso.");
-        if (stats.HasUnityYaml)
-            sb.AppendLine("Nota: patch include file Unity (.unity/.prefab) → patch fragile.");
-        return sb.ToString().Trim();
-    }
-
-    int DetectStripLevel(string patchText)
-    {
-        if (patchText.Contains("diff --git a/") || patchText.Contains("diff --git b/"))
-            return 1;
-        return 0;
-    }
-
-    string BuildApplyBaseOptions(int pLevel)
-    {
-        return $" -p{pLevel}";
-    }
-
-    void EnsureNewlineAtEnd(string filePath)
-    {
-        string content = File.ReadAllText(filePath, Encoding.UTF8);
-        if (!content.EndsWith("\n"))
-        {
-            File.AppendAllText(filePath, "\n", Encoding.UTF8);
-        }
-    }
-
-    struct PatchStats
-    {
-        public int LineCount;
-        public bool HasDiffHeader;
-        public bool HasFence;
-        public bool HasCopyPatch;
-        public bool HasUnityYaml;
-        public bool HasCRLF;
-    }
-
-    struct ApplyAttempt
-    {
-        public string Label;
-        public string Command;
-        public ApplyAttempt(string label, string command)
-        {
-            Label = label;
-            Command = command;
-        }
-    }
-
-    string FormatCmdResult(string label, CmdResult result)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine(label);
-        if (!string.IsNullOrEmpty(result.StdOut))
-            sb.AppendLine(result.StdOut.Trim());
-        if (!string.IsNullOrEmpty(result.StdErr))
-            sb.AppendLine(result.StdErr.Trim());
-        sb.AppendLine($"ExitCode: {result.ExitCode}");
-        return sb.ToString().Trim();
-    }
-
     static void PerformGitPush(string message)
     {
         RunCmd($"/C git add . & git commit -m \"{message}\" & git push");
@@ -510,16 +211,55 @@ public class GitWindow : EditorWindow
 
         if (!string.IsNullOrEmpty(result.StdErr))
         {
-            if (result.StdErr.Contains("error:") || result.StdErr.Contains("fatal:"))
-                UnityEngine.Debug.LogError($"[VCS] Errore:\n{result.StdErr}");
-            else
-                UnityEngine.Debug.Log($"[VCS] Info:\n{result.StdErr}");
+            LogCmdStderr(result.StdErr, result.ExitCode);
         }
 
-        if (string.IsNullOrEmpty(result.StdOut) && string.IsNullOrEmpty(result.StdErr))
+        if (result.ExitCode != 0 && string.IsNullOrEmpty(result.StdErr))
+        {
+            UnityEngine.Debug.LogError($"[VCS] Errore: comando terminato con ExitCode {result.ExitCode}");
+        }
+
+        if (result.ExitCode == 0 && string.IsNullOrEmpty(result.StdOut) && string.IsNullOrEmpty(result.StdErr))
         {
             UnityEngine.Debug.Log("[VCS] Operazione completata (nessun output)");
         }
+    }
+
+    static void LogCmdStderr(string stderr, int exitCode)
+    {
+        StringBuilder warnings = new StringBuilder();
+        StringBuilder errors = new StringBuilder();
+        StringBuilder info = new StringBuilder();
+
+        string[] lines = stderr.Split(new[] { "\r\n", "\r", "\n" }, System.StringSplitOptions.RemoveEmptyEntries);
+        foreach (string rawLine in lines)
+        {
+            string line = rawLine.Trim();
+            if (line.StartsWith("warning:", System.StringComparison.OrdinalIgnoreCase))
+            {
+                warnings.AppendLine(line);
+                continue;
+            }
+
+            bool isError = line.IndexOf("fatal:", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                           line.IndexOf("error:", System.StringComparison.OrdinalIgnoreCase) >= 0;
+
+            if (isError)
+                errors.AppendLine(line);
+            else
+                info.AppendLine(line);
+        }
+
+        if (warnings.Length > 0)
+            UnityEngine.Debug.LogWarning($"[VCS] Warning:\n{warnings.ToString().Trim()}");
+
+        if (errors.Length > 0)
+            UnityEngine.Debug.LogError($"[VCS] Errore:\n{errors.ToString().Trim()}");
+        else if (exitCode != 0)
+            UnityEngine.Debug.LogError($"[VCS] Errore: comando terminato con ExitCode {exitCode}");
+
+        if (info.Length > 0)
+            UnityEngine.Debug.Log($"[VCS] Info:\n{info.ToString().Trim()}");
     }
 
     static CmdResult RunCmdWithResult(string args)
@@ -594,7 +334,6 @@ public class GitWindow : EditorWindow
         startInfo.Arguments = "/C git log --pretty=format:\"%H|%s|%an|%ad\" --date=short";
         startInfo.UseShellExecute = false;
         startInfo.RedirectStandardOutput = true;
-        startInfo.RedirectStandardError = true;
         startInfo.CreateNoWindow = true;
         startInfo.WorkingDirectory = root;
 
@@ -652,3 +391,4 @@ public class GitWindow : EditorWindow
             $"Revert a '{commit.Message}' completato!\n\nRicorda di fare push per condividere i cambiamenti.", "OK");
     }
 }
+

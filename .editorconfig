@@ -1,0 +1,7 @@
+root = true
+
+[*.sh]
+end_of_line = lf
+
+[*.py]
+end_of_line = lf

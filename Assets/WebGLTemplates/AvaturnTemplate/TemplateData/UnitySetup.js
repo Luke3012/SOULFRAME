@@ -22,7 +22,7 @@ function unityShowBanner(msg, type) {
         matchWebGLToCanvasSize: true,
     };
 
-    // Remove any fixed canvas sizing - let CSS handle it
+    // Rimuoviamo dimensioni fisse del canvas e lasciamo gestire tutto al CSS
     canvas.style.width = "";
     canvas.style.height = "";
 

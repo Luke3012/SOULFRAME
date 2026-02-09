@@ -39,6 +39,20 @@ public class AudioRecorder : MonoBehaviour
 #endif
     }
 
+    public void RequestMicrophonePermissionIfNeeded()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (webglCaptureProvider is IAudioCaptureWebGL webglCapture && webglCapture.IsSupported)
+        {
+            webglCapture.SetSampleRate(sampleRate);
+            if (!webglCapture.HasPermission)
+            {
+                webglCapture.RequestPermission();
+            }
+        }
+#endif
+    }
+
     public IEnumerator RecordFixedDuration(float seconds, Action<byte[]> onComplete)
     {
         if (seconds <= 0f)

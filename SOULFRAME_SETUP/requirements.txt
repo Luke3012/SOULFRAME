@@ -23,12 +23,16 @@ PyMuPDF==1.26.7
 
 # Coqui TTS (Text-to-Speech)
 coqui-tts==0.27.5
+transformers==4.57.1
+tokenizers==0.22.1
+torchcodec>=0.8.0
 numpy==1.26.4
 soundfile==0.13.1
 
 # Deep Learning (per TTS)
-torch==2.10.0+cu128
-torchaudio==2.10.0+cu128
+# Per CUDA specifica usa TORCH_INSTALL_CMD nel setup.
+torch==2.10.0
+torchaudio==2.10.0
 
 # Gemini Vision (opzionale - per descrizione immagini)
 google-genai==1.60.0

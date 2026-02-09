@@ -4,4 +4,5 @@
   <Project Path="IngameDebugConsole.Editor.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
   <Project Path="ExportProjectToZip.csproj" />
+  <Project Path="Bezi.Editor.csproj" />
 </Solution>

@@ -14,7 +14,7 @@ Sistema di servizi AI per SOULFRAME: speech-to-text (Whisper), text-to-speech (C
     - Durante l'installazione, seleziona **lingua italiana** nei componenti aggiuntivi
 
 #### Opzionale
-- **CUDA (driver recenti)** - necessario per usare le wheel PyTorch cu128 (TTS su GPU)
+- **CUDA (driver recenti)** - opzionale per accelerare TTS su GPU
 - **ffmpeg** - per supporto formati audio aggiuntivi in Whisper
 
 ### Modelli Ollama
@@ -44,14 +44,8 @@ pip install -r requirements.txt
 ```
 
 > **ATTENZIONE (PyTorch cu128)**
-> `requirements.txt` include `torch` e `torchaudio` con build `+cu128`.
-> Per installarle correttamente, usa l'index NVIDIA:
->
-> ```powershell
-> pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu128
-> ```
->
-> Se vuoi usare la GPU (CUDA/cu128), reinstalla PyTorch con le wheel NVIDIA:
+> `requirements.txt` usa build standard (`torch`/`torchaudio`).
+> Se vuoi usare wheel CUDA specifiche, reinstalla PyTorch esplicitamente:
 >
 > ```powershell
 > pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
@@ -88,18 +82,19 @@ ai_services.cmd 1
 Il menu ti permette di:
 - **[1] Start servizi** - avvia Ollama, Whisper, RAG, TTS e Build del Progetto
 - **[2] Stop servizi** - termina tutti i processi
+- **[3] Restart servizi** - stop + start in sequenza
 
 **Cosa fa ai_services.cmd:**
 - Rileva automaticamente l'ambiente virtuale Python (`backend\venv` o `backend\.venv`)
 - Verifica se le porte sono già in uso (evita duplicati)
 - Avvia ogni servizio in una finestra separata minimizzata
-- Configura le variabili d'ambiente necessarie per TTS
+- Configura le variabili d'ambiente necessarie per Whisper/RAG/TTS
 - Fornisce link diretti alle UI Swagger (`/docs`)
 - Avvia il Build Server in `..\Build` (o `BUILD_DIR` se impostata) e apre `http://localhost:8000`
 
 ### Metodo Manuale
 
-Avvia ogni servizio separatamente (4 terminali):
+Avvia ogni servizio separatamente (5 terminali):
 
 ```powershell
 # Terminal 1 - Ollama
@@ -134,6 +129,27 @@ uvicorn avatar_asset_server:app --host 127.0.0.1 --port 8003
 - **Avatar Asset**: http://127.0.0.1:8003/docs
 - **Ollama**: http://127.0.0.1:11434
 - **Build Server**: http://localhost:8000
+
+## Endpoint in produzione (Linux + Caddy)
+
+Se il frontend WebGL gira dietro Caddy su dominio pubblico, usa i path proxy:
+
+- `/api/whisper/*` -> Whisper
+- `/api/rag/*` -> RAG
+- `/api/avatar/*` -> Avatar Asset
+- `/api/tts/*` -> Coqui TTS
+
+Esempio:
+
+```text
+https://soulframe.page/api/avatar/avatars/list
+```
+
+Nota deploy Linux:
+
+- non usare endpoint `127.0.0.1:800x` nel browser WebGL pubblico;
+- usare sempre `/api/...` dietro Caddy;
+- per aggiornare backend/script su VM usare `sudo sfadmin` (opzione `[2]`), che puo anche ripulire i file sorgente nella update dir dopo conferma.
 
 ## Uso
 
@@ -207,6 +223,12 @@ response = requests.post("http://127.0.0.1:8003/avatars/import", json=payload)
 print(response.json())
 ```
 
+Nota: `avatar_asset_server.py` include una logica di self-healing dei metadata (`file_path`), per gestire deploy/migrazioni in cui i file `.glb` esistono ma il path salvato non è più valido.
+
+Nota: `coqui_tts_server.py` gestisce anche `wait_phrase` in modo resiliente:
+- se il file non esiste, prova a generarlo on-demand;
+- prova path compatibili legacy e riallinea automaticamente i file nella directory corrente.
+
 ## Come testare (curl)
 
 ```bash
@@ -231,6 +253,8 @@ set BUILD_DIR=C:\Path\To\Build
 ai_services.cmd 1
 ```
 
+Per cambiare i parametri su Windows modifica direttamente `ai_services.cmd`.
+
 ## Note
 
 - **Primo avvio TTS**: il download del modello XTTS v2 richiede ~2GB e può richiedere alcuni minuti
@@ -251,3 +275,70 @@ Usa CPU per TTS: `set COQUI_TTS_DEVICE=cpu` prima di avviare
 
 ### Conflitto porte
 Modifica le porte in `ai_services.cmd` o termina i processi esistenti
+
+### "Errore TTS: HTTP 500" su `/api/tts/tts_stream`
+
+1. Verifica stato servizio:
+   ```bash
+   sudo systemctl status soulframe-tts --no-pager
+   sudo journalctl -u soulframe-tts -n 200 --no-pager
+   ```
+2. Verifica presenza voce default:
+   ```bash
+   ls -lh /opt/soulframe/backend/voices/default.wav
+   ```
+3. Se nei log trovi:
+   `ImportError: cannot import name 'isin_mps_friendly' from transformers.pytorch_utils`
+   forza il set compatibile:
+   ```bash
+   /opt/soulframe/.venv/bin/pip install --upgrade "transformers==4.57.1" "tokenizers==0.22.1"
+   sudo systemctl restart soulframe-tts
+   ```
+4. Se nei log trovi:
+   `From Pytorch 2.9, the torchcodec library is required for audio IO`
+   installa codec:
+   ```bash
+   sudo /opt/soulframe/.venv/bin/pip install --upgrade "coqui-tts[codec]==0.27.5" "torchcodec>=0.8.0"
+   sudo systemctl restart soulframe-tts
+   ```
+5. Se nei log trovi prompt licenza Coqui con `EOFError: EOF when reading a line`, imposta:
+   ```bash
+   echo 'COQUI_TOS_AGREED=1' | sudo tee -a /etc/soulframe/soulframe.env
+   sudo systemctl restart soulframe-tts
+   ```
+   (Usa questa opzione solo se accetti i termini CPML/licenza commerciale Coqui.)
+6. Se `pip` fallisce con `Permission denied` su `/opt/soulframe/.venv/...`, usa `sudo` davanti al comando `pip`.
+7. Aggiorna `coqui_tts_server.py` all'ultima versione e riavvia il servizio.
+
+### "wait_phrase ... 404 Not Found"
+
+Le versioni recenti del backend provano a rigenerare automaticamente la frase di attesa. Se persiste:
+1. Verifica endpoint:
+   ```bash
+   curl -I "https://<dominio>/api/tts/wait_phrase?avatar_id=LOCAL_model1&name=un_secondo"
+   ```
+2. Genera esplicitamente le wait phrases:
+   ```bash
+   curl -X POST https://<dominio>/api/tts/generate_wait_phrases \
+     -F "avatar_id=LOCAL_model1" -F "language=it"
+   ```
+3. Riavvia `soulframe-tts`.
+
+### Setup voce (frase lunga)
+
+Il flusso recente usa una frase di configurazione più ricca (target >= 50 parole) per migliorare la qualità del profilo vocale locale.
+
+### "Download glb failed: 404 Not Found"
+
+Se il frontend riceve 404 su `/avatars/{id}/model.glb`:
+
+1. Verifica health/list del servizio avatar:
+   ```bash
+   curl http://127.0.0.1:8003/health
+   curl http://127.0.0.1:8003/avatars/list
+   ```
+2. Aggiorna `avatar_asset_server.py` all'ultima versione e riavvia il servizio:
+   ```bash
+   sudo systemctl restart soulframe-avatar.service
+   ```
+3. In produzione dietro Caddy verifica di chiamare `/api/avatar/...` e non `127.0.0.1` dal browser.

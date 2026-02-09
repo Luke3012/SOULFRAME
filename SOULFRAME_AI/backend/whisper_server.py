@@ -34,7 +34,7 @@ async def transcribe(
         tmp_path = tmp.name
 
     try:
-        # FastAPI form fields can be provided multiple times; be defensive for typing/runtime.
+        # I campi form FastAPI possono arrivare piu' volte; gestiamo il caso in modo robusto a runtime.
         lang_value: Any = language
         if isinstance(lang_value, list):
             lang_value = lang_value[0] if lang_value else "it"

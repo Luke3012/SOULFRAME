@@ -100,8 +100,14 @@ mergeInto(LibraryManager.library, {
       body: form,
       signal: state.abortController.signal
     }).then(function (response) {
-      if (!response.ok || !response.body) {
-        throw new Error("HTTP " + response.status);
+      if (!response.ok) {
+        return response.text().then(function (bodyText) {
+          var detail = bodyText ? String(bodyText).slice(0, 220) : "";
+          throw new Error("HTTP " + response.status + (detail ? " - " + detail : ""));
+        });
+      }
+      if (!response.body) {
+        throw new Error("HTTP " + response.status + " - Empty response body");
       }
       var reader = response.body.getReader();
 

@@ -115,18 +115,17 @@ public class AvatarLibraryCarousel : MonoBehaviour
     {
         if (enabled && listRequestInFlight)
         {
-            Debug.Log("[AvatarLibraryCarousel] Avatar list request already in flight.");
             return;
         }
 
         active = enabled;
         
-        // Patch 2: Blocca input di conferma/back per un tempo breve all'ingresso
+        // All'ingresso blocchiamo conferma/back per un intervallo breve.
         inputLockedUntil = enabled ? (Time.unscaledTime + enterLibraryInputLockSeconds) : 0f;
 
         if (!enabled)
         {
-            // Disable fill light on exit
+            // Disattiviamo la fill light in uscita.
             if (carouselFillLight != null)
             {
                 carouselFillLight.enabled = false;
@@ -134,25 +133,23 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
             RestoreAmbientLighting();
 
-            // HARD CANCEL: Incrementa generation per invalidare TUTTI i callback preview pendenti
+            // Incrementiamo la generazione per invalidare tutti i callback preview pendenti.
             previewGeneration++;
             
-            // Cancella download in corso
+            // Cancelliamo i download in corso.
             avatarManager?.CancelPreviewDownloads();
             SetCarouselDownloading(false);
             listRequestInFlight = false;
             
-            // Reset stato carosello
+            // Reimpostiamo lo stato del carosello.
             ResetCarouselState();
             
-            // Pulizia completa
+            // Pulizia completa.
             ClearCarousel();
             return;
         }
 
-        Debug.Log("[AvatarLibraryCarousel] Enter library");
-
-        // Enable fill light on enter
+        // Attiviamo la fill light in ingresso.
         EnsureCarouselLighting();
         if (carouselFillLight != null)
         {
@@ -205,12 +202,12 @@ public class AvatarLibraryCarousel : MonoBehaviour
         carouselFillLight.color = Color.white;
         carouselFillLight.shadows = LightShadows.None;
 
-        // Try to match the layer of the trackRoot to ensure we hit the models
+        // Proviamo ad allineare il layer di trackRoot per colpire i modelli.
         if (trackRoot != null)
         {
             lightObj.layer = trackRoot.gameObject.layer;
-            // Note: If Culling Mask is used by camera, this light affects everything in that layer.
-            // Since this is a library view, likely isolated or we want visibility.
+            // Se la camera usa Culling Mask, questa luce influenza tutto quel layer.
+            // Questa vista libreria e' isolata, quindi privilegiamo la visibilita'.
             carouselFillLight.cullingMask = 1 << trackRoot.gameObject.layer;
         }
     }
@@ -241,7 +238,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
         if (!active)
             return;
 
-        // Patch 3: Determina se confirm/back sono bloccati all'ingresso
+        // Qui verifichiamo se conferma/indietro sono ancora bloccati all'ingresso.
         bool lockConfirmAndBack = Time.unscaledTime < inputLockedUntil;
 
         if (Input.GetKeyDown(KeyCode.LeftArrow))
@@ -322,7 +319,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
         var item = items[selectedIndex];
         if (item.ready)
         {
-            // Fix 1: Notifica a UIFlowController che l'utente ha richiesto un main load
+            // Qui notifichiamo a UIFlowController che l'utente ha richiesto un caricamento principale.
             uiFlowController?.NotifyMainAvatarLoadRequested();
             avatarManager?.LoadSavedAvatar(item.data);
             PlayerPrefs.SetString(LastSelectedAvatarKey, item.data.avatarId);
@@ -340,8 +337,8 @@ public class AvatarLibraryCarousel : MonoBehaviour
             return;
         }
 
-        // Track offset shifts the entire carousel so items appear centered
-        // Formula: trackOffsetX provides base shift, selectedIndex * spacing moves to selected item
+        // Il track offset sposta tutto il carosello per centrare gli elementi.
+        // Regola: `trackOffsetX` da' lo shift base, `selectedIndex * spacing` porta all'elemento selezionato.
         float targetOffset = trackOffsetX - selectedIndex * spacing * scrollStepMultiplier;
         Vector3 target = trackBaseLocalPosition + new Vector3(targetOffset, 0f, 0f);
         trackRoot.localPosition = Vector3.Lerp(trackRoot.localPosition, target, scrollLerp * Time.unscaledDeltaTime);
@@ -460,7 +457,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
     {
         ClearCarousel();
         
-        // Increment preview generation to invalidate any pending preview callbacks
+        // Incrementiamo la generazione anteprime per invalidare i callback pendenti.
         previewGeneration++;
 
         if (avatarList == null || avatarList.Count == 0)
@@ -478,8 +475,8 @@ public class AvatarLibraryCarousel : MonoBehaviour
             };
 
             item.initialRotation = Quaternion.Euler(0f, initialYaw, 0f);
-            // Always mark as not ready - carousel downloads fresh previews for visual consistency
-            // even if the avatar is cached, to ensure all items look uniform
+            // Segniamo sempre come non pronto: il carosello scarica anteprime nuove per coerenza visiva,
+            // anche se l'avatar e' in cache, cosi' tutti gli elementi restano uniformi.
             item.ready = false;
             item.hasError = false;
             item.retryCount = 0;
@@ -489,7 +486,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
             items.Add(item);
             downloadQueue.Enqueue(index);
 
-            // Start invisible for staggered fade-in
+            // Partiamo invisibili per un fade-in sfalsato.
             if (item.root != null)
                 item.root.localScale = Vector3.zero;
 
@@ -504,7 +501,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
         var root = new GameObject($"AvatarItem_{index}_{avatarId}").transform;
         root.SetParent(trackRoot, false);
 
-        // IMPORTANT: allinea il layer degli item al layer del trackRoot.
+        // Allineiamo il layer degli item a quello di trackRoot.
         // La fill light usa una cullingMask basata sul layer di trackRoot, quindi se gli item
         // restano su Default (0) possono risultare neri/non illuminati.
         int layer = trackRoot != null ? trackRoot.gameObject.layer : 0;
@@ -531,7 +528,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
         // Mantieni placeholder e figli sul layer del parent (per luci/camera culling coerenti)
         SetLayerRecursively(placeholder, parent.gameObject.layer);
         
-        // Fix 4: Forza il placeholder ad essere attivo e visibile
+        // Forziamo il placeholder ad essere attivo e visibile.
         placeholder.SetActive(true);
         
         // Assicura che tutti i renderer siano attivi
@@ -585,7 +582,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
     private void ApplySelection(CarouselItem item, bool selected)
     {
-        // Handle Material Property Blocks
+        // Gestiamo i Material Property Block.
         var block = new MaterialPropertyBlock();
         foreach (var rendererInfo in item.renderers)
         {
@@ -634,7 +631,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
                     }
                     else
                     {
-                        // Fallback programmativo se manca il prefab
+                        // Ripiego programmativo se manca il prefab.
                         lightObj = new GameObject("SelectionLight_Fallback");
                         lightObj.transform.SetParent(item.root, false);
                         var l = lightObj.AddComponent<Light>();
@@ -674,74 +671,28 @@ public class AvatarLibraryCarousel : MonoBehaviour
             }
         }
     }
-
-    // Patch 3: Helper methods per normalizzazione dei modelli caricati
-    private bool TryGetWorldBounds(Transform root, out Bounds bounds)
-    {
-        var renderers = root.GetComponentsInChildren<Renderer>(true);
-        if (renderers == null || renderers.Length == 0)
-        {
-            bounds = new Bounds(root.position, Vector3.one);
-            return false;
-        }
-
-        bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-
-        return true;
-    }
-
-    private float GetPlaceholderHeightFallback()
-    {
-        if (placeholderSource == null) return 1.7f;
-
-        if (TryGetWorldBounds(placeholderSource, out var b))
-        {
-            if (b.size.y > 0.01f) return b.size.y;
-        }
-
-        return 1.7f;
-    }
-
     private void StartNextDownload()
     {
-        // Controlla specificamente se il preview downloader è occupato
+        // Controlliamo in modo esplicito se il downloader delle anteprime e' occupato.
         if (avatarManager == null || avatarManager.IsPreviewDownloading)
         {
             return;
         }
 
-        if (downloadQueue.Count == 0)
+        if (!TryDequeueNextDownload(out int index, out CarouselItem item))
         {
             SetCarouselDownloading(false);
             return;
         }
 
-        int index = downloadQueue.Dequeue();
-        if (index < 0 || index >= items.Count)
-        {
-            StartNextDownload();
-            return;
-        }
-
-        var item = items[index];
-        if (item.hasError)
-        {
-            StartNextDownload();
-            return;
-        }
-
         int generation = previewGeneration;
         SetCarouselDownloading(true);
-        Debug.Log($"[AvatarLibraryCarousel] Preview start: {item.data.avatarId}");
         EnsureStagingRoot();
         bool started = avatarManager.DownloadPreviewToTransform(item.data, _stagingRoot, loader =>
         {
             if (!active || generation != previewGeneration)
             {
                 ClearLoaderChildren(loader);
-                Debug.Log("[AvatarLibraryCarousel] Preview canceled (generation change)");
                 return;
             }
 
@@ -749,10 +700,6 @@ public class AvatarLibraryCarousel : MonoBehaviour
             if (!replaced)
             {
                 HandlePreviewFailure(item, "renderer missing or load failed");
-            }
-            else
-            {
-                Debug.Log($"[AvatarLibraryCarousel] Preview done: {item.data.avatarId}");
             }
             if (active)
             {
@@ -762,7 +709,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
         if (!started)
         {
-            // Avoid infinite loop if data is invalid
+            // Evitiamo un loop infinito se i dati non sono validi.
             if (item.data != null)
             {
                  downloadQueue.Enqueue(index);
@@ -770,6 +717,31 @@ public class AvatarLibraryCarousel : MonoBehaviour
         }
     }
 
+    private bool TryDequeueNextDownload(out int index, out CarouselItem item)
+    {
+        while (downloadQueue.Count > 0)
+        {
+            int candidateIndex = downloadQueue.Dequeue();
+            if (candidateIndex < 0 || candidateIndex >= items.Count)
+            {
+                continue;
+            }
+
+            var candidateItem = items[candidateIndex];
+            if (candidateItem == null || candidateItem.hasError)
+            {
+                continue;
+            }
+
+            index = candidateIndex;
+            item = candidateItem;
+            return true;
+        }
+
+        index = -1;
+        item = null;
+        return false;
+    }
     private bool ReplaceWithLoadedModel(CarouselItem item, Transform loaderTransform)
     {
         if (loaderTransform == null || item == null)
@@ -793,17 +765,17 @@ public class AvatarLibraryCarousel : MonoBehaviour
         container.localRotation = Quaternion.identity;
         container.localScale = Vector3.one;
 
-        // IMPORTANT: Non clonare child-per-child.
+        // Non cloniamo figlio-per-figlio.
         // Molti avatar GLTF hanno armature e skinned mesh come siblings; clonare separatamente
         // può lasciare bones/rootBone puntati all'originale e rompersi quando il loader viene distrutto.
-        // Spostiamo (reparent) l'intera gerarchia preservando i transform.
+        // Spostiamo (reparent) l'intera gerarchia preservando le trasformazioni.
         bool isLocal = item.data.bodyId == "local" || (item.data.avatarId != null && item.data.avatarId.StartsWith("LOCAL_"));
         while (loaderTransform.childCount > 0)
         {
             var child = loaderTransform.GetChild(0);
             child.SetParent(container, false);
 
-            // Non azzerare localPosition/localRotation/localScale: può rompere offset/armature.
+            // Non azzerare localPosition/localRotation/localScale: puo' rompere scostamenti/armature.
             if (isLocal)
             {
                 // Forza l'aggiornamento dei materiali sui modelli locali (se necessario)
@@ -814,7 +786,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
         // Assicura che i layer siano corretti
         SetLayerRecursively(container.gameObject, item.root.gameObject.layer);
 
-        // Svuota il loader (a questo punto dovrebbe essere già vuoto)
+        // Svuotiamo il loader (a questo punto dovrebbe essere gia' vuoto).
         ClearLoaderChildren(loaderTransform);
 
         // Attiva i GameObject dei renderer e forza enabled.
@@ -902,7 +874,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
     private void ResetCarouselState()
     {
-        // HARD CANCEL: Invalida tutte le sessioni precedenti
+        // Invalidiamo tutte le sessioni precedenti.
         previewGeneration++;
         selectedIndex = 0;
         inputLockedUntil = 0f;
@@ -910,7 +882,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
         // Stoppa tutte le coroutine di rotazione in corso
         StopAllCoroutines();
         
-        // Reset download queue
+        // Azzera la coda download.
         downloadQueue.Clear();
 
         if (trackRoot != null)
@@ -983,7 +955,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
         item.resetRotationRoutine = null;
     }
 
-    // Patch 4: Helper per svuotare il loader dopo il cloning
+    // Supporto: qui svuotiamo il loader dopo la clonazione.
     private void ClearLoaderChildren(Transform loaderTransform)
     {
         if (loaderTransform == null) return;
@@ -1092,28 +1064,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
         {
             downloadQueue.Enqueue(index);
         }
-    }
-
-    private int RestoreSelectedIndex()
-    {
-        string lastId = PlayerPrefs.GetString(LastSelectedAvatarKey, string.Empty);
-        if (string.IsNullOrEmpty(lastId))
-        {
-            return 0;
-        }
-
-        for (int i = 0; i < items.Count; i++)
-        {
-            if (items[i].data != null && items[i].data.avatarId == lastId)
-            {
-                return i;
-            }
-        }
-
-        return 0;
-    }
-
-
+    }
     private IEnumerator StaggeredFadeIn()
     {
         for (int i = 0; i < items.Count; i++)
@@ -1137,7 +1088,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
             if (target == null) yield break;
             elapsed += Time.unscaledDeltaTime;
             float t = Mathf.Clamp01(elapsed / duration);
-            // Ease-out quadratic for smooth deceleration
+            // Curva quadratica in uscita per una decelerazione morbida.
             float eased = 1f - (1f - t) * (1f - t);
             target.localScale = targetScale * eased;
             yield return null;
@@ -1151,7 +1102,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
     {
         foreach (var item in items)
         {
-            // Stop any running rotation reset coroutines before destroying
+            // Fermiamo le coroutine di reset rotazione ancora attive prima di distruggere.
             StopResetRotation(item);
             
             if (item.root != null)

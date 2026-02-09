@@ -1,13 +1,13 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!21 &-6775281822748644594
+--- !u!21 &-5385742238223452351
 Material:
   serializedVersion: 8
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: keyboard_space_outline Material
+  m_Name: keyboard_any Material
   m_Shader: {fileID: 4800000, guid: cf81c85f95fe47e1a27f6ae460cf182c, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
@@ -24,7 +24,7 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _MainTex:
-        m_Texture: {fileID: 2800000, guid: b9e92640e4a4ab94a809a1eb0c38a1bf, type: 3}
+        m_Texture: {fileID: 2800000, guid: 3c838e47ce27c4b458ed614901179589, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Ints: []
@@ -52,7 +52,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 84a92b25f83d49b9bc132d206b370281, type: 3}
-  m_Name: keyboard_space_outline
+  m_Name: keyboard_any
   m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TMP_SpriteAsset
   m_Version: 1.1.0
   m_FaceInfo:
@@ -77,30 +77,30 @@ MonoBehaviour:
     m_StrikethroughOffset: 0
     m_StrikethroughThickness: 0
     m_TabWidth: 0
-  m_Material: {fileID: -6775281822748644594}
-  spriteSheet: {fileID: 2800000, guid: b9e92640e4a4ab94a809a1eb0c38a1bf, type: 3}
+  m_Material: {fileID: -5385742238223452351}
+  spriteSheet: {fileID: 2800000, guid: 3c838e47ce27c4b458ed614901179589, type: 3}
   m_SpriteCharacterTable:
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 0
     m_Scale: 1
-    m_Name: keyboard_space_outline_0
+    m_Name: keyboard_any_0
   m_GlyphTable:
   - m_Index: 0
     m_Metrics:
       m_Width: 48
-      m_Height: 28
+      m_Height: 48
       m_HorizontalBearingX: -5
-      m_HorizontalBearingY: 25
+      m_HorizontalBearingY: 40
       m_HorizontalAdvance: 48
     m_GlyphRect:
       m_X: 8
-      m_Y: 18
+      m_Y: 8
       m_Width: 48
-      m_Height: 28
-    m_Scale: 1
+      m_Height: 48
+    m_Scale: 1.2
     m_AtlasIndex: 0
     m_ClassDefinitionType: 0
-    sprite: {fileID: 1145366470, guid: b9e92640e4a4ab94a809a1eb0c38a1bf, type: 3}
+    sprite: {fileID: -1419594780, guid: 3c838e47ce27c4b458ed614901179589, type: 3}
   spriteInfoList: []
   fallbackSpriteAssets: []

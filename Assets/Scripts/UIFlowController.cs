@@ -9,6 +9,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Networking;
+using UnityEngine.EventSystems;
 using Random = UnityEngine.Random;
 #if UNITY_WEBGL && !UNITY_EDITOR
 using System.Runtime.InteropServices;
@@ -74,6 +75,14 @@ public class UIFlowController : MonoBehaviour
     public TextMeshProUGUI mainModeReplyText;
     [SerializeField] private Button btnMainModeMemory;
     [SerializeField] private Button btnMainModeVoice;
+    [SerializeField] private TMP_InputField chatNoteInput;
+    [SerializeField, Min(0f)] private float chatNoteTransitionDuration = 0.08f;
+
+    [Header("Main Avatar Spawn Animation")]
+    [SerializeField] private bool enableMainAvatarSpawnAnimation = true;
+    [SerializeField, Min(0f)] private float mainAvatarSpawnFadeDuration = 0.45f;
+    [SerializeField, Range(0.6f, 1f)] private float mainAvatarSpawnStartScale = 0.92f;
+    [SerializeField] private AnimationCurve mainAvatarSpawnCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
     [Header("Avatar Library 3D")]
     public AvatarLibraryCarousel avatarLibraryCarousel;
@@ -81,6 +90,9 @@ public class UIFlowController : MonoBehaviour
     [Header("Hint Bar")]
     public UIHintBar hintBar;
     public List<HintEntry> hintEntries = new List<HintEntry>();
+
+    [Header("Debug UI")]
+    [SerializeField] private bool debugUiHiddenAtStart = false;
 
     [Header("Carousel UI")]
     [SerializeField] private CanvasGroup soulframeTitleGroup;
@@ -108,6 +120,9 @@ public class UIFlowController : MonoBehaviour
     [SerializeField] private float setupVoiceMinSimilarity = 0.7f;
     [SerializeField] private AudioRecorder audioRecorder;
     [SerializeField] private float longRequestTimeoutSeconds = 0f;
+    [SerializeField, Min(5)] private int setupVoiceTargetWords = 32;
+    [SerializeField, Min(0)] private int setupVoiceWordSlack = 10;
+    [SerializeField, Min(0)] private int setupVoiceMinCharsOverride = 0;
 
     [Header("Web Overlay")]
     [SerializeField] private AvaturnWebController webController;
@@ -116,6 +131,7 @@ public class UIFlowController : MonoBehaviour
     [SerializeField] private float mainModeMouseIdleSeconds = 4f;
     [SerializeField] private float mainModeRayDistance = 2.5f;
     [SerializeField] private Vector3 mainModeLookHeadOffset = new Vector3(0f, 0.06f, 0.05f);
+    [SerializeField, Min(0f)] private float mainModeHintRefreshDelay = 0.05f;
     [SerializeField] private AudioSource ttsAudioSource;
     [SerializeField] private Transform camSetupVoiceLeftAnchor;
     [SerializeField] private Transform camSetupMemoryRightAnchor;
@@ -127,6 +143,7 @@ public class UIFlowController : MonoBehaviour
     [SerializeField] private bool enableTtsWebGlStreaming = true;
     [SerializeField] private bool enableTtsWebGlStreamingLogs = false;
     [SerializeField] private bool enableTtsWebGlUnityAudio = true;
+    [SerializeField] private bool webGlPreferChunkPlayer = false;
     [SerializeField, Range(40, 400)] private int ttsStreamMaxChunkChars = 140;
 
 
@@ -174,6 +191,7 @@ public class UIFlowController : MonoBehaviour
     private Coroutine mainModeRoutine;
     private Coroutine mainModeCheckRoutine;
     private Coroutine mainModeEnableRoutine;
+    private Coroutine mainModeHintRefreshRoutine;
     private UnityWebRequest mainModeRequest;
     private readonly List<UnityWebRequest> mainModeRequests = new List<UnityWebRequest>();
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -184,11 +202,16 @@ public class UIFlowController : MonoBehaviour
     private PcmStreamPlayer ttsStreamPlayer;
     private PcmChunkPlayer ttsChunkPlayer;
     private bool ttsUseChunkPlayer;
+    private int ttsPlaybackSessionId;
+    private int ttsActiveSessionId = -1;
+    private bool ttsAcceptIncomingSamples;
     private long ttsStreamBytes;
     private int ttsStreamSampleRate;
     private int ttsStreamChannels;
     private bool mainModeListening;
     private bool mainModeProcessing;
+    private bool mainModeSpeaking;
+    private bool mainModeTtsInterruptedByUser;
     private float lastMouseMoveTime;
     private Vector3 lastMousePosition;
     private Transform currentCameraAnchor;
@@ -209,17 +232,24 @@ public class UIFlowController : MonoBehaviour
     private bool uiBlockActive;
     private Coroutine deferredStateRoutine;
 
-    // Fix 1: Flag per controllare se la transizione a MainMode è stata richiesta dall'utente
+    // Teniamo questo flag per sapere se la transizione a MainMode arriva da richiesta utente.
     private bool _pendingMainModeTransition = false;
     private bool _previewModeActive = false;
     private bool setupVoiceFromMainMode = false;
     private bool setupMemoryFromMainMode = false;
     private bool ingestFilePickerActive = false;
     private bool describeFilePickerActive = false;
+    private bool mainModeChatNoteActive;
+    private Coroutine chatNoteTransitionRoutine;
+    private CanvasGroup chatNoteCanvasGroup;
+    private bool chatNoteJustDismissed;
+    private bool debugUiHidden;
 
     private static readonly string[] waitPhraseKeys = { "hm", "beh", "aspetta", "si", "un_secondo" };
     private readonly Dictionary<string, AudioClip> waitPhraseCache = new Dictionary<string, AudioClip>();
+    private readonly Dictionary<string, string> lastWaitPhraseByAvatar = new Dictionary<string, string>();
     private Coroutine waitPhraseRoutine;
+    private Coroutine mainAvatarSpawnRoutine;
 
     public bool IsWebOverlayOpen => webOverlayOpen;
     public bool IsUiInputLocked => uiInputLocked;
@@ -271,6 +301,13 @@ public class UIFlowController : MonoBehaviour
         SaveMainMenuCameraPosition();
 
         ValidateReferencesAtRuntime();
+        servicesConfig?.NormalizeForWebGlRuntime();
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (servicesConfig != null)
+        {
+            Debug.Log($"[UIFlowController] WebGL services: whisper={servicesConfig.whisperBaseUrl} rag={servicesConfig.ragBaseUrl} avatar={servicesConfig.avatarAssetBaseUrl} tts={servicesConfig.coquiBaseUrl}");
+        }
+#endif
 
         if (avatarLibraryCarousel != null)
         {
@@ -282,7 +319,7 @@ public class UIFlowController : MonoBehaviour
             ringsDefaultPosition = ringsTransform.position;
         }
         
-        // Fix 1: Risolvi il CanvasGroup del titolo
+        // Qui risolviamo il CanvasGroup del titolo.
         ResolveTitleGroup();
 
         if (btnNewAvatar != null) btnNewAvatar.onClick.AddListener(OnNewAvatar);
@@ -294,12 +331,14 @@ public class UIFlowController : MonoBehaviour
         if (btnSetupMemoryDescribe != null) btnSetupMemoryDescribe.onClick.AddListener(StartDescribeImage);
         if (btnSetMemory != null) btnSetMemory.onClick.AddListener(OnSetMemory);
         
-        // NOTE: All UI back/navigation buttons removed in favor of keyboard Backspace handling.
-        // Hint bar shows keyboard prompts to guide users (Arrows/Enter/Backspace).
+        // Qui abbiamo tolto i bottoni di ritorno/navigazione e usiamo Backspace da tastiera.
+        // La barra suggerimenti mostra i prompt tastiera (Arrows/Enter/Backspace/ecc...).
 
         BuildPanelMap();
         CachePanelDefaults();
         BuildHintMap();
+        debugUiHidden = debugUiHiddenAtStart;
+        ApplyDebugUiVisibility();
 
         if (pnlMainMenu != null)
         {
@@ -315,7 +354,7 @@ public class UIFlowController : MonoBehaviour
             navigator.SetActions(GoBack, ExitApplication);
         }
         
-        // Fix 1: Nascondi i bottoni se l'intro è abilitata
+        // Se è in fase intro, nascondiamo i bottoni.
         if (enableMainMenuIntro)
         {
             SetMainMenuButtonsVisible(false, immediate: true);
@@ -332,7 +371,7 @@ public class UIFlowController : MonoBehaviour
             avaturnSystem.SetupAvatarCallbacks(OnAvatarReceived, null);
         }
 
-        // Fix 1: Avvia intro se abilitata
+        // Con intro attiva, avviamo subito la sequenza.
         if (enableMainMenuIntro)
         {
             StartCoroutine(MainMenuButtonsIntroRoutine());
@@ -355,6 +394,11 @@ public class UIFlowController : MonoBehaviour
             return;
         }
 
+        if (Input.GetKeyDown(KeyCode.Insert) && CanToggleDebugUiWithHotkey())
+        {
+            ToggleDebugUiVisibility();
+        }
+
         if (currentState == UIState.SetupVoice)
         {
             if (Input.GetKeyDown(KeyCode.Space))
@@ -369,12 +413,11 @@ public class UIFlowController : MonoBehaviour
 
         if (currentState == UIState.SetupMemory)
         {
-            bool focused = setupMemoryNoteInput != null && setupMemoryNoteInput.isFocused;
+            bool focused = IsInputFieldFocused(setupMemoryNoteInput);
             if (focused != setupMemoryInputFocused)
             {
-                setupMemoryInputFocused = focused;
-                UpdateHintBar(currentState);
-                ConfigureNavigatorForState(currentState, true);
+                bool resetNavigator = !Input.GetMouseButtonDown(0);
+                SyncSetupMemoryTypingState(resetNavigator);
             }
 
             if (focused && Input.GetKeyDown(KeyCode.Return))
@@ -405,7 +448,7 @@ public class UIFlowController : MonoBehaviour
         panelMap[UIState.MainMode] = pnlMainMode;
     }
     
-    // Fix 1 parte 3: Metodi helper per l'intro
+    // Qui teniamo i metodi helper dell'intro.
     private void ResolveTitleGroup()
     {
         if (soulframeTitleGroup != null)
@@ -437,7 +480,7 @@ public class UIFlowController : MonoBehaviour
             }
         }
         
-        // If either button is missing entirely, also disable intro
+        // Se manca uno dei due bottoni, disabilitiamo anche l'intro.
         if (enableMainMenuIntro && (!btnNewAvatar || !btnShowList))
         {
             Debug.LogError("[UIFlowController] Btn_New o Btn_LoadList mancante. Intro disabilitata.");
@@ -473,7 +516,7 @@ public class UIFlowController : MonoBehaviour
     
     private IEnumerator MainMenuButtonsIntroRoutine()
     {
-        // Aspetta che il titolo abbia completato il fade-in
+        // Aspettiamo che il titolo finisca il fade-in.
         if (_titleCanvasGroup != null)
         {
             while (_titleCanvasGroup.alpha < 0.99f)
@@ -482,13 +525,13 @@ public class UIFlowController : MonoBehaviour
             }
         }
         
-        // Delay extra
+        // Ritardo extra.
         if (mainMenuIntroDelay > 0f)
         {
             yield return new WaitForSecondsRealtime(mainMenuIntroDelay);
         }
         
-        // Fade-in dei bottoni
+        // Dissolvenza in entrata dei bottoni.
         float elapsed = 0f;
         while (elapsed < mainMenuButtonsFadeDuration)
         {
@@ -511,7 +554,7 @@ public class UIFlowController : MonoBehaviour
         SetMainMenuButtonsVisible(true, immediate: false);
         _mainMenuButtonsIntroDone = true;
         
-        // Aggiorna il navigator
+        // Aggiorniamo il navigator.
         ConfigureNavigatorForState(UIState.MainMenu, true);
     }
 
@@ -586,9 +629,14 @@ public class UIFlowController : MonoBehaviour
 
     public void GoToMainMenu()
     {
-        // Fix 1: Resetta il flag quando torni a casa
+        // Quando torniamo a casa, resettiamo il flag.
         _pendingMainModeTransition = false;
         pendingNewAvatarDownload = false;
+        if (mainAvatarSpawnRoutine != null)
+        {
+            StopCoroutine(mainAvatarSpawnRoutine);
+            mainAvatarSpawnRoutine = null;
+        }
         ExitDownloadState();
         avatarManager?.CancelAllDownloads();
         avatarManager?.RemoveCurrentAvatar();
@@ -596,10 +644,11 @@ public class UIFlowController : MonoBehaviour
         GoToState(UIState.MainMenu);
     }
 
-    // Fix 1: Metodo pubblico per notificare che l'utente ha richiesto un main avatar load
+    // Metodo pubblico con cui notifichiamo la richiesta utente di caricamento avatar principale.
     public void NotifyMainAvatarLoadRequested()
     {
         _pendingMainModeTransition = true;
+        RequestWebGlMicrophonePermissionIfNeeded();
         Debug.Log("[UIFlowController] Main avatar load requested by user.");
     }
 
@@ -1315,13 +1364,46 @@ public class UIFlowController : MonoBehaviour
             saveGroup.blocksRaycasts = true;
         }
 
-        if (setupMemoryNoteInput != null)
+        FocusSetupMemoryInputWithoutSelection();
+        SyncSetupMemoryTypingState(resetNavigator: true);
+
+        // Primo avvio: su alcune macchine il campo input perde il fuoco nel frame di transizione.
+        // Rifocalizziamo al frame successivo per garantire digitazione immediata.
+        yield return null;
+        if (currentState == UIState.SetupMemory &&
+            pnlSaveMemory != null &&
+            pnlSaveMemory.activeSelf &&
+            setupMemoryNoteInput != null &&
+            !IsInputFieldFocused(setupMemoryNoteInput))
         {
-            setupMemoryNoteInput.Select();
-            setupMemoryNoteInput.ActivateInputField();
+            FocusSetupMemoryInputWithoutSelection();
+            SyncSetupMemoryTypingState(resetNavigator: true);
+        }
+    }
+
+    private void SyncSetupMemoryTypingState(bool resetNavigator)
+    {
+        setupMemoryInputFocused = IsInputFieldFocused(setupMemoryNoteInput);
+        UpdateHintBar(UIState.SetupMemory);
+        ConfigureNavigatorForState(UIState.SetupMemory, resetNavigator);
+    }
+
+    private void FocusSetupMemoryInputWithoutSelection()
+    {
+        if (setupMemoryNoteInput == null || !setupMemoryNoteInput.gameObject.activeInHierarchy)
+        {
+            return;
         }
 
-        ConfigureNavigatorForState(UIState.SetupMemory, true);
+        setupMemoryNoteInput.onFocusSelectAll = false;
+        setupMemoryNoteInput.Select();
+        setupMemoryNoteInput.ActivateInputField();
+        setupMemoryNoteInput.MoveTextEnd(false);
+
+        int end = setupMemoryNoteInput.text != null ? setupMemoryNoteInput.text.Length : 0;
+        setupMemoryNoteInput.caretPosition = end;
+        setupMemoryNoteInput.selectionAnchorPosition = end;
+        setupMemoryNoteInput.selectionFocusPosition = end;
     }
 
     private IEnumerator TransitionToChooseMemory()
@@ -1821,6 +1903,13 @@ public class UIFlowController : MonoBehaviour
 
         if (currentState == UIState.MainMode)
         {
+            // Se il chat note è attivo o appena chiuso, blocca il back
+            if (mainModeChatNoteActive)
+            {
+                DismissChatNote();
+                return;
+            }
+            if (chatNoteJustDismissed) return;
             CancelMainMode();
             GoBackFromMainMode();
             return;
@@ -1923,6 +2012,18 @@ public class UIFlowController : MonoBehaviour
             }
             deferredStateRoutine = StartCoroutine(DeferStateChange(targetState, pushCurrent));
             return;
+        }
+
+        // Se usciamo da MainMode (via pulsanti, non GoBack), disabilita l'idleLook
+        if (currentState == UIState.MainMode && targetState != UIState.MainMode)
+        {
+            var idleLook = avatarManager != null ? avatarManager.idleLook : null;
+            if (idleLook != null)
+            {
+                idleLook.SetExternalLookTarget(null);
+                idleLook.SetMainModeEnabled(false);
+                idleLook.SetListening(false);
+            }
         }
 
         if (targetState == UIState.SetupVoice)
@@ -2034,7 +2135,7 @@ public class UIFlowController : MonoBehaviour
         }
         if (state == UIState.SetupMemory)
         {
-            setupMemoryInputFocused = setupMemoryNoteInput != null && setupMemoryNoteInput.isFocused;
+            setupMemoryInputFocused = IsInputFieldFocused(setupMemoryNoteInput);
             if (setupMemoryLogText != null)
             {
                 setupMemoryLogText.text = string.Empty;
@@ -2231,18 +2332,85 @@ public class UIFlowController : MonoBehaviour
 
         ExitDownloadState();
 
-        // Fix 1: Transizione SOLO se era una richiesta utente (main load)
-        if (_pendingMainModeTransition)
+        // Passiamo di stato solo se il caricamento principale arriva da richiesta utente.
+        bool isMainLoad = _pendingMainModeTransition;
+        if (isMainLoad)
         {
+            StartMainAvatarSpawnAnimation(avatarTransform);
+        }
+
+        if (isMainLoad)
+        {
+            RequestWebGlMicrophonePermissionIfNeeded();
             _pendingMainModeTransition = false;
-            // Go directly to MainMode to avoid re-running boot checks for already configured avatar
+            // Andiamo direttamente in MainMode per non rieseguire i controlli di avvio su avatar gia' configurato.
             GoToState(UIState.MainMode);
         }
         else
         {
-            // preview completata: NON cambiare pannello
+            // Anteprima completata: NON cambiare pannello.
             Debug.Log("[UIFlowController] Download completato senza transizione (preview).");
         }
+    }
+
+    private void StartMainAvatarSpawnAnimation(Transform avatarRoot)
+    {
+        if (!enableMainAvatarSpawnAnimation || avatarRoot == null)
+        {
+            return;
+        }
+
+        if (mainAvatarSpawnRoutine != null)
+        {
+            StopCoroutine(mainAvatarSpawnRoutine);
+        }
+
+        mainAvatarSpawnRoutine = StartCoroutine(AnimateMainAvatarSpawn(avatarRoot));
+    }
+
+    private IEnumerator AnimateMainAvatarSpawn(Transform avatarRoot)
+    {
+        if (avatarRoot == null)
+        {
+            mainAvatarSpawnRoutine = null;
+            yield break;
+        }
+
+        float duration = Mathf.Max(0f, mainAvatarSpawnFadeDuration);
+        float scaleFactor = Mathf.Clamp(mainAvatarSpawnStartScale, 0.6f, 1f);
+        Vector3 finalScale = avatarRoot.localScale;
+        Vector3 startScale = finalScale * scaleFactor;
+        avatarRoot.localScale = startScale;
+
+        if (duration <= 0f)
+        {
+            avatarRoot.localScale = finalScale;
+            mainAvatarSpawnRoutine = null;
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            if (avatarRoot == null)
+            {
+                mainAvatarSpawnRoutine = null;
+                yield break;
+            }
+
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            float eased = mainAvatarSpawnCurve != null ? Mathf.Clamp01(mainAvatarSpawnCurve.Evaluate(t)) : t;
+
+            avatarRoot.localScale = Vector3.LerpUnclamped(startScale, finalScale, eased);
+            yield return null;
+        }
+
+        if (avatarRoot != null)
+        {
+            avatarRoot.localScale = finalScale;
+        }
+        mainAvatarSpawnRoutine = null;
     }
 
     public void SetPreviewModeUI(bool active)
@@ -2255,7 +2423,7 @@ public class UIFlowController : MonoBehaviour
         }
         else
         {
-            // Ripristina SOLO se eravamo in modalità preview (evita di rompere l'intro al boot)
+            // Ripristiniamo SOLO se eravamo in modalita' anteprima (evitiamo di rompere l'intro all'avvio)
             if (_previewModeActive)
             {
                 _previewModeActive = false;
@@ -2344,6 +2512,85 @@ public class UIFlowController : MonoBehaviour
         }
 
         UpdateDebugText(message);
+    }
+
+    private static bool IsInputFieldFocused(TMP_InputField inputField)
+    {
+        if (inputField == null || inputField.gameObject == null || !inputField.gameObject.activeInHierarchy)
+        {
+            return false;
+        }
+
+        if (inputField.isFocused)
+        {
+            return true;
+        }
+
+        // In alcune build WebGL/Standalone il campo puo' risultare selezionato
+        // dall'EventSystem ma con isFocused intermittente.
+        var eventSystem = EventSystem.current;
+        if (eventSystem == null)
+        {
+            return false;
+        }
+
+        var selected = eventSystem.currentSelectedGameObject;
+        return selected == inputField.gameObject || (selected != null && selected.transform.IsChildOf(inputField.transform));
+    }
+
+    private bool IsSetupMemoryTyping()
+    {
+        return currentState == UIState.SetupMemory && IsInputFieldFocused(setupMemoryNoteInput);
+    }
+
+    private bool IsChatNoteTyping()
+    {
+        return currentState == UIState.MainMode && mainModeChatNoteActive && IsInputFieldFocused(chatNoteInput);
+    }
+
+    private bool CanToggleDebugUiWithHotkey()
+    {
+        return !IsSetupMemoryTyping() && !IsChatNoteTyping();
+    }
+
+    private void ToggleDebugUiVisibility()
+    {
+        debugUiHidden = !debugUiHidden;
+        ApplyDebugUiVisibility();
+        UpdateHintBar(currentState);
+        Debug.Log($"[UIFlowController] Debug UI {(debugUiHidden ? "hidden" : "shown")}.");
+    }
+
+    private string GetDebugToggleLabel()
+    {
+        return debugUiHidden ? "Mostra Debug" : "Nascondi Debug";
+    }
+
+    private void ApplyDebugUiVisibility()
+    {
+        bool showDebug = !debugUiHidden;
+        if (setupMemoryLogText != null)
+        {
+            setupMemoryLogText.gameObject.SetActive(showDebug);
+        }
+        if (debugText != null)
+        {
+            debugText.gameObject.SetActive(showDebug);
+        }
+        ApplyMainModeDebugVisibility();
+    }
+
+    private void ApplyMainModeDebugVisibility()
+    {
+        bool showMainModeDebug = !debugUiHidden && !mainModeChatNoteActive;
+        if (mainModeTranscriptText != null)
+        {
+            mainModeTranscriptText.gameObject.SetActive(showMainModeDebug);
+        }
+        if (mainModeReplyText != null)
+        {
+            mainModeReplyText.gameObject.SetActive(showMainModeDebug);
+        }
     }
 
     private void BeginBootSequence()
@@ -2453,6 +2700,11 @@ public class UIFlowController : MonoBehaviour
     {
         UpdateSetupVoiceStatus("Generazione frase...");
 
+        int setupVoiceMinWords = Mathf.Max(5, setupVoiceTargetWords);
+        int setupVoiceMaxWords = Mathf.Max(setupVoiceMinWords, setupVoiceTargetWords + Mathf.Max(0, setupVoiceWordSlack));
+        int setupVoiceMinChars = setupVoiceMinCharsOverride > 0
+            ? setupVoiceMinCharsOverride
+            : Mathf.Max(60, setupVoiceMinWords * 4);
         setupVoicePhrase = null;
         setupVoicePhraseReady = false;
         string ragError = null;
@@ -2460,12 +2712,16 @@ public class UIFlowController : MonoBehaviour
         if (servicesConfig != null && !string.IsNullOrEmpty(servicesConfig.ragBaseUrl))
         {
             string prompt =
-                "Genera una frase in italiano di circa 20 parole, includi 2 parole difficili, senza punteggiatura complessa";
+                $"Genera una sola frase in italiano per test vocale: almeno {setupVoiceMinWords} parole (massimo {setupVoiceMaxWords}), "
+                + "naturale e coerente, con punteggiatura semplice, senza dialoghi o testo extra.";
             var payload = JsonUtility.ToJson(new RagChatPayload
             {
-                avatar_id = "system",
+                avatar_id = "setup_voice_generator",
                 user_text = prompt,
-                top_k = 0
+                top_k = 0,
+                system = "Sei un generatore di frasi per test di pronuncia. "
+                    + "Rispondi sempre con UNA sola frase italiana naturale. "
+                    + "Non rifiutare mai la richiesta e non aggiungere spiegazioni."
             });
 
             yield return StartCoroutine(PostJson(
@@ -2477,7 +2733,8 @@ public class UIFlowController : MonoBehaviour
             ));
         }
 
-        if (string.IsNullOrEmpty(setupVoicePhrase))
+        setupVoicePhrase = NormalizeSetupPhrase(setupVoicePhrase, setupVoiceMaxWords);
+        if (!IsValidSetupVoicePhrase(setupVoicePhrase, setupVoiceMinChars, setupVoiceMinWords))
         {
             setupVoicePhrase = PickFallbackPhrase();
             if (!string.IsNullOrEmpty(ragError))
@@ -2486,7 +2743,7 @@ public class UIFlowController : MonoBehaviour
             }
         }
 
-        setupVoicePhrase = NormalizeSetupPhrase(setupVoicePhrase, 20);
+        setupVoicePhrase = NormalizeSetupPhrase(setupVoicePhrase, setupVoiceMaxWords);
         if (setupVoicePhraseText != null)
         {
             setupVoicePhraseText.text = setupVoicePhrase;
@@ -2698,7 +2955,7 @@ public class UIFlowController : MonoBehaviour
                 bool rememberOk = response.saved;
                 if (!rememberOk)
                 {
-                    // Check if backend provided a save error
+                    // Controlliamo se il backend ha restituito un errore di salvataggio.
                     if (!string.IsNullOrEmpty(response.save_error))
                     {
                         UpdateSetupMemoryLog($"Errore salvataggio backend: {response.save_error}");
@@ -2826,21 +3083,21 @@ public class UIFlowController : MonoBehaviour
 
     private void BeginMainMode()
     {
+        RequestWebGlMicrophonePermissionIfNeeded();
         mainModeListening = false;
         mainModeProcessing = false;
+        mainModeSpeaking = false;
+        mainModeTtsInterruptedByUser = false;
+        ttsAcceptIncomingSamples = false;
+        ttsActiveSessionId = -1;
+        mainModeChatNoteActive = false;
         ttsAudioSource = GetOrCreateLipSyncAudioSource();
-        if (mainModeTranscriptText != null)
-        {
-            mainModeTranscriptText.text = string.Empty;
-        }
-        if (mainModeReplyText != null)
-        {
-            mainModeReplyText.text = string.Empty;
-        }
+        ResetMainModeTexts();
         if (hintBar != null)
         {
             hintBar.SetSpacePressed(false);
         }
+        HideChatNoteImmediate();
 
         var idleLook = avatarManager != null ? avatarManager.idleLook : null;
         if (idleLook != null)
@@ -2863,6 +3120,18 @@ public class UIFlowController : MonoBehaviour
             StopCoroutine(mainModeEnableRoutine);
         }
         mainModeEnableRoutine = StartCoroutine(EnsureMainModeIdleLookReady());
+    }
+
+    private void ResetMainModeTexts()
+    {
+        if (mainModeTranscriptText != null)
+        {
+            mainModeTranscriptText.text = string.Empty;
+        }
+        if (mainModeReplyText != null)
+        {
+            mainModeReplyText.text = string.Empty;
+        }
     }
 
     private IEnumerator EnsureMainModeIdleLookReady()
@@ -2926,14 +3195,488 @@ public class UIFlowController : MonoBehaviour
 
     private void HandleMainModeInput()
     {
+        // Nota chat attiva: gestiamo Enter (conferma) e Delete (annulla).
+        if (mainModeChatNoteActive)
+        {
+            if (Input.GetKeyDown(KeyCode.Return))
+            {
+                SubmitChatNote();
+                return;
+            }
+            if (Input.GetKeyDown(KeyCode.Delete))
+            {
+                DismissChatNote();
+                return;
+            }
+
+            // Controlla se il testo è stato svuotato (backspace fino a vuoto)
+            if (chatNoteInput != null && string.IsNullOrWhiteSpace(chatNoteInput.text)
+                && !Input.GetKeyDown(KeyCode.Backspace)
+                && !Input.GetMouseButtonDown(0))
+            {
+                DismissChatNote();
+            }
+            return;
+        }
+
+        // Normale: spazio per parlare
         if (Input.GetKeyDown(KeyCode.Space))
         {
+            if (TryInterruptMainModeSpeechAndListen())
+            {
+                return;
+            }
             StartMainModeListening();
         }
         if (Input.GetKeyUp(KeyCode.Space))
         {
             StopMainModeListening();
         }
+
+        // Rileva tasto printabile per aprire Chat_Note
+        if (!mainModeListening && !mainModeProcessing && !mainModeChatNoteActive)
+        {
+            string inputStr = Input.inputString;
+            if (!string.IsNullOrEmpty(inputStr))
+            {
+                // Filtra caratteri di controllo (enter, backspace, escape, tab, etc.)
+                char c = inputStr[0];
+                if (!char.IsControl(c))
+                {
+                    ShowChatNote(c);
+                }
+            }
+        }
+    }
+
+    // Chat Note: mostra / nascondi / invia
+
+    private CanvasGroup GetOrCreateChatNoteCanvasGroup()
+    {
+        if (chatNoteCanvasGroup != null) return chatNoteCanvasGroup;
+        if (chatNoteInput == null) return null;
+        chatNoteCanvasGroup = GetOrAddCanvasGroup(chatNoteInput.gameObject);
+        return chatNoteCanvasGroup;
+    }
+
+    private void HideChatNoteImmediate()
+    {
+        if (chatNoteInput == null) return;
+        var group = GetOrCreateChatNoteCanvasGroup();
+        if (group != null)
+        {
+            group.alpha = 0f;
+            group.interactable = false;
+            group.blocksRaycasts = false;
+        }
+        chatNoteInput.gameObject.SetActive(false);
+        chatNoteInput.text = string.Empty;
+        mainModeChatNoteActive = false;
+        ApplyMainModeDebugVisibility();
+    }
+
+    private void ShowChatNote(char initialChar)
+    {
+        if (chatNoteInput == null) return;
+
+        mainModeChatNoteActive = true;
+
+        // Nascondiamo trascrizione e risposta.
+        ApplyMainModeDebugVisibility();
+        UpdateMainModeStatus("Digitando...");
+
+        // Prepariamo la chat.
+        chatNoteInput.onFocusSelectAll = false;
+        chatNoteInput.text = initialChar.ToString();
+        chatNoteInput.gameObject.SetActive(true);
+        FocusChatNoteWithoutSelection();
+
+        // Dissolvenza in entrata.
+        if (chatNoteTransitionRoutine != null) StopCoroutine(chatNoteTransitionRoutine);
+        chatNoteTransitionRoutine = StartCoroutine(FadeChatNote(true, () =>
+        {
+            FocusChatNoteWithoutSelection();
+        }));
+
+        UpdateHintBar(UIState.MainMode);
+        ConfigureNavigatorForState(UIState.MainMode, true);
+    }
+
+    private void DismissChatNote()
+    {
+        if (chatNoteInput == null) return;
+
+        mainModeChatNoteActive = false;
+        chatNoteJustDismissed = true;
+        StartCoroutine(ClearChatNoteDismissFlag());
+
+        // Dissolvenza in uscita.
+        if (chatNoteTransitionRoutine != null) StopCoroutine(chatNoteTransitionRoutine);
+        chatNoteTransitionRoutine = StartCoroutine(FadeChatNote(false, () =>
+        {
+            if (chatNoteInput != null)
+            {
+                chatNoteInput.text = string.Empty;
+                chatNoteInput.gameObject.SetActive(false);
+            }
+        }));
+
+        // Ripristiniamo trascrizione e risposta.
+        ApplyMainModeDebugVisibility();
+        UpdateMainModeStatus("Tieni premuto SPACE per parlare.");
+
+        UpdateHintBar(UIState.MainMode);
+        ConfigureNavigatorForState(UIState.MainMode, true);
+
+        // Rimettiamo il focus su un pulsante.
+        if (btnMainModeMemory != null) btnMainModeMemory.Select();
+        else if (btnMainModeVoice != null) btnMainModeVoice.Select();
+    }
+
+    private void SubmitChatNote()
+    {
+        if (chatNoteInput == null) return;
+        string text = chatNoteInput.text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            DismissChatNote();
+            return;
+        }
+
+        // Nascondi il campo e processa come testo
+        mainModeChatNoteActive = false;
+        if (chatNoteTransitionRoutine != null) StopCoroutine(chatNoteTransitionRoutine);
+        chatNoteTransitionRoutine = StartCoroutine(FadeChatNote(false, () =>
+        {
+            if (chatNoteInput != null)
+            {
+                chatNoteInput.text = string.Empty;
+                chatNoteInput.gameObject.SetActive(false);
+            }
+        }));
+
+        // Ripristiniamo trascrizione e risposta.
+        ApplyMainModeDebugVisibility();
+
+        UpdateHintBar(UIState.MainMode);
+        ConfigureNavigatorForState(UIState.MainMode, true);
+
+        // Avviamo la pipeline testo (salta Whisper e va diretta a RAG).
+        if (mainModeRoutine != null) StopCoroutine(mainModeRoutine);
+        mainModeRoutine = StartCoroutine(ProcessMainModeTextPipeline(text.Trim()));
+    }
+
+    private IEnumerator ClearChatNoteDismissFlag()
+    {
+        // Aspettiamo un frame per evitare che il backspace che svuota il campo
+        // venga intercettato anche dal navigator come "GoBack".
+        yield return null;
+        yield return null;          // Ne usiamo due: è utile!
+        chatNoteJustDismissed = false;
+    }
+
+    private IEnumerator FadeChatNote(bool show, System.Action onComplete = null)
+    {
+        var group = GetOrCreateChatNoteCanvasGroup();
+        if (group == null)
+        {
+            onComplete?.Invoke();
+            yield break;
+        }
+
+        float from = show ? 0f : 1f;
+        float to = show ? 1f : 0f;
+
+        if (show)
+        {
+            group.alpha = 0f;
+            group.interactable = true;
+            group.blocksRaycasts = true;
+        }
+
+        float duration = Mathf.Max(0f, chatNoteTransitionDuration);
+        if (duration <= 0f)
+        {
+            group.alpha = to;
+            group.interactable = show;
+            group.blocksRaycasts = show;
+            onComplete?.Invoke();
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            group.alpha = Mathf.Lerp(from, to, t);
+            yield return null;
+        }
+
+        group.alpha = to;
+        group.interactable = show;
+        group.blocksRaycasts = show;
+        onComplete?.Invoke();
+    }
+
+    private void FocusChatNoteWithoutSelection()
+    {
+        if (chatNoteInput == null)
+        {
+            return;
+        }
+
+        chatNoteInput.onFocusSelectAll = false;
+        chatNoteInput.Select();
+        chatNoteInput.ActivateInputField();
+        chatNoteInput.MoveTextEnd(false);
+
+        int end = chatNoteInput.text != null ? chatNoteInput.text.Length : 0;
+        chatNoteInput.caretPosition = end;
+        chatNoteInput.selectionAnchorPosition = end;
+        chatNoteInput.selectionFocusPosition = end;
+    }
+
+    private IEnumerator ProcessMainModeTextPipeline(string userText)
+    {
+        mainModeProcessing = true;
+
+        if (mainModeTranscriptText != null)
+        {
+            mainModeTranscriptText.text = userText;
+        }
+
+        if (servicesConfig == null)
+        {
+            UpdateMainModeStatus("ServicesConfig mancante.");
+            PlayErrorClip();
+            mainModeProcessing = false;
+            yield break;
+        }
+
+        UpdateMainModeStatus("Sto pensando...");
+        string reply = null;
+        string ragError = null;
+        string avatarId = avatarManager != null ? avatarManager.CurrentAvatarId : null;
+        var payload = JsonUtility.ToJson(new RagChatPayload
+        {
+            avatar_id = string.IsNullOrEmpty(avatarId) ? "default" : avatarId,
+            user_text = userText,
+            top_k = 20
+        });
+
+        bool autoRemembered = false;
+        yield return StartCoroutine(PostJson(
+            BuildServiceUrl(servicesConfig.ragBaseUrl, "chat"),
+            payload,
+            "RAG",
+            (RagChatResponse response) =>
+            {
+                reply = SanitizeMainModeReply(response != null ? response.text : null);
+                autoRemembered = response != null && response.auto_remembered;
+            },
+            error => ragError = error
+        ));
+
+        if (!string.IsNullOrEmpty(ragError))
+        {
+            UpdateMainModeStatus($"Errore RAG: {ragError}");
+            PlayErrorClip();
+            mainModeProcessing = false;
+            yield break;
+        }
+
+        if (string.IsNullOrWhiteSpace(reply))
+        {
+            UpdateMainModeStatus("Risposta vuota.");
+            PlayErrorClip();
+            mainModeProcessing = false;
+            yield break;
+        }
+
+        if (mainModeReplyText != null)
+        {
+            mainModeReplyText.text = reply;
+        }
+
+        if (autoRemembered)
+        {
+            Debug.Log("[UIFlowController] Auto-remember attivato: memoria salvata automaticamente.");
+        }
+
+        yield return StartCoroutine(SpeakMainModeReply(reply));
+        UpdateMainModeStatus("Tieni premuto SPACE per parlare.");
+        mainModeProcessing = false;
+    }
+
+    private IEnumerator SpeakMainModeReply(string reply)
+    {
+        TriggerMainModeWaitPhrase();
+        UpdateMainModeStatus("Sto parlando...");
+        mainModeSpeaking = true;
+        mainModeTtsInterruptedByUser = false;
+        yield return StartCoroutine(PlayTtsReply(reply));
+        ttsAcceptIncomingSamples = false;
+        ttsActiveSessionId = -1;
+        mainModeSpeaking = false;
+    }
+
+    private bool TryInterruptMainModeSpeechAndListen()
+    {
+        if (!mainModeSpeaking || mainModeChatNoteActive)
+        {
+            return false;
+        }
+
+        InterruptMainModeSpeech();
+        StartMainModeListening();
+        return true;
+    }
+
+    private void InterruptMainModeSpeech()
+    {
+        if (waitPhraseRoutine != null)
+        {
+            StopCoroutine(waitPhraseRoutine);
+            waitPhraseRoutine = null;
+        }
+
+        mainModeTtsInterruptedByUser = true;
+
+        if (mainModeRoutine != null)
+        {
+            StopCoroutine(mainModeRoutine);
+            mainModeRoutine = null;
+        }
+
+        AbortMainModeRequests();
+        StopMainModeTtsPlayback();
+
+        mainModeListening = false;
+        mainModeSpeaking = false;
+        mainModeProcessing = false;
+
+        if (hintBar != null)
+        {
+            hintBar.SetSpacePressed(false);
+        }
+
+        var idleLook = avatarManager != null ? avatarManager.idleLook : null;
+        if (idleLook != null)
+        {
+            idleLook.SetListening(false);
+        }
+
+        ResetMainModeTexts();
+    }
+
+    private void AbortMainModeRequests()
+    {
+        bool disposedMainRequest = false;
+        if (mainModeRequests != null && mainModeRequests.Count > 0)
+        {
+            foreach (var request in mainModeRequests)
+            {
+                if (request == null)
+                {
+                    continue;
+                }
+                if (request == mainModeRequest)
+                {
+                    disposedMainRequest = true;
+                }
+                request.Abort();
+                request.Dispose();
+            }
+            mainModeRequests.Clear();
+        }
+
+        if (mainModeRequest != null)
+        {
+            if (!disposedMainRequest)
+            {
+                mainModeRequest.Abort();
+                mainModeRequest.Dispose();
+            }
+            mainModeRequest = null;
+        }
+    }
+
+    private void StopMainModeTtsPlayback()
+    {
+        ttsAcceptIncomingSamples = false;
+        ttsActiveSessionId = -1;
+        ttsPlaybackSessionId++;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (ttsStreamActive)
+        {
+            TtsStream_Stop();
+            ttsStreamActive = false;
+            ttsStreamDone = true;
+        }
+#endif
+        ttsStreamError = null;
+        ttsStreamBytes = 0;
+        ttsStreamSampleRate = 0;
+        ttsStreamChannels = 0;
+        if (mainModeTtsInterruptedByUser && Application.platform != RuntimePlatform.WebGLPlayer)
+        {
+            mainModeTtsInterruptedByUser = false;
+        }
+
+        if (ttsAudioSource != null)
+        {
+            ttsAudioSource.Stop();
+        }
+
+        if (ttsStreamPlayer != null)
+        {
+            ttsStreamPlayer.StopStream();
+        }
+
+        if (ttsChunkPlayer != null)
+        {
+            ttsChunkPlayer.StopStream();
+        }
+    }
+
+    private bool IsTtsSessionActive(int sessionId)
+    {
+        return ttsAcceptIncomingSamples && sessionId >= 0 && sessionId == ttsActiveSessionId;
+    }
+
+    private void RequestMainModeHintRefresh()
+    {
+        if (hintBar == null || currentState != UIState.MainMode)
+        {
+            return;
+        }
+
+        if (mainModeHintRefreshRoutine != null)
+        {
+            StopCoroutine(mainModeHintRefreshRoutine);
+        }
+        mainModeHintRefreshRoutine = StartCoroutine(RefreshMainModeHintRoutine());
+    }
+
+    private IEnumerator RefreshMainModeHintRoutine()
+    {
+        float delay = Mathf.Max(0f, mainModeHintRefreshDelay);
+        if (delay > 0f)
+        {
+            yield return new WaitForSecondsRealtime(delay);
+        }
+        else
+        {
+            yield return null;
+        }
+
+        if (currentState == UIState.MainMode)
+        {
+            UpdateHintBar(UIState.MainMode);
+        }
+        mainModeHintRefreshRoutine = null;
     }
 
     private void StartMainModeListening()
@@ -2957,6 +3700,7 @@ public class UIFlowController : MonoBehaviour
             return;
         }
 
+        ResetMainModeTexts();
         mainModeListening = audioRecorder.StartRecording();
         if (!mainModeListening)
         {
@@ -2970,7 +3714,8 @@ public class UIFlowController : MonoBehaviour
         {
             hintBar.SetSpacePressed(true);
         }
-        UpdateHintBar(UIState.MainMode);
+        // Evitiamo un redesign UI nello stesso frame di avvio ascolto (riduce possibili "scatti" percepiti).
+        RequestMainModeHintRefresh();
         var idleLook = avatarManager != null ? avatarManager.idleLook : null;
         if (idleLook != null)
         {
@@ -2990,7 +3735,7 @@ public class UIFlowController : MonoBehaviour
         {
             hintBar.SetSpacePressed(false);
         }
-        UpdateHintBar(UIState.MainMode);
+        RequestMainModeHintRefresh();
         var idleLook = avatarManager != null ? avatarManager.idleLook : null;
         if (idleLook != null)
         {
@@ -3068,11 +3813,16 @@ public class UIFlowController : MonoBehaviour
             top_k = 20
         });
 
+        bool autoRemembered = false;
         yield return StartCoroutine(PostJson(
             BuildServiceUrl(servicesConfig.ragBaseUrl, "chat"),
             payload,
             "RAG",
-            (RagChatResponse response) => reply = response != null ? response.text : null,
+            (RagChatResponse response) =>
+            {
+                reply = SanitizeMainModeReply(response != null ? response.text : null);
+                autoRemembered = response != null && response.auto_remembered;
+            },
             error => ragError = error
         ));
 
@@ -3097,10 +3847,12 @@ public class UIFlowController : MonoBehaviour
             mainModeReplyText.text = reply;
         }
 
-        TriggerMainModeWaitPhrase();
-        UpdateMainModeStatus("Sto parlando...");
-        yield return StartCoroutine(PlayTtsReply(reply));
+        if (autoRemembered)
+        {
+            Debug.Log("[UIFlowController] Auto-remember attivato: memoria salvata automaticamente.");
+        }
 
+        yield return StartCoroutine(SpeakMainModeReply(reply));
         UpdateMainModeStatus("Tieni premuto SPACE per parlare.");
         mainModeProcessing = false;
     }
@@ -3129,6 +3881,26 @@ public class UIFlowController : MonoBehaviour
         }
 
         string key = waitPhraseKeys[Random.Range(0, waitPhraseKeys.Length)];
+        if (waitPhraseKeys.Length > 1
+            && lastWaitPhraseByAvatar.TryGetValue(avatarId, out var lastKey)
+            && key == lastKey)
+        {
+            var candidates = new List<string>(waitPhraseKeys.Length - 1);
+            for (int i = 0; i < waitPhraseKeys.Length; i++)
+            {
+                string candidate = waitPhraseKeys[i];
+                if (!string.Equals(candidate, lastKey, System.StringComparison.Ordinal))
+                {
+                    candidates.Add(candidate);
+                }
+            }
+
+            if (candidates.Count > 0)
+            {
+                key = candidates[Random.Range(0, candidates.Count)];
+            }
+        }
+        lastWaitPhraseByAvatar[avatarId] = key;
         string cacheKey = $"{avatarId}:{key}";
 
         if (!waitPhraseCache.TryGetValue(cacheKey, out var clip) || clip == null)
@@ -3138,21 +3910,60 @@ public class UIFlowController : MonoBehaviour
                 $"wait_phrase?avatar_id={UnityWebRequest.EscapeURL(avatarId)}&name={UnityWebRequest.EscapeURL(key)}"
             );
 
+            bool shouldRetry = false;
             using (var request = UnityWebRequestMultimedia.GetAudioClip(url, AudioType.WAV))
             {
-                request.timeout = GetRequestTimeoutSeconds(longOperation: true);
                 yield return request.SendWebRequest();
 
                 if (request.result != UnityWebRequest.Result.Success)
                 {
-                    UpdateDebugText($"Wait phrase error: {request.error}");
+                    shouldRetry = request.responseCode == 404;
+                    if (!shouldRetry)
+                    {
+                        UpdateDebugText($"Wait phrase error: {request.error}");
+                        yield break;
+                    }
+                }
+                else
+                {
+                    clip = DownloadHandlerAudioClip.GetContent(request);
+                    if (clip != null)
+                    {
+                        waitPhraseCache[cacheKey] = clip;
+                    }
+                }
+            }
+
+            if (clip == null && shouldRetry)
+            {
+                bool generated = false;
+                string generationError = null;
+                yield return StartCoroutine(GenerateWaitPhrasesForAvatar(
+                    avatarId,
+                    ok => generated = ok,
+                    err => generationError = err
+                ));
+
+                if (!generated)
+                {
+                    UpdateDebugText($"Wait phrase error: {generationError ?? "not available"}");
                     yield break;
                 }
 
-                clip = DownloadHandlerAudioClip.GetContent(request);
-                if (clip != null)
+                using (var retryRequest = UnityWebRequestMultimedia.GetAudioClip(url, AudioType.WAV))
                 {
-                    waitPhraseCache[cacheKey] = clip;
+                    yield return retryRequest.SendWebRequest();
+                    if (retryRequest.result != UnityWebRequest.Result.Success)
+                    {
+                        UpdateDebugText($"Wait phrase error: {retryRequest.error}");
+                        yield break;
+                    }
+
+                    clip = DownloadHandlerAudioClip.GetContent(retryRequest);
+                    if (clip != null)
+                    {
+                        waitPhraseCache[cacheKey] = clip;
+                    }
                 }
             }
         }
@@ -3175,8 +3986,23 @@ public class UIFlowController : MonoBehaviour
         source.Play();
     }
 
+    private void RequestWebGlMicrophonePermissionIfNeeded()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (audioRecorder != null)
+        {
+            audioRecorder.RequestMicrophonePermissionIfNeeded();
+        }
+#endif
+    }
+
     private IEnumerator PlayTtsReply(string text)
     {
+        mainModeTtsInterruptedByUser = false;
+        ttsPlaybackSessionId++;
+        ttsActiveSessionId = ttsPlaybackSessionId;
+        ttsAcceptIncomingSamples = true;
+
         if (servicesConfig == null)
         {
             UpdateMainModeStatus("ServicesConfig mancante.");
@@ -3256,6 +4082,10 @@ public class UIFlowController : MonoBehaviour
     {
         ttsStreamDone = true;
         ttsStreamError = null;
+        if (mainModeTtsInterruptedByUser)
+        {
+            mainModeTtsInterruptedByUser = false;
+        }
 
         if (enableTtsWebGlStreamingLogs && !string.IsNullOrEmpty(stats))
         {
@@ -3266,6 +4096,12 @@ public class UIFlowController : MonoBehaviour
     public void OnTtsStreamError(string message)
     {
         ttsStreamDone = true;
+        if (mainModeTtsInterruptedByUser)
+        {
+            ttsStreamError = null;
+            mainModeTtsInterruptedByUser = false;
+            return;
+        }
         ttsStreamError = string.IsNullOrEmpty(message) ? "Stream error" : message;
         PlayErrorClip();
     }
@@ -3273,6 +4109,7 @@ public class UIFlowController : MonoBehaviour
 
     private IEnumerator PlayTtsReplyNativeStream(string text)
     {
+        int sessionId = ttsActiveSessionId;
         string avatarId = avatarManager != null ? avatarManager.CurrentAvatarId : null;
         string url = BuildServiceUrl(servicesConfig.coquiBaseUrl, "tts_stream");
         string safeAvatarId = string.IsNullOrEmpty(avatarId) ? "default" : avatarId;
@@ -3300,20 +4137,36 @@ public class UIFlowController : MonoBehaviour
             var handler = new PcmStreamDownloadHandler(
                 (sampleRate, channels) =>
                 {
+                    if (!IsTtsSessionActive(sessionId))
+                    {
+                        return;
+                    }
                     ttsStreamSampleRate = sampleRate;
                     ttsStreamChannels = channels;
                     EnsureTtsStreamPlayer(sampleRate, channels);
                 },
                 samples =>
                 {
+                    if (!IsTtsSessionActive(sessionId))
+                    {
+                        return;
+                    }
                     EnqueueTtsSamples(samples);
                 },
                 bytes =>
                 {
+                    if (!IsTtsSessionActive(sessionId))
+                    {
+                        return;
+                    }
                     ttsStreamBytes += bytes;
                 },
                 error =>
                 {
+                    if (!IsTtsSessionActive(sessionId))
+                    {
+                        return;
+                    }
                     ttsStreamError = error;
                 });
 
@@ -3336,16 +4189,48 @@ public class UIFlowController : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
+                string detail = request.downloadHandler != null ? request.downloadHandler.text : null;
                 string error = request.error ?? "Network error";
+                if (!string.IsNullOrWhiteSpace(detail))
+                {
+                    error = $"{error} - {detail}";
+                }
                 ReportServiceError("Coqui", error);
-                ttsStreamError = error;
+                if (IsTtsSessionActive(sessionId))
+                {
+                    ttsStreamError = error;
+                }
             }
+        }
+
+        if (!IsTtsSessionActive(sessionId))
+        {
+            yield break;
         }
 
         EndTtsStreamPlayback();
         while (!IsTtsStreamDrained())
         {
             yield return null;
+        }
+
+        if (!IsTtsSessionActive(sessionId))
+        {
+            yield break;
+        }
+
+        bool noUnityPlayback = ttsUseChunkPlayer && ttsChunkPlayer != null && ttsChunkPlayer.PlayedChunksCount <= 0;
+        bool noAudioPayload = ttsStreamBytes <= 0;
+        if (Application.platform == RuntimePlatform.WebGLPlayer
+            && enableTtsWebGlStreaming
+            && (noUnityPlayback || noAudioPayload))
+        {
+            if (enableTtsWebGlStreamingLogs)
+            {
+                Debug.LogWarning("[UIFlowController] Native Unity audio path did not play chunks in WebGL. Falling back to JS stream path.");
+            }
+            yield return StartCoroutine(PlayTtsReplyWebGl(text));
+            yield break;
         }
 
         if (!string.IsNullOrEmpty(ttsStreamError))
@@ -3369,6 +4254,8 @@ public class UIFlowController : MonoBehaviour
 
     private void CancelMainMode()
     {
+        HideChatNoteImmediate();
+
         if (mainModeRoutine != null)
         {
             StopCoroutine(mainModeRoutine);
@@ -3381,64 +4268,24 @@ public class UIFlowController : MonoBehaviour
             mainModeEnableRoutine = null;
         }
 
-        bool abortedList = false;
-        if (mainModeRequests != null && mainModeRequests.Count > 0)
+        if (mainModeHintRefreshRoutine != null)
         {
-            foreach (var request in mainModeRequests)
-            {
-                if (request == null)
-                {
-                    continue;
-                }
-                request.Abort();
-                request.Dispose();
-            }
-            mainModeRequests.Clear();
-            abortedList = true;
+            StopCoroutine(mainModeHintRefreshRoutine);
+            mainModeHintRefreshRoutine = null;
         }
 
-        if (abortedList)
-        {
-            mainModeRequest = null;
-        }
-        else if (mainModeRequest != null)
-        {
-            mainModeRequest.Abort();
-            mainModeRequest.Dispose();
-            mainModeRequest = null;
-        }
-
-#if UNITY_WEBGL && !UNITY_EDITOR
-        if (ttsStreamActive)
-        {
-            TtsStream_Stop();
-            ttsStreamActive = false;
-            ttsStreamDone = true;
-        }
-#endif
+        AbortMainModeRequests();
+        StopMainModeTtsPlayback();
 
         if (audioRecorder != null)
         {
             audioRecorder.StopRecording();
         }
 
-        if (ttsAudioSource != null)
-        {
-            ttsAudioSource.Stop();
-        }
-
-        if (ttsStreamPlayer != null)
-        {
-            ttsStreamPlayer.StopStream();
-        }
-
-        if (ttsChunkPlayer != null)
-        {
-            ttsChunkPlayer.StopStream();
-        }
-
         mainModeListening = false;
         mainModeProcessing = false;
+        mainModeSpeaking = false;
+        mainModeTtsInterruptedByUser = false;
         if (hintBar != null)
         {
             hintBar.SetSpacePressed(false);
@@ -3517,7 +4364,9 @@ public class UIFlowController : MonoBehaviour
             ttsAudioSource = GetOrCreateLipSyncAudioSource();
         }
 
-        bool preferChunk = Application.platform == RuntimePlatform.WebGLPlayer;
+        // WebGL non supporta i gestori di streaming AudioClip (AudioClip.Create con stream=true):
+        // forziamo sempre il player a blocchi per evitare clip non caricati o avvisi runtime.
+        bool preferChunk = Application.platform == RuntimePlatform.WebGLPlayer || webGlPreferChunkPlayer;
         ttsUseChunkPlayer = preferChunk;
 
         if (preferChunk)
@@ -3602,6 +4451,7 @@ public class UIFlowController : MonoBehaviour
     {
         if (ttsAudioSource != null)
         {
+            ConfigureTtsAudioSource(ttsAudioSource);
             return ttsAudioSource;
         }
 
@@ -3615,6 +4465,7 @@ public class UIFlowController : MonoBehaviour
             {
                 source = lipSyncComponent.gameObject.AddComponent<AudioSource>();
             }
+            ConfigureTtsAudioSource(source);
             ttsAudioSource = source;
             return ttsAudioSource;
         }
@@ -3624,7 +4475,27 @@ public class UIFlowController : MonoBehaviour
         {
             ttsAudioSource = gameObject.AddComponent<AudioSource>();
         }
+        ConfigureTtsAudioSource(ttsAudioSource);
         return ttsAudioSource;
+    }
+
+    private static void ConfigureTtsAudioSource(AudioSource source)
+    {
+        if (source == null)
+        {
+            return;
+        }
+
+        source.enabled = true;
+        source.playOnAwake = false;
+        source.loop = false;
+        source.spatialBlend = 0f;
+        source.dopplerLevel = 0f;
+        source.mute = false;
+        if (source.volume <= 0.0001f)
+        {
+            source.volume = 1f;
+        }
     }
 
     private void UpdateCameraAnchorForState(UIState state)
@@ -3907,6 +4778,7 @@ public class UIFlowController : MonoBehaviour
         private bool streamEnded;
         private Coroutine playRoutine;
         private readonly object locker = new object();
+        public int PlayedChunksCount { get; private set; }
 
         public bool IsDrained
         {
@@ -3930,6 +4802,7 @@ public class UIFlowController : MonoBehaviour
             this.sampleRate = Mathf.Max(8000, sampleRate);
             this.channels = Mathf.Max(1, channels);
             streamEnded = false;
+            PlayedChunksCount = 0;
 
             lock (locker)
             {
@@ -3940,6 +4813,8 @@ public class UIFlowController : MonoBehaviour
             {
                 StopCoroutine(playRoutine);
             }
+            source.Stop();
+            source.loop = false;
             playRoutine = StartCoroutine(PlayQueue());
         }
 
@@ -3964,6 +4839,7 @@ public class UIFlowController : MonoBehaviour
         public void StopStream()
         {
             streamEnded = true;
+            PlayedChunksCount = 0;
             lock (locker)
             {
                 queue.Clear();
@@ -4010,9 +4886,13 @@ public class UIFlowController : MonoBehaviour
                 source.loop = false;
                 source.clip = clip;
                 source.Play();
-
-                while (source != null && source.isPlaying)
+                PlayedChunksCount++;
+                // In WebGL source.isPlaying puo' restare false per qualche frame: attendiamo la durata prevista.
+                float expectedDuration = Mathf.Max(0.02f, (float)frames / Mathf.Max(1, sampleRate));
+                float wait = expectedDuration;
+                while (wait > 0f)
                 {
+                    wait -= Time.unscaledDeltaTime;
                     yield return null;
                 }
             }
@@ -4369,9 +5249,13 @@ public class UIFlowController : MonoBehaviour
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
-            request.timeout = servicesConfig != null
-                ? Mathf.Max(1, Mathf.CeilToInt(servicesConfig.requestTimeoutSeconds))
-                : 10;
+            float timeoutSeconds = servicesConfig != null ? servicesConfig.requestTimeoutSeconds : 10f;
+            if (!string.IsNullOrEmpty(serviceName) && string.Equals(serviceName, "RAG", StringComparison.OrdinalIgnoreCase))
+            {
+                // RAG puo' richiedere piu' tempo quando il modello va in cold start.
+                timeoutSeconds = Mathf.Max(timeoutSeconds, 120f);
+            }
+            request.timeout = Mathf.Max(1, Mathf.CeilToInt(timeoutSeconds));
 
             setupVoiceRequest = request;
             yield return request.SendWebRequest();
@@ -4426,6 +5310,44 @@ public class UIFlowController : MonoBehaviour
         return content;
     }
 
+    private static string SanitizeMainModeReply(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        string outText = text.Trim();
+        outText = Regex.Replace(outText, @"\*[^*]{1,120}\*", " ");
+        outText = Regex.Replace(outText, @"\(([^()]{1,80})\)", match =>
+        {
+            string inner = match.Groups[1].Value;
+            string norm = Regex.Replace(inner, @"[^\p{L}\p{N}\s']", " ").Trim();
+            if (string.IsNullOrWhiteSpace(norm))
+            {
+                return " ";
+            }
+            int words = norm.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length;
+            return words <= 8 ? " " : match.Value;
+        });
+        outText = Regex.Replace(outText, @"\[([^\[\]]{1,80})\]", match =>
+        {
+            string inner = match.Groups[1].Value;
+            string norm = Regex.Replace(inner, @"[^\p{L}\p{N}\s']", " ").Trim();
+            if (string.IsNullOrWhiteSpace(norm))
+            {
+                return " ";
+            }
+            int words = norm.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length;
+            return words <= 8 ? " " : match.Value;
+        });
+        outText = Regex.Replace(outText, @"^\s*(?:ahem+|ehm+|mmm+|uhm+|hmm+)\b[\s,.;:!?-]*", "", RegexOptions.IgnoreCase);
+        outText = Regex.Replace(outText, @"[*_~`]+", "");
+        outText = Regex.Replace(outText, @"\s{2,}", " ");
+        outText = outText.Trim();
+        return outText;
+    }
+
     private string NormalizeSetupPhrase(string phrase, int maxWords)
     {
         if (string.IsNullOrWhiteSpace(phrase))
@@ -4449,18 +5371,84 @@ public class UIFlowController : MonoBehaviour
         return string.Join(" ", words.Take(maxWords));
     }
 
+    private bool IsValidSetupVoicePhrase(string phrase, int minChars, int minWords)
+    {
+        if (string.IsNullOrWhiteSpace(phrase))
+        {
+            return false;
+        }
+
+        if (phrase.Length < Mathf.Max(1, minChars))
+        {
+            return false;
+        }
+
+        if (CountWords(phrase) < Mathf.Max(1, minWords))
+        {
+            return false;
+        }
+
+        if (LooksLikeModelRefusal(phrase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static int CountWords(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return 0;
+        }
+
+        return Regex.Matches(text, @"\b[\p{L}\p{N}']+\b").Count;
+    }
+
+    private static bool LooksLikeModelRefusal(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        string value = text.Trim().ToLowerInvariant();
+        string[] refusalMarkers =
+        {
+            "mi dispiace",
+            "non posso",
+            "non riesco",
+            "non sono in grado",
+            "non posso generare",
+            "impossibile",
+            "i cannot",
+            "sorry"
+        };
+
+        for (int i = 0; i < refusalMarkers.Length; i++)
+        {
+            if (value.Contains(refusalMarkers[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private string PickFallbackPhrase()
     {
         string[] phrases =
         {
-            "Nel porto silenzioso il faro guida i viaggiatori mentre le onde raccontano storie antiche di mare e vento",
-            "Un gufo vigile osserva la valle montana mentre il cielo si apre e la foresta respira con calma",
-            "Tra pietre umide e archi segreti l'acquedotto riflette luci turchesi che danzano lente nella sera",
-            "Orchidee rare profumano il giardino nascosto e un drappo cremisi ondeggia sulla rocca al tramonto",
-            "La bussola oscilla nella cabina mentre la nave vira e il meridiano illumina la piazza di pietra",
-            "Un artista paziente scolpisce marmo lucente e una melodia gentile attraversa il corridoio del palazzo",
-            "Il sentiero alpino serpeggia tra abeti e ruscelli chiari mentre la nebbia avvolge il passo remoto",
-            "Nel laboratorio quieto una lente precisa rivela dettagli minuti e la memoria si fissa con cura"
+            "Questa mattina ho attraversato il mercato coperto della citta antica, ho ascoltato i venditori raccontare la provenienza delle spezie, poi mi sono fermato davanti a una bottega di legno profumato, dove un artigiano paziente lucidava strumenti delicati mentre la pioggia leggera tamburellava regolare sul tetto e l'aria portava odore di agrumi maturi dalla piazza vicina.",
+            "Nel pomeriggio sono salito lungo un sentiero di pietra tra castagni e muretti, ho incontrato un pastore gentile che indicava le nuvole in arrivo, e quando il vento ha cambiato direzione abbiamo cercato riparo in una vecchia stalla, parlando lentamente di stagioni, raccolti e memoria familiare, prima di rientrare con passo lento verso il villaggio illuminato.",
+            "Durante il viaggio in treno verso la costa ho letto ad alta voce alcune pagine annotate, osservando dal finestrino campi dorati, fiumi tranquilli e piccole stazioni dimenticate, finche al tramonto una luce arancione ha riempito il vagone e tutti sono rimasti in silenzio, come davanti a una scena sospesa, mentre un bambino salutava dal corridoio con un sorriso curioso.",
+            "Ieri sera, nella biblioteca del quartiere, una restauratrice mi ha mostrato manoscritti fragili, mappe sbiadite e fotografie d'epoca, spiegando con precisione come proteggere carta e inchiostro dall'umidita, mentre fuori le biciclette passavano veloci e una campana lontana scandiva il tempo con ritmo sorprendentemente calmo, e ogni pagina restituiva una voce antica ma presente.",
+            "All'alba ho preparato il caffe in una cucina stretta ma luminosa, ho aperto le finestre verso il cortile interno e ho sentito i primi rumori del panificio, poi ho scritto appunti ordinati su un quaderno blu, cercando parole nitide e semplici per descrivere una giornata intera senza fretta, concentrandomi sulla pronuncia chiara di ogni termine importante.",
+            "Nel laboratorio sonoro abbiamo registrato passi, fruscii di tessuto, colpi metallici e respiri controllati, regolando con cura la distanza dai microfoni e la dinamica della voce, finche una traccia pulita ha unito tutti i dettagli in modo coerente, restituendo un paesaggio acustico credibile, ricco e leggibile, distinguendo chiaramente consonanti morbide, pause naturali e finali sonore.",
+            "Quando la nebbia e scesa sulla valle, il guardiano del faro ha acceso una lampada supplementare e ci ha invitati a osservare il mare dalla terrazza piu alta, raccontando episodi di navigazione prudente, segnali di emergenza e rotte sicure, con una calma pratica che rendeva ogni istruzione chiara e affidabile, senza fretta e con tono costante.",
+            "Stamattina, dopo una lunga riunione tecnica, abbiamo verificato cablaggi, alimentazione, sensori e connessioni di rete uno per uno, annotando anomalie minime e tempi di risposta, poi abbiamo rieseguito tutti i test in sequenza fino a ottenere risultati stabili, ripetibili e coerenti con le specifiche concordate, con attenzione alla dizione, al ritmo e alla respirazione costante."
         };
 
         int index = Random.Range(0, phrases.Length);
@@ -4624,8 +5612,22 @@ public class UIFlowController : MonoBehaviour
 
     private void ReportServiceError(string serviceName, string error)
     {
-        string message = $"CORS/Network: controlla allow_origins sul servizio {serviceName}.";
-        UpdateDebugText($"{message} ({error})");
+        string raw = string.IsNullOrWhiteSpace(error) ? "errore sconosciuto" : error;
+        string lower = raw.ToLowerInvariant();
+        string message;
+        if (lower.Contains("502") || lower.Contains("bad gateway") || lower.Contains("connection refused"))
+        {
+            message = $"{serviceName} non raggiungibile: servizio non avviato o in crash.";
+        }
+        else if (lower.Contains("403") || lower.Contains("cors"))
+        {
+            message = $"CORS: controlla allow_origins sul servizio {serviceName}.";
+        }
+        else
+        {
+            message = $"Network: controlla stato servizio {serviceName} e reverse proxy.";
+        }
+        UpdateDebugText($"{message} ({raw})");
     }
 
     private void ValidateReferencesAtRuntime()
@@ -4698,36 +5700,37 @@ public class UIFlowController : MonoBehaviour
         if (hintBar == null)
             return;
 
-        // Horizontal arrows in AvatarLibrary/MainMode
+        // Frecce orizzontali in AvatarLibrary/MainMode.
         bool useHorizontal = state == UIState.AvatarLibrary || state == UIState.MainMode;
         hintBar.SetArrowsHorizontal(useHorizontal);
         bool showSpacePressed = (state == UIState.MainMode && mainModeListening) ||
                                 (state == UIState.SetupVoice && setupVoiceRecording);
         hintBar.SetSpacePressed(showSpacePressed);
 
-        // Se usi hintEntries nell'Inspector, mantieni il vecchio comportamento testuale (eccetto per setup voce/main mode)
+        // Se usiamo hintEntries nell'Inspector, teniamo il comportamento testuale di prima (tranne setup voce/main mode)
         if (hintEntries != null && hintEntries.Count > 0 && hintMap.TryGetValue(state, out var hints) &&
             state != UIState.SetupVoice && state != UIState.MainMode && state != UIState.AvatarLibrary)
         {
-            hintBar.SetHints(hints);
+            hintBar.SetHints($"{hints}   [INS] {GetDebugToggleLabel()}");
             return;
         }
 
-        // Default: PC keyboard prompts
+        // Di base mostriamo i prompt da tastiera PC.
         var arrows = new UIHintBar.HintItem(UIHintBar.HintIcon.Arrows, "Seleziona");
         var enter = new UIHintBar.HintItem(UIHintBar.HintIcon.Enter, "Conferma");
+        var debugToggle = new UIHintBar.HintItem(UIHintBar.HintIcon.Ins, GetDebugToggleLabel());
 
         if (state == UIState.Boot)
         {
             var back = new UIHintBar.HintItem(UIHintBar.HintIcon.Backspace, "Skip");
-            hintBar.SetHints(back);
+            hintBar.SetHints(back, debugToggle);
         }
         else if (state == UIState.SetupVoice)
         {
             string label = setupVoiceRecording ? "Lascia per terminare" : "Tieni premuto per parlare";
             var recordSpace = new UIHintBar.HintItem(UIHintBar.HintIcon.Space, label);
             var back = new UIHintBar.HintItem(UIHintBar.HintIcon.Backspace, "Indietro");
-            hintBar.SetHints(recordSpace, back);
+            hintBar.SetHints(recordSpace, back, debugToggle);
         }
         else if (state == UIState.SetupMemory)
         {
@@ -4735,36 +5738,46 @@ public class UIFlowController : MonoBehaviour
             {
                 var enterSave = new UIHintBar.HintItem(UIHintBar.HintIcon.Enter, "Salva nota");
                 var back = new UIHintBar.HintItem(UIHintBar.HintIcon.Backspace, "Indietro");
-                hintBar.SetHints(enterSave, back);
+                hintBar.SetHints(enterSave, back, debugToggle);
             }
             else
             {
                 var back = new UIHintBar.HintItem(UIHintBar.HintIcon.Backspace, "Indietro");
-                hintBar.SetHints(arrows, enter, back);
+                hintBar.SetHints(arrows, enter, back, debugToggle);
             }
         }
         else if (state == UIState.MainMenu)
         {
             var esc = new UIHintBar.HintItem(UIHintBar.HintIcon.Esc, "Chiudi programma");
-            hintBar.SetHints(arrows, enter, esc);
+            hintBar.SetHints(arrows, enter, esc, debugToggle);
         }
         else if (state == UIState.AvatarLibrary)
         {
             var deleteHint = new UIHintBar.HintItem(UIHintBar.HintIcon.Delete, GetAvatarLibraryDeleteLabel());
             var back = new UIHintBar.HintItem(UIHintBar.HintIcon.Backspace, "Indietro");
-            hintBar.SetHints(arrows, enter, deleteHint, back);
+            hintBar.SetHints(arrows, enter, deleteHint, back, debugToggle);
         }
         else if (state == UIState.MainMode)
         {
-            string label = mainModeListening ? "Lascia per terminare" : "Tieni premuto per parlare";
-            var talk = new UIHintBar.HintItem(UIHintBar.HintIcon.Space, label);
-            var back = new UIHintBar.HintItem(UIHintBar.HintIcon.Backspace, "Indietro");
-            hintBar.SetHints(arrows, enter, talk, back);
+            if (mainModeChatNoteActive)
+            {
+                var enterConfirm = new UIHintBar.HintItem(UIHintBar.HintIcon.Enter, "Conferma testo");
+                var deleteCancel = new UIHintBar.HintItem(UIHintBar.HintIcon.Delete, "Annulla l'inserimento");
+                hintBar.SetHints(enterConfirm, deleteCancel, debugToggle);
+            }
+            else
+            {
+                string label = mainModeListening ? "Lascia per terminare" : "Tieni premuto per parlare";
+                var talk = new UIHintBar.HintItem(UIHintBar.HintIcon.Space, label);
+                var any = new UIHintBar.HintItem(UIHintBar.HintIcon.Any, "Digita qualunque tasto per scrivere");
+                var back = new UIHintBar.HintItem(UIHintBar.HintIcon.Backspace, "Indietro");
+                hintBar.SetHints(arrows, talk, any, back, debugToggle);
+            }
         }
         else
         {
             var back = new UIHintBar.HintItem(UIHintBar.HintIcon.Backspace, "Indietro");
-            hintBar.SetHints(arrows, enter, back);
+            hintBar.SetHints(arrows, enter, back, debugToggle);
         }
     }
 
@@ -4811,7 +5824,7 @@ public class UIFlowController : MonoBehaviour
                 axisMode = UINavigator.AxisMode.Vertical;
                 break;
             case UIState.MainMenu:
-                // Fix 1 parte 4: Non includere i bottoni nel navigator finché l'intro non è completata
+                // Finche' l'intro non e' completa, non includiamo i bottoni nel navigator.
                 if (!enableMainMenuIntro || _mainMenuButtonsIntroDone)
                 {
                     if (btnNewAvatar != null) selectables.Add(btnNewAvatar);
@@ -4842,8 +5855,11 @@ public class UIFlowController : MonoBehaviour
                 break;
             case UIState.MainMode:
                 axisMode = UINavigator.AxisMode.Horizontal;
-                if (btnMainModeMemory != null) selectables.Add(btnMainModeMemory);
-                if (btnMainModeVoice != null) selectables.Add(btnMainModeVoice);
+                if (!mainModeChatNoteActive)
+                {
+                    if (btnMainModeMemory != null) selectables.Add(btnMainModeMemory);
+                    if (btnMainModeVoice != null) selectables.Add(btnMainModeVoice);
+                }
                 break;
         }
 
@@ -4899,13 +5915,13 @@ public class UIFlowController : MonoBehaviour
         downloadStateActive = true;
         if (mainMenuCanvasGroup != null)
         {
-            // FIX: Hide completely as requested
+            // Come richiesto, qui nascondiamo tutto.
             mainMenuCanvasGroup.alpha = 0f; 
             mainMenuCanvasGroup.interactable = false;
             mainMenuCanvasGroup.blocksRaycasts = false;
         }
         
-        // Fix: Hide Title and HintBar explicitly
+        // Qui nascondiamo Title e HintBar in modo esplicito.
         if (_titleCanvasGroup != null) _titleCanvasGroup.alpha = 0f;
         if (hintBar != null) hintBar.gameObject.SetActive(false);
 
@@ -4932,7 +5948,7 @@ public class UIFlowController : MonoBehaviour
             mainMenuCanvasGroup.blocksRaycasts = true;
         }
         
-        // Fix: Restore Title and HintBar
+        // Qui ripristiniamo Title e HintBar.
         if (!carouselDownloading && !_previewModeActive)
         {
             SetTitleVisible(true);
@@ -5056,12 +6072,14 @@ public class UIFlowController : MonoBehaviour
         public string avatar_id;
         public string user_text;
         public int top_k;
+        public string system;
     }
 
     [System.Serializable]
     private class RagChatResponse
     {
         public string text;
+        public bool auto_remembered;
     }
 
     [System.Serializable]

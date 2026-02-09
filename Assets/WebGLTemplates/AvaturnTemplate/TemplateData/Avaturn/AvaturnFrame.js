@@ -1,11 +1,11 @@
 import { AvaturnSDK } from "https://cdn.jsdelivr.net/npm/@avaturn/sdk/dist/index.js";
 
-/** Url should be of form https://${subdomain}.avaturn.dev or received from API */
+/** Qui usiamo URL nel formato https://${subdomain}.avaturn.dev o ricevuto dalle API. */
 function setupIframe(url, version, platform) {
 
     const container = document.getElementById("avaturn-sdk-container");
 
-    // Init SDK and callback
+    // Inizializziamo SDK e callback
     const sdk = new AvaturnSDK();
 
 	window.avaturnSDKEnvironment = JSON.stringify({ engine: 'Unity', version, platform });
@@ -43,7 +43,7 @@ function hideIframe() {
 }
 
 
-// private
+// Qui teniamo la sezione privata
 function _dataURItoBlob(dataURI) {
     let mime = dataURI.split(',')[0].split(':')[1].split(';')[0];
     let binary = atob(dataURI.split(',')[1]);
