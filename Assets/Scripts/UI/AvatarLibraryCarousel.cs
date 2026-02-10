@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.EventSystems;
 using Avaturn.Core.Runtime.Scripts.Avatar;
 
 public class AvatarLibraryCarousel : MonoBehaviour
@@ -41,6 +42,9 @@ public class AvatarLibraryCarousel : MonoBehaviour
     [SerializeField] private float scrollLerp = 8f;
     [SerializeField] private float trackOffsetX = 0.8f;
     [SerializeField, Min(0.1f)] private float scrollStepMultiplier = 1f;
+    [SerializeField] private bool centerCarouselInTouchMode = true;
+    [SerializeField] private float touchTrackOffsetX = 0f;
+    [SerializeField, Min(0.1f)] private float touchScrollStepMultiplier = 1f;
 
     [Header("Selection FX")]
     [SerializeField] private float rotationSpeed = 25f;
@@ -60,6 +64,10 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
     [Header("Input")]
     [SerializeField] private float enterLibraryInputLockSeconds = 0.25f;
+    [SerializeField] private bool enableTouchInput = true;
+    [SerializeField, Min(12f)] private float touchSwipeThresholdPixels = 70f;
+    [SerializeField, Min(0.05f)] private float touchTapMaxDurationSeconds = 0.25f;
+    [SerializeField, Min(2f)] private float touchTapMaxMovePixels = 20f;
     private float inputLockedUntil = 0f;
 
     [Header("Preview Download")]
@@ -86,6 +94,11 @@ public class AvatarLibraryCarousel : MonoBehaviour
     private bool fxActive;
     private Coroutine fxRoutine;
     private Transform _stagingRoot;
+    private int trackedTouchFingerId = -1;
+    private Vector2 trackedTouchStartPosition;
+    private float trackedTouchStartTime;
+    private bool trackedTouchStartedOverUi;
+    private bool trackedTouchConsumedBySwipe;
 
     public void Initialize(AvatarManager manager, UIFlowController flowController)
     {
@@ -241,11 +254,11 @@ public class AvatarLibraryCarousel : MonoBehaviour
         // Qui verifichiamo se conferma/indietro sono ancora bloccati all'ingresso.
         bool lockConfirmAndBack = Time.unscaledTime < inputLockedUntil;
 
-        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        if (IsMoveLeftPressed())
         {
             SetSelectedIndex(selectedIndex - 1);
         }
-        else if (Input.GetKeyDown(KeyCode.RightArrow))
+        else if (IsMoveRightPressed())
         {
             SetSelectedIndex(selectedIndex + 1);
         }
@@ -253,21 +266,181 @@ public class AvatarLibraryCarousel : MonoBehaviour
         // Solo se non bloccati
         if (!lockConfirmAndBack)
         {
-            if (Input.GetKeyDown(KeyCode.Return))
+            if (IsSubmitPressed())
             {
                 ConfirmSelection();
             }
-            else if (Input.GetKeyDown(KeyCode.Delete))
+            else if (IsDeletePressed())
             {
                 uiFlowController?.RequestDeleteSelectedAvatar();
                 return;
             }
-            else if (Input.GetKeyDown(KeyCode.Backspace))
+            else if (IsBackPressed())
             {
-                uiFlowController?.GoToMainMenu();
+                uiFlowController?.GoBack();
                 return;
             }
         }
+
+        HandleTouchInput(lockConfirmAndBack);
+    }
+
+    private void HandleTouchInput(bool lockConfirmAndBack)
+    {
+        if (!enableTouchInput || !Input.touchSupported)
+        {
+            return;
+        }
+
+        int touchCount = Input.touchCount;
+        if (touchCount <= 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < touchCount; i++)
+        {
+            Touch touch = Input.GetTouch(i);
+            switch (touch.phase)
+            {
+                case TouchPhase.Began:
+                    if (trackedTouchFingerId != -1)
+                    {
+                        break;
+                    }
+
+                    trackedTouchFingerId = touch.fingerId;
+                    trackedTouchStartPosition = touch.position;
+                    trackedTouchStartTime = Time.unscaledTime;
+                    trackedTouchStartedOverUi = IsTouchOverUi(touch.fingerId);
+                    trackedTouchConsumedBySwipe = false;
+                    break;
+
+                case TouchPhase.Moved:
+                case TouchPhase.Stationary:
+                    if (touch.fingerId != trackedTouchFingerId || trackedTouchStartedOverUi || trackedTouchConsumedBySwipe)
+                    {
+                        break;
+                    }
+
+                    Vector2 delta = touch.position - trackedTouchStartPosition;
+                    float absX = Mathf.Abs(delta.x);
+                    float absY = Mathf.Abs(delta.y);
+                    if (absX >= touchSwipeThresholdPixels && absX > absY)
+                    {
+                        int direction = delta.x < 0f ? 1 : -1;
+                        SetSelectedIndex(selectedIndex + direction);
+                        trackedTouchConsumedBySwipe = true;
+                    }
+                    break;
+
+                case TouchPhase.Ended:
+                case TouchPhase.Canceled:
+                    if (touch.fingerId != trackedTouchFingerId)
+                    {
+                        break;
+                    }
+
+                    if (!trackedTouchStartedOverUi && !trackedTouchConsumedBySwipe && !lockConfirmAndBack)
+                    {
+                        Vector2 releaseDelta = touch.position - trackedTouchStartPosition;
+                        float duration = Time.unscaledTime - trackedTouchStartTime;
+                        float maxMoveSqr = touchTapMaxMovePixels * touchTapMaxMovePixels;
+                        if (releaseDelta.sqrMagnitude <= maxMoveSqr && duration <= touchTapMaxDurationSeconds)
+                        {
+                            ConfirmSelection();
+                        }
+                    }
+
+                    trackedTouchFingerId = -1;
+                    trackedTouchStartedOverUi = false;
+                    trackedTouchConsumedBySwipe = false;
+                    break;
+            }
+        }
+    }
+
+    private static bool IsTouchOverUi(int fingerId)
+    {
+        var eventSystem = EventSystem.current;
+        return eventSystem != null && eventSystem.IsPointerOverGameObject(fingerId);
+    }
+
+    private static bool IsSubmitPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.Return))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = UnityEngine.InputSystem.Keyboard.current;
+        if (keyboard != null)
+        {
+            return keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame;
+        }
+#endif
+        return false;
+    }
+
+    private static bool IsBackPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.Backspace))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        return UnityEngine.InputSystem.Keyboard.current != null &&
+               UnityEngine.InputSystem.Keyboard.current.backspaceKey.wasPressedThisFrame;
+#else
+        return false;
+#endif
+    }
+
+    private static bool IsDeletePressed()
+    {
+        if (Input.GetKeyDown(KeyCode.Delete))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        return UnityEngine.InputSystem.Keyboard.current != null &&
+               UnityEngine.InputSystem.Keyboard.current.deleteKey.wasPressedThisFrame;
+#else
+        return false;
+#endif
+    }
+
+    private static bool IsMoveLeftPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        return UnityEngine.InputSystem.Keyboard.current != null &&
+               UnityEngine.InputSystem.Keyboard.current.leftArrowKey.wasPressedThisFrame;
+#else
+        return false;
+#endif
+    }
+
+    private static bool IsMoveRightPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        return UnityEngine.InputSystem.Keyboard.current != null &&
+               UnityEngine.InputSystem.Keyboard.current.rightArrowKey.wasPressedThisFrame;
+#else
+        return false;
+#endif
     }
 
     private void SetSelectedIndex(int index)
@@ -337,9 +510,12 @@ public class AvatarLibraryCarousel : MonoBehaviour
             return;
         }
 
+        float offsetX = GetActiveTrackOffsetX();
+        float stepMultiplier = GetActiveScrollStepMultiplier();
+
         // Il track offset sposta tutto il carosello per centrare gli elementi.
         // Regola: `trackOffsetX` da' lo shift base, `selectedIndex * spacing` porta all'elemento selezionato.
-        float targetOffset = trackOffsetX - selectedIndex * spacing * scrollStepMultiplier;
+        float targetOffset = offsetX - selectedIndex * spacing * stepMultiplier;
         Vector3 target = trackBaseLocalPosition + new Vector3(targetOffset, 0f, 0f);
         trackRoot.localPosition = Vector3.Lerp(trackRoot.localPosition, target, scrollLerp * Time.unscaledDeltaTime);
     }
@@ -647,7 +823,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
                     Light lightComp = lightObj.GetComponent<Light>();
                     if (lightComp != null)
                     {
-                        lightComp.intensity = 1.2f; // Leggermente più forte per evidenziare
+                        lightComp.intensity = 1.2f; // Leggermente piÃƒÂ¹ forte per evidenziare
                         lightComp.range = 6f;
                         lightComp.color = highlightColor;
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -767,7 +943,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
         // Non cloniamo figlio-per-figlio.
         // Molti avatar GLTF hanno armature e skinned mesh come siblings; clonare separatamente
-        // può lasciare bones/rootBone puntati all'originale e rompersi quando il loader viene distrutto.
+        // puÃƒÂ² lasciare bones/rootBone puntati all'originale e rompersi quando il loader viene distrutto.
         // Spostiamo (reparent) l'intera gerarchia preservando le trasformazioni.
         bool isLocal = item.data.bodyId == "local" || (item.data.avatarId != null && item.data.avatarId.StartsWith("LOCAL_"));
         while (loaderTransform.childCount > 0)
@@ -797,7 +973,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
             r.gameObject.SetActive(true);
             r.enabled = true;
 
-            // Pulisce eventuali override precedenti sui materiali (può evitare tint/emission strani)
+            // Pulisce eventuali override precedenti sui materiali (puÃƒÂ² evitare tint/emission strani)
             r.SetPropertyBlock(null);
         }
 
@@ -887,10 +1063,30 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
         if (trackRoot != null)
         {
-            trackRoot.localPosition = trackBaseLocalPosition + new Vector3(trackOffsetX, 0f, 0f);
+            trackRoot.localPosition = trackBaseLocalPosition + new Vector3(GetActiveTrackOffsetX(), 0f, 0f);
         }
 
         ResetAllItemRotationsImmediate();
+    }
+
+    private float GetActiveTrackOffsetX()
+    {
+        if (centerCarouselInTouchMode && uiFlowController != null && uiFlowController.IsTouchUiActive)
+        {
+            return touchTrackOffsetX;
+        }
+
+        return trackOffsetX;
+    }
+
+    private float GetActiveScrollStepMultiplier()
+    {
+        if (centerCarouselInTouchMode && uiFlowController != null && uiFlowController.IsTouchUiActive)
+        {
+            return touchScrollStepMultiplier;
+        }
+
+        return scrollStepMultiplier;
     }
 
     private void ResetAllItemRotationsImmediate()
@@ -1064,7 +1260,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
         {
             downloadQueue.Enqueue(index);
         }
-    }
+    }
     private IEnumerator StaggeredFadeIn()
     {
         for (int i = 0; i < items.Count; i++)

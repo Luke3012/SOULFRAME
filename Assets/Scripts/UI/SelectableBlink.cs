@@ -86,7 +86,7 @@ public class SelectableBlink : MonoBehaviour
     {
         if (EventSystem.current == null)
         {
-            return true;
+            return false;
         }
 
         GameObject selected = EventSystem.current.currentSelectedGameObject;

@@ -3,6 +3,9 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 public class UINavigator : MonoBehaviour
 {
@@ -132,6 +135,7 @@ public class UINavigator : MonoBehaviour
             return;
         }
 
+        EnsureValidSelection(false);
         UpdateSelectionAudio();
 
         if (HandleConfirm())
@@ -149,7 +153,7 @@ public class UINavigator : MonoBehaviour
             return false;
         }
 
-        if (!Input.GetKeyDown(KeyCode.Return))
+        if (!IsSubmitPressed())
         {
             return false;
         }
@@ -193,14 +197,14 @@ public class UINavigator : MonoBehaviour
             }
         }
 
-        if (Input.GetKeyDown(KeyCode.Backspace))
+        if (IsBackPressed())
         {
             PlayAudio(backClip);
             backAction?.Invoke();
             return true;
         }
 
-        if (Input.GetKeyDown(KeyCode.Escape) && allowExit)
+        if (IsExitPressed() && allowExit)
         {
             PlayAudio(backClip);
             exitAction?.Invoke();
@@ -216,11 +220,11 @@ public class UINavigator : MonoBehaviour
 
         if (axisMode == AxisMode.Vertical || axisMode == AxisMode.Both)
         {
-            if (Input.GetKeyDown(KeyCode.UpArrow))
+            if (IsMoveUpPressed())
             {
                 direction = -1;
             }
-            else if (Input.GetKeyDown(KeyCode.DownArrow))
+            else if (IsMoveDownPressed())
             {
                 direction = 1;
             }
@@ -228,11 +232,11 @@ public class UINavigator : MonoBehaviour
 
         if (direction == 0 && (axisMode == AxisMode.Horizontal || axisMode == AxisMode.Both))
         {
-            if (Input.GetKeyDown(KeyCode.LeftArrow))
+            if (IsMoveLeftPressed())
             {
                 direction = -1;
             }
-            else if (Input.GetKeyDown(KeyCode.RightArrow))
+            else if (IsMoveRightPressed())
             {
                 direction = 1;
             }
@@ -417,5 +421,106 @@ public class UINavigator : MonoBehaviour
 
         lastAudioTime = Time.unscaledTime;
         audioSource.PlayOneShot(clip, 0.4f);
+    }
+
+    private static bool IsSubmitPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.Return))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = Keyboard.current;
+        if (keyboard != null)
+        {
+            return keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame;
+        }
+#endif
+        return false;
+    }
+
+    private static bool IsBackPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.Backspace))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        return Keyboard.current != null && Keyboard.current.backspaceKey.wasPressedThisFrame;
+#else
+        return false;
+#endif
+    }
+
+    private static bool IsExitPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        return Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
+#else
+        return false;
+#endif
+    }
+
+    private static bool IsMoveUpPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.UpArrow))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        return Keyboard.current != null && Keyboard.current.upArrowKey.wasPressedThisFrame;
+#else
+        return false;
+#endif
+    }
+
+    private static bool IsMoveDownPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        return Keyboard.current != null && Keyboard.current.downArrowKey.wasPressedThisFrame;
+#else
+        return false;
+#endif
+    }
+
+    private static bool IsMoveLeftPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        return Keyboard.current != null && Keyboard.current.leftArrowKey.wasPressedThisFrame;
+#else
+        return false;
+#endif
+    }
+
+    private static bool IsMoveRightPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        return Keyboard.current != null && Keyboard.current.rightArrowKey.wasPressedThisFrame;
+#else
+        return false;
+#endif
     }
 }

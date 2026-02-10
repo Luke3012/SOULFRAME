@@ -18,9 +18,34 @@ public class UIIntroSequence : MonoBehaviour
     [SerializeField] private List<GameObject> fadeInObjects = new List<GameObject>();
 
     private readonly List<CanvasGroup> extraGroups = new List<CanvasGroup>();
+    private bool isRunning;
+    private bool hasCompleted;
+
+    public bool IsRunning => isRunning;
+    public bool HasCompleted => hasCompleted;
+
+    public bool ManagesObject(GameObject target)
+    {
+        if (target == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < fadeInObjects.Count; i++)
+        {
+            if (fadeInObjects[i] == target)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private void Awake()
     {
+        hasCompleted = false;
+
         if (targetCamera == null) targetCamera = Camera.main;
 
         if (titleGroup != null)
@@ -51,6 +76,9 @@ public class UIIntroSequence : MonoBehaviour
 
     private IEnumerator PlayIntro()
     {
+        isRunning = true;
+        hasCompleted = false;
+
         Vector3 targetPosition = targetCamera.transform.position;
         Quaternion targetRotation = targetCamera.transform.rotation;
         Vector3 startPosition = targetPosition - targetCamera.transform.forward * zoomDistance;
@@ -99,5 +127,8 @@ public class UIIntroSequence : MonoBehaviour
             extraGroups[i].interactable = true;
             extraGroups[i].blocksRaycasts = true;
         }
+
+        isRunning = false;
+        hasCompleted = true;
     }
 }

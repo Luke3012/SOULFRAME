@@ -135,6 +135,12 @@ public class AvatarManager : MonoBehaviour
     private SavedAvatarData savedData;
     private string savePath;
     private GameObject currentAvatar;
+    private readonly List<AvatarTintTarget> currentAvatarTintTargets = new List<AvatarTintTarget>();
+    private bool currentAvatarTintCacheValid;
+    private bool currentAvatarDimmed;
+    private float currentAvatarDimMultiplier = 1f;
+    private static readonly int BaseColorPropertyId = Shader.PropertyToID("_BaseColor");
+    private static readonly int ColorPropertyId = Shader.PropertyToID("_Color");
     
     // Stati download separati.
     private bool _isMainDownloading;
@@ -144,8 +150,6 @@ public class AvatarManager : MonoBehaviour
 
     private bool fileSystemReady;
     private int _watchId;
-    private bool hasPendingMainDownload;
-    private AvatarInfo pendingMainAvatarInfo;
     private string currentDownloadAvatarId;
     private bool cancelPendingDownloads;
     private int _webglMainSessionId;
@@ -159,6 +163,14 @@ public class AvatarManager : MonoBehaviour
 
     public AvaturnULipSyncBinder lipSyncBinder;
     public ULipSyncProfileRouter profileRouter;
+
+    private struct AvatarTintTarget
+    {
+        public Renderer renderer;
+        public int materialIndex;
+        public int colorPropertyId;
+        public Color baseColor;
+    }
 
 
     void Awake()
@@ -368,6 +380,7 @@ public class AvatarManager : MonoBehaviour
 #if UNITY_WEBGL || UNITY_EDITOR
     private void StartImportAndLoadMainWebGL(AvatarData avatarData)
     {
+        cancelPendingDownloads = false;
         _webglMainSessionId++;
         int sessionId = _webglMainSessionId;
         StartCoroutine(WebGLImportAndLoadMain(avatarData, sessionId));
@@ -375,6 +388,7 @@ public class AvatarManager : MonoBehaviour
 
     private void StartLoadMainFromUrlWebGL(AvatarData avatarData)
     {
+        cancelPendingDownloads = false;
         _webglMainSessionId++;
         int sessionId = _webglMainSessionId;
         StartCoroutine(WebGLLoadFromCachedUrl(avatarData, sessionId));
@@ -616,6 +630,9 @@ public class AvatarManager : MonoBehaviour
             r.enabled = true;
 
         currentAvatar = container.gameObject;
+        currentAvatarDimmed = false;
+        currentAvatarDimMultiplier = 1f;
+        InvalidateCurrentAvatarTintCache();
         // currentDownloadMode = DownloadMode.Main; // Riga rimossa per risolvere un errore di compilazione
 
         StartCoroutine(SetupAnimatorNextFrame(currentAvatar));
@@ -692,6 +709,9 @@ public class AvatarManager : MonoBehaviour
             Destroy(currentAvatar);
             currentAvatar = null;
         }
+        currentAvatarDimmed = false;
+        currentAvatarDimMultiplier = 1f;
+        InvalidateCurrentAvatarTintCache();
 
         // Riattiva il placeholder
         if (baseModelToReplace != null && !hideBaseModel)
@@ -1263,6 +1283,7 @@ public class AvatarManager : MonoBehaviour
     public void CancelAllDownloads()
     {
         cancelPendingDownloads = true;
+        currentDownloadAvatarId = null;
         
         _isMainDownloading = false;
         
@@ -1479,6 +1500,15 @@ public class AvatarManager : MonoBehaviour
 
             yield return new WaitUntil(() => loadCompleted);
 
+            if (sessionId != _webglMainSessionId && sessionId != _webglPreviewSessionId)
+            {
+                if (loadedAvatar != null)
+                {
+                    Destroy(loadedAvatar.gameObject);
+                }
+                yield break;
+            }
+
             if (loadException != null || loadCanceled)
             {
                 Debug.LogWarning("[AvatarManager] Runtime glb load failed.");
@@ -1526,6 +1556,12 @@ public class AvatarManager : MonoBehaviour
             return;
         }
 
+        if (cancelPendingDownloads)
+        {
+            Destroy(modelRoot.gameObject);
+            return;
+        }
+
         CleanupConflictingComponents(modelRoot.gameObject, keepAnimator: true);
 
         Transform parent = _anchorPoseCached ? _anchorParent : spawnPoint;
@@ -1565,6 +1601,9 @@ public class AvatarManager : MonoBehaviour
         }
 
         currentAvatar = container.gameObject;
+        currentAvatarDimmed = false;
+        currentAvatarDimMultiplier = 1f;
+        InvalidateCurrentAvatarTintCache();
 
         StartCoroutine(SetupAnimatorNextFrame(currentAvatar));
 
@@ -1739,6 +1778,125 @@ public class AvatarManager : MonoBehaviour
         if (currentAvatar != null)
         {
             currentAvatar.SetActive(visible);
+        }
+    }
+
+    public void SetCurrentAvatarDimmed(bool dimmed, float dimMultiplier = 0.55f)
+    {
+        float targetMultiplier = dimmed ? Mathf.Clamp(dimMultiplier, 0.05f, 1f) : 1f;
+        if (currentAvatarDimmed == dimmed && Mathf.Approximately(currentAvatarDimMultiplier, targetMultiplier))
+        {
+            return;
+        }
+
+        currentAvatarDimmed = dimmed;
+        currentAvatarDimMultiplier = targetMultiplier;
+        ApplyCurrentAvatarDimming();
+    }
+
+    private void InvalidateCurrentAvatarTintCache()
+    {
+        currentAvatarTintTargets.Clear();
+        currentAvatarTintCacheValid = false;
+    }
+
+    private void EnsureCurrentAvatarTintCache()
+    {
+        if (currentAvatarTintCacheValid)
+        {
+            return;
+        }
+
+        currentAvatarTintTargets.Clear();
+        if (currentAvatar == null)
+        {
+            currentAvatarTintCacheValid = true;
+            return;
+        }
+
+        Renderer[] renderers = currentAvatar.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null)
+            {
+                continue;
+            }
+
+            Material[] sharedMaterials = renderer.sharedMaterials;
+            if (sharedMaterials == null)
+            {
+                continue;
+            }
+
+            for (int materialIndex = 0; materialIndex < sharedMaterials.Length; materialIndex++)
+            {
+                Material sharedMaterial = sharedMaterials[materialIndex];
+                if (sharedMaterial == null)
+                {
+                    continue;
+                }
+
+                int colorPropertyId = 0;
+                Color baseColor = Color.white;
+                if (sharedMaterial.HasProperty(BaseColorPropertyId))
+                {
+                    colorPropertyId = BaseColorPropertyId;
+                    baseColor = sharedMaterial.GetColor(BaseColorPropertyId);
+                }
+                else if (sharedMaterial.HasProperty(ColorPropertyId))
+                {
+                    colorPropertyId = ColorPropertyId;
+                    baseColor = sharedMaterial.GetColor(ColorPropertyId);
+                }
+
+                if (colorPropertyId == 0)
+                {
+                    continue;
+                }
+
+                currentAvatarTintTargets.Add(new AvatarTintTarget
+                {
+                    renderer = renderer,
+                    materialIndex = materialIndex,
+                    colorPropertyId = colorPropertyId,
+                    baseColor = baseColor
+                });
+            }
+        }
+
+        currentAvatarTintCacheValid = true;
+    }
+
+    private void ApplyCurrentAvatarDimming()
+    {
+        if (currentAvatar == null)
+        {
+            return;
+        }
+
+        EnsureCurrentAvatarTintCache();
+        if (currentAvatarTintTargets.Count == 0)
+        {
+            return;
+        }
+
+        float multiplier = currentAvatarDimmed ? currentAvatarDimMultiplier : 1f;
+        var block = new MaterialPropertyBlock();
+        for (int i = 0; i < currentAvatarTintTargets.Count; i++)
+        {
+            AvatarTintTarget target = currentAvatarTintTargets[i];
+            if (target.renderer == null)
+            {
+                continue;
+            }
+
+            target.renderer.GetPropertyBlock(block, target.materialIndex);
+            Color tinted = target.baseColor * multiplier;
+            tinted.a = target.baseColor.a;
+            block.SetColor(target.colorPropertyId, tinted);
+            target.renderer.SetPropertyBlock(block, target.materialIndex);
+            block.Clear();
         }
     }
 

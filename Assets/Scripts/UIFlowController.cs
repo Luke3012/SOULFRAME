@@ -10,12 +10,21 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Networking;
 using UnityEngine.EventSystems;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 using Random = UnityEngine.Random;
 #if UNITY_WEBGL && !UNITY_EDITOR
 using System.Runtime.InteropServices;
 #endif
 public class UIFlowController : MonoBehaviour
 {
+    private enum TouchMainModeTextView
+    {
+        Transcript,
+        Reply
+    }
+
     public enum UIState
     {
         Boot,
@@ -42,13 +51,10 @@ public class UIFlowController : MonoBehaviour
     public TextMeshProUGUI debugText;
     
     [Header("Main Menu Intro")]
-    [SerializeField] private bool enableMainMenuIntro = true;
-    [SerializeField] private float mainMenuIntroDelay = 1.5f;
-    [SerializeField] private float mainMenuButtonsFadeDuration = 0.5f;
+    [SerializeField] private UIIntroSequence uiIntroSequence;
     private CanvasGroup _titleCanvasGroup;
     private CanvasGroup _btnNewAvatarGroup;
     private CanvasGroup _btnShowListGroup;
-    private bool _mainMenuButtonsIntroDone;
 
     [Header("Setup Voice Panel")]
     public TextMeshProUGUI setupVoiceTitleText;
@@ -77,6 +83,73 @@ public class UIFlowController : MonoBehaviour
     [SerializeField] private Button btnMainModeVoice;
     [SerializeField] private TMP_InputField chatNoteInput;
     [SerializeField, Min(0f)] private float chatNoteTransitionDuration = 0.08f;
+
+    [Header("Touch UI")]
+    [SerializeField] private bool enableTouchUi = true;
+    [SerializeField] private bool forceTouchUi;
+    [SerializeField] private bool enableTouchUiOnTouchscreenDesktop;
+    [SerializeField] private CanvasScaler touchCanvasScaler;
+    [SerializeField, Min(0.5f)] private float touchUiScaleMultiplier = 1f;
+    [SerializeField] private GameObject pnlTouchOverlay;
+    [SerializeField] private GameObject pnlTouchMainMode;
+    [SerializeField] private GameObject pnlTouchSetupVoice;
+    [SerializeField] private GameObject pnlTouchSetupMemory;
+    [SerializeField] private GameObject pnlTouchAvatarLibrary;
+    [SerializeField] private GameObject pnlTouchChooseMemory;
+    [SerializeField] private GameObject pnlTouchSaveMemory;
+    [SerializeField] private GameObject touchHintBarObject;
+    [SerializeField] private Transform camTouchSetupVoiceAnchor;
+    [SerializeField] private Transform camTouchSetupMemoryAnchor;
+    [SerializeField] private Transform ringsTouchSetupVoiceAnchor;
+    [SerializeField] private Transform ringsTouchSetupMemoryAnchor;
+    [SerializeField] private TextMeshProUGUI touchDebugText;
+    [SerializeField] private TextMeshProUGUI touchSetupVoiceTitleText;
+    [SerializeField] private TextMeshProUGUI touchSetupVoicePhraseText;
+    [SerializeField] private TextMeshProUGUI touchSetupVoiceStatusText;
+    [SerializeField] private TextMeshProUGUI touchSetupVoiceRecText;
+    [SerializeField] private TextMeshProUGUI touchSetupMemoryTitleText;
+    [SerializeField] private TextMeshProUGUI touchSetupMemoryStatusText;
+    [SerializeField] private TextMeshProUGUI touchSetupMemoryLogText;
+    [SerializeField] private TMP_InputField touchSetupMemoryNoteInput;
+    [SerializeField] private Button btnTouchSetupMemorySave;
+    [SerializeField] private Button btnTouchSetupMemoryIngest;
+    [SerializeField] private Button btnTouchSetupMemoryDescribe;
+    [SerializeField] private TextMeshProUGUI touchMainModeStatusText;
+    [SerializeField] private TextMeshProUGUI touchMainModeTranscriptText;
+    [SerializeField] private TextMeshProUGUI touchMainModeReplyText;
+    [SerializeField] private Button btnTouchMainModeMemory;
+    [SerializeField] private Button btnTouchMainModeVoice;
+    [SerializeField] private TMP_InputField touchMainModeChatNoteInput;
+    [SerializeField] private Button btnTouchBackMainMode;
+    [SerializeField] private Button btnTouchBackSetupVoice;
+    [SerializeField] private Button btnTouchBackSetupMemory;
+    [SerializeField] private Button btnTouchBackAvatarLibrary;
+    [SerializeField] private Button btnTouchPttMainMode;
+    [SerializeField] private Button btnTouchPttSetupVoice;
+    [SerializeField] private Button btnTouchKeyboardMainMode;
+    [SerializeField] private Button btnTouchConfirmMainMode;
+    [SerializeField] private Button btnTouchCancelMainMode;
+    [SerializeField] private Button btnTouchConfirmSetMemory;
+    [SerializeField] private Button btnTouchCancelSetMemory;
+    [SerializeField] private Button btnTouchDeleteRestoreAvatarLibrary;
+    [SerializeField] private string touchPttMainModeIdleLabel = "Push to Talk";
+    [SerializeField] private string touchPttMainModeActiveLabel = "Rilascia";
+    [SerializeField] private string touchPttSetupVoiceIdleLabel = "Registra";
+    [SerializeField] private string touchPttSetupVoiceActiveLabel = "Stop";
+    [SerializeField, Min(0f)] private float touchMainModeTextSwitchDuration = 0.18f;
+    [SerializeField, Min(0f)] private float touchMainModeTextSwitchOffset = 110f;
+    [SerializeField, Min(10f)] private float touchMainModeSwipeMinDistance = 70f;
+    [SerializeField, Range(0.2f, 1f)] private float touchChatAvatarDimMultiplier = 0.55f;
+    [SerializeField] private bool enableTouchHintBarDebugTapToggle = true;
+    [SerializeField, Min(2)] private int touchHintBarDebugTapCount = 3;
+    [SerializeField] private bool applyTouchMainMenuButtonLayout = true;
+    [SerializeField, Min(120f)] private float touchMainMenuButtonWidth = 360f;
+    [SerializeField, Min(60f)] private float touchMainMenuButtonHeight = 104f;
+    [SerializeField, Min(20f)] private float touchMainMenuButtonsVerticalSpacing = 128f;
+    [SerializeField] private float touchMainMenuButtonsCenterY = -205f;
+
+    private const float TouchHintBarDebugTapMaxInterval = 0.45f;
+    private const float TouchHintBarDebugTapMaxMove = 35f;
 
     [Header("Main Avatar Spawn Animation")]
     [SerializeField] private bool enableMainAvatarSpawnAnimation = true;
@@ -244,6 +317,30 @@ public class UIFlowController : MonoBehaviour
     private CanvasGroup chatNoteCanvasGroup;
     private bool chatNoteJustDismissed;
     private bool debugUiHidden;
+    private bool touchUiActive;
+    private UIHintBar touchHintBarComponent;
+    private TextMeshProUGUI touchPttMainModeText;
+    private TextMeshProUGUI touchPttSetupVoiceText;
+    private TextMeshProUGUI touchDeleteRestoreText;
+    private bool touchCanvasScalerInitialized;
+    private Vector2 touchCanvasBaseReferenceResolution;
+    private float touchCanvasBaseScaleFactor;
+    private TouchMainModeTextView touchMainModeTextView = TouchMainModeTextView.Transcript;
+    private bool touchMainModeReplyAvailable;
+    private bool touchMainModeReplyShownOnce;
+    private Coroutine touchMainModeTextSwitchRoutine;
+    private CanvasGroup touchMainModeTranscriptGroup;
+    private CanvasGroup touchMainModeReplyGroup;
+    private Vector2 touchMainModeTranscriptDefaultPos;
+    private Vector2 touchMainModeReplyDefaultPos;
+    private bool touchMainModeTextLayoutCached;
+    private bool touchMainModeSwipeTracking;
+    private int touchMainModeSwipeFingerId = -1;
+    private Vector2 touchMainModeSwipeStart;
+    private int touchHintBarTapCounter;
+    private float touchHintBarLastTapTime;
+    private int touchHintBarTapFingerId = -1;
+    private Vector2 touchHintBarTapStart;
 
     private static readonly string[] waitPhraseKeys = { "hm", "beh", "aspetta", "si", "un_secondo" };
     private readonly Dictionary<string, AudioClip> waitPhraseCache = new Dictionary<string, AudioClip>();
@@ -253,6 +350,7 @@ public class UIFlowController : MonoBehaviour
 
     public bool IsWebOverlayOpen => webOverlayOpen;
     public bool IsUiInputLocked => uiInputLocked;
+    public bool IsTouchUiActive => touchUiActive;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")] private static extern int EnsureDynCallV();
@@ -299,6 +397,14 @@ public class UIFlowController : MonoBehaviour
 #endif
 
         SaveMainMenuCameraPosition();
+        ResolveIntroSequenceMode();
+
+        touchUiActive = ShouldEnableTouchUi();
+        ConfigureTouchCanvasScalerForCurrentProfile();
+        ApplyTouchUiProfileOverrides();
+        ResolveTouchHintBarReferences();
+        EnsureEventSystemDetachedFromHintBar();
+        ConfigureTouchUiBootstrapState();
 
         ValidateReferencesAtRuntime();
         servicesConfig?.NormalizeForWebGlRuntime();
@@ -321,6 +427,7 @@ public class UIFlowController : MonoBehaviour
         
         // Qui risolviamo il CanvasGroup del titolo.
         ResolveTitleGroup();
+        ConfigureTouchMainMenuButtonsLayout();
 
         if (btnNewAvatar != null) btnNewAvatar.onClick.AddListener(OnNewAvatar);
         if (btnShowList != null) btnShowList.onClick.AddListener(GoToAvatarLibrary);
@@ -330,6 +437,7 @@ public class UIFlowController : MonoBehaviour
         if (btnSetupMemoryIngest != null) btnSetupMemoryIngest.onClick.AddListener(StartIngestFile);
         if (btnSetupMemoryDescribe != null) btnSetupMemoryDescribe.onClick.AddListener(StartDescribeImage);
         if (btnSetMemory != null) btnSetMemory.onClick.AddListener(OnSetMemory);
+        BindTouchUiActions();
         
         // Qui abbiamo tolto i bottoni di ritorno/navigazione e usiamo Backspace da tastiera.
         // La barra suggerimenti mostra i prompt tastiera (Arrows/Enter/Backspace/ecc...).
@@ -354,12 +462,7 @@ public class UIFlowController : MonoBehaviour
             navigator.SetActions(GoBack, ExitApplication);
         }
         
-        // Se è in fase intro, nascondiamo i bottoni.
-        if (enableMainMenuIntro)
-        {
-            SetMainMenuButtonsVisible(false, immediate: true);
-        }
-
+        // Se ÃƒÂ¨ in fase intro, nascondiamo i bottoni.
         SetStateImmediate(UIState.Boot);
 
         UpdateHintBar(UIState.Boot);
@@ -369,12 +472,6 @@ public class UIFlowController : MonoBehaviour
         if (avaturnSystem != null)
         {
             avaturnSystem.SetupAvatarCallbacks(OnAvatarReceived, null);
-        }
-
-        // Con intro attiva, avviamo subito la sequenza.
-        if (enableMainMenuIntro)
-        {
-            StartCoroutine(MainMenuButtonsIntroRoutine());
         }
 
         EnsureCameraAnchors();
@@ -394,18 +491,20 @@ public class UIFlowController : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Insert) && CanToggleDebugUiWithHotkey())
+        if (IsKeyDown(KeyCode.Insert) && CanToggleDebugUiWithHotkey())
         {
             ToggleDebugUiVisibility();
         }
 
+        HandleTouchHintBarDebugTapToggle();
+
         if (currentState == UIState.SetupVoice)
         {
-            if (Input.GetKeyDown(KeyCode.Space))
+            if (IsKeyDown(KeyCode.Space))
             {
                 StartSetupVoiceRecording();
             }
-            if (Input.GetKeyUp(KeyCode.Space))
+            if (IsKeyUp(KeyCode.Space))
             {
                 StopSetupVoiceRecording();
             }
@@ -420,7 +519,7 @@ public class UIFlowController : MonoBehaviour
                 SyncSetupMemoryTypingState(resetNavigator);
             }
 
-            if (focused && Input.GetKeyDown(KeyCode.Return))
+            if (focused && IsSubmitKeyDown())
             {
                 if (pnlSaveMemory != null && pnlSaveMemory.activeSelf)
                 {
@@ -432,7 +531,13 @@ public class UIFlowController : MonoBehaviour
         if (currentState == UIState.MainMode)
         {
             HandleMainModeInput();
+            HandleTouchMainModeSwipeInput();
             UpdateMainModeMouseLook();
+            UpdateTouchAvatarDimming();
+        }
+        else if (currentState == UIState.AvatarLibrary)
+        {
+            UpdateTouchAvatarDeleteButtonAvailability();
         }
 
         UpdateCameraRig();
@@ -446,6 +551,1057 @@ public class UIFlowController : MonoBehaviour
         panelMap[UIState.SetupVoice] = pnlSetupVoice;
         panelMap[UIState.SetupMemory] = pnlSetupMemory;
         panelMap[UIState.MainMode] = pnlMainMode;
+    }
+
+    private void ResolveIntroSequenceMode()
+    {
+        if (uiIntroSequence == null)
+        {
+            uiIntroSequence = FindFirstObjectByType<UIIntroSequence>();
+        }
+    }
+
+    private bool IsExternalIntroHandlingObject(GameObject target)
+    {
+        return target != null &&
+               uiIntroSequence != null &&
+               uiIntroSequence.isActiveAndEnabled &&
+               uiIntroSequence.ManagesObject(target) &&
+               !uiIntroSequence.HasCompleted;
+    }
+
+    private bool ShouldEnableTouchUi()
+    {
+        if (!enableTouchUi)
+        {
+            return false;
+        }
+
+        if (forceTouchUi)
+        {
+            return true;
+        }
+
+        if (Application.isMobilePlatform)
+        {
+            return true;
+        }
+
+        if (enableTouchUiOnTouchscreenDesktop && Input.touchSupported)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private void ConfigureTouchCanvasScalerForCurrentProfile()
+    {
+        if (touchCanvasScaler == null)
+        {
+            touchCanvasScaler = GetComponentInParent<CanvasScaler>();
+        }
+
+        if (touchCanvasScaler == null)
+        {
+            return;
+        }
+
+        if (!touchCanvasScalerInitialized)
+        {
+            touchCanvasBaseReferenceResolution = touchCanvasScaler.referenceResolution;
+            touchCanvasBaseScaleFactor = touchCanvasScaler.scaleFactor;
+            touchCanvasScalerInitialized = true;
+        }
+
+        if (!touchUiActive || Mathf.Approximately(touchUiScaleMultiplier, 1f))
+        {
+            touchCanvasScaler.referenceResolution = touchCanvasBaseReferenceResolution;
+            touchCanvasScaler.scaleFactor = touchCanvasBaseScaleFactor;
+            return;
+        }
+
+        if (touchCanvasScaler.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize)
+        {
+            float multiplier = Mathf.Max(0.5f, touchUiScaleMultiplier);
+            touchCanvasScaler.referenceResolution = touchCanvasBaseReferenceResolution / multiplier;
+        }
+        else if (touchCanvasScaler.uiScaleMode == CanvasScaler.ScaleMode.ConstantPixelSize)
+        {
+            touchCanvasScaler.scaleFactor = touchCanvasBaseScaleFactor * touchUiScaleMultiplier;
+        }
+    }
+
+    private void ApplyTouchUiProfileOverrides()
+    {
+        if (!touchUiActive)
+        {
+            return;
+        }
+
+        if (pnlTouchAvatarLibrary != null) pnlAvatarLibrary = pnlTouchAvatarLibrary;
+        if (pnlTouchSetupVoice != null) pnlSetupVoice = pnlTouchSetupVoice;
+        if (pnlTouchSetupMemory != null) pnlSetupMemory = pnlTouchSetupMemory;
+        if (pnlTouchMainMode != null) pnlMainMode = pnlTouchMainMode;
+
+        if (touchSetupVoiceTitleText != null) setupVoiceTitleText = touchSetupVoiceTitleText;
+        if (touchSetupVoicePhraseText != null) setupVoicePhraseText = touchSetupVoicePhraseText;
+        if (touchSetupVoiceStatusText != null) setupVoiceStatusText = touchSetupVoiceStatusText;
+        if (touchSetupVoiceRecText != null) setupVoiceRecText = touchSetupVoiceRecText;
+
+        if (touchSetupMemoryTitleText != null) setupMemoryTitleText = touchSetupMemoryTitleText;
+        if (touchSetupMemoryStatusText != null) setupMemoryStatusText = touchSetupMemoryStatusText;
+        if (touchSetupMemoryLogText != null) setupMemoryLogText = touchSetupMemoryLogText;
+        if (pnlTouchChooseMemory != null) pnlChooseMemory = pnlTouchChooseMemory;
+        if (pnlTouchSaveMemory != null) pnlSaveMemory = pnlTouchSaveMemory;
+        if (touchSetupMemoryNoteInput != null) setupMemoryNoteInput = touchSetupMemoryNoteInput;
+        if (btnTouchSetupMemorySave != null) btnSetupMemorySave = btnTouchSetupMemorySave;
+        if (btnTouchSetupMemoryIngest != null) btnSetupMemoryIngest = btnTouchSetupMemoryIngest;
+        if (btnTouchSetupMemoryDescribe != null) btnSetupMemoryDescribe = btnTouchSetupMemoryDescribe;
+
+        if (touchMainModeStatusText != null) mainModeStatusText = touchMainModeStatusText;
+        if (touchMainModeTranscriptText != null) mainModeTranscriptText = touchMainModeTranscriptText;
+        if (touchMainModeReplyText != null) mainModeReplyText = touchMainModeReplyText;
+        if (btnTouchMainModeMemory != null) btnMainModeMemory = btnTouchMainModeMemory;
+        if (btnTouchMainModeVoice != null) btnMainModeVoice = btnTouchMainModeVoice;
+        if (touchMainModeChatNoteInput != null) chatNoteInput = touchMainModeChatNoteInput;
+
+        if (touchDebugText != null)
+        {
+            debugText = touchDebugText;
+        }
+    }
+
+    private void ResolveTouchHintBarReferences()
+    {
+        if (touchHintBarObject == null)
+        {
+            touchHintBarComponent = null;
+            return;
+        }
+
+        touchHintBarComponent = touchHintBarObject.GetComponent<UIHintBar>();
+    }
+
+    private UIHintBar GetTouchHintBar()
+    {
+        ResolveTouchHintBarReferences();
+        return touchHintBarComponent;
+    }
+
+    private GameObject GetTouchHintBarObject()
+    {
+        ResolveTouchHintBarReferences();
+        return touchHintBarObject;
+    }
+
+    private TMP_SpriteAsset GetTouchSprite(UIHintBar.TouchSprite sprite)
+    {
+        return GetTouchHintBar()?.GetTouchSpriteAsset(sprite);
+    }
+
+    private UIHintBar.TouchSprite ResolveTouchHintIcon(
+        UIHintBar.TouchSprite primary,
+        UIHintBar.TouchSprite fallback = UIHintBar.TouchSprite.None)
+    {
+        if (GetTouchSprite(primary) != null)
+        {
+            return primary;
+        }
+
+        if (fallback != UIHintBar.TouchSprite.None && GetTouchSprite(fallback) != null)
+        {
+            return fallback;
+        }
+
+        return UIHintBar.TouchSprite.None;
+    }
+
+    private void ConfigureTouchUiBootstrapState()
+    {
+        GameObject touchHintObject = GetTouchHintBarObject();
+
+        if (touchUiActive)
+        {
+            if (hintBar != null)
+            {
+                hintBar.gameObject.SetActive(false);
+            }
+
+            if (touchHintObject != null)
+            {
+                touchHintObject.SetActive(true);
+                if (!IsExternalIntroHandlingObject(touchHintObject))
+                {
+                    var group = GetOrAddCanvasGroup(touchHintObject);
+                    if (group != null)
+                    {
+                        group.alpha = 1f;
+                        group.interactable = false;
+                        group.blocksRaycasts = false;
+                    }
+                }
+            }
+
+            if (pnlTouchOverlay != null)
+            {
+                pnlTouchOverlay.SetActive(true);
+            }
+
+            return;
+        }
+
+        if (hintBar != null)
+        {
+            // Keep the desktop hint bar object alive because it also hosts
+            // runtime systems (UINavigator/EventSystem in this scene setup).
+            hintBar.gameObject.SetActive(true);
+            if (!IsExternalIntroHandlingObject(hintBar.gameObject))
+            {
+                var desktopHintGroup = GetOrAddCanvasGroup(hintBar.gameObject);
+                if (desktopHintGroup != null)
+                {
+                    desktopHintGroup.alpha = 1f;
+                    desktopHintGroup.interactable = false;
+                    desktopHintGroup.blocksRaycasts = false;
+                }
+            }
+        }
+
+        if (pnlTouchOverlay != null) pnlTouchOverlay.SetActive(false);
+        if (pnlTouchMainMode != null) pnlTouchMainMode.SetActive(false);
+        if (pnlTouchSetupVoice != null) pnlTouchSetupVoice.SetActive(false);
+        if (pnlTouchSetupMemory != null) pnlTouchSetupMemory.SetActive(false);
+        if (pnlTouchAvatarLibrary != null) pnlTouchAvatarLibrary.SetActive(false);
+        if (touchHintObject != null) touchHintObject.SetActive(false);
+    }
+
+    private void EnsureEventSystemDetachedFromHintBar()
+    {
+        EventSystem eventSystem = EventSystem.current;
+        if (eventSystem == null)
+        {
+            var allEventSystems = Resources.FindObjectsOfTypeAll<EventSystem>();
+            if (allEventSystems != null && allEventSystems.Length > 0)
+            {
+                foreach (var candidate in allEventSystems)
+                {
+                    if (candidate != null && candidate.gameObject.scene.IsValid())
+                    {
+                        eventSystem = candidate;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (eventSystem == null)
+        {
+            return;
+        }
+
+        if (hintBar != null && eventSystem.transform.IsChildOf(hintBar.transform))
+        {
+            eventSystem.transform.SetParent(transform, false);
+        }
+
+        if (!eventSystem.gameObject.activeSelf)
+        {
+            eventSystem.gameObject.SetActive(true);
+        }
+    }
+
+    private void BindTouchUiActions()
+    {
+        if (!touchUiActive)
+        {
+            return;
+        }
+
+        BindButtonClick(btnTouchBackMainMode, GoBack);
+        BindButtonClick(btnTouchBackSetupVoice, GoBack);
+        BindButtonClick(btnTouchBackSetupMemory, GoBack);
+        BindButtonClick(btnTouchBackAvatarLibrary, GoBack);
+        BindButtonClick(btnTouchKeyboardMainMode, OnTouchKeyboardMainModePressed);
+        BindButtonClick(btnTouchConfirmMainMode, OnTouchConfirmMainModePressed);
+        BindButtonClick(btnTouchCancelMainMode, OnTouchCancelMainModePressed);
+        BindButtonClick(btnTouchConfirmSetMemory, OnTouchConfirmSetMemoryPressed);
+        BindButtonClick(btnTouchCancelSetMemory, OnTouchCancelSetMemoryPressed);
+        BindButtonClick(btnTouchDeleteRestoreAvatarLibrary, OnTouchDeleteRestoreAvatarPressed);
+
+        BindHoldButton(btnTouchPttMainMode, OnTouchMainModePttDown, OnTouchMainModePttUp);
+        BindHoldButton(btnTouchPttSetupVoice, OnTouchSetupVoicePttDown, OnTouchSetupVoicePttUp);
+
+        touchPttMainModeText ??= GetButtonLabel(btnTouchPttMainMode);
+        touchPttSetupVoiceText ??= GetButtonLabel(btnTouchPttSetupVoice);
+        touchDeleteRestoreText ??= GetButtonLabel(btnTouchDeleteRestoreAvatarLibrary);
+
+        SetTouchPttVisualState();
+        UpdateTouchAvatarDeleteButtonVisual();
+        UpdateTouchAvatarDeleteButtonAvailability();
+        UpdateTouchMainModeActionButtonsVisibility();
+    }
+
+    private static void BindButtonClick(Button button, UnityEngine.Events.UnityAction action)
+    {
+        if (button == null || action == null)
+        {
+            return;
+        }
+
+        button.onClick.AddListener(action);
+    }
+
+    private static void BindHoldButton(Button button, Action onPointerDown, Action onPointerUp)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        var trigger = button.GetComponent<EventTrigger>();
+        if (trigger == null)
+        {
+            trigger = button.gameObject.AddComponent<EventTrigger>();
+        }
+
+        if (trigger.triggers == null)
+        {
+            trigger.triggers = new List<EventTrigger.Entry>();
+        }
+
+        trigger.triggers.RemoveAll(entry =>
+            entry != null &&
+            (entry.eventID == EventTriggerType.PointerDown ||
+             entry.eventID == EventTriggerType.PointerUp ||
+             entry.eventID == EventTriggerType.PointerExit));
+
+        AddEventTriggerListener(trigger, EventTriggerType.PointerDown, _ => onPointerDown?.Invoke());
+        AddEventTriggerListener(trigger, EventTriggerType.PointerUp, _ => onPointerUp?.Invoke());
+        AddEventTriggerListener(trigger, EventTriggerType.PointerExit, _ => onPointerUp?.Invoke());
+    }
+
+    private static void AddEventTriggerListener(
+        EventTrigger trigger,
+        EventTriggerType eventType,
+        UnityEngine.Events.UnityAction<BaseEventData> callback)
+    {
+        var entry = new EventTrigger.Entry { eventID = eventType };
+        entry.callback.AddListener(callback);
+        trigger.triggers.Add(entry);
+    }
+
+    private void OnTouchMainModePttDown()
+    {
+        if (currentState != UIState.MainMode || uiInputLocked)
+        {
+            return;
+        }
+
+        if (TryInterruptMainModeSpeechAndListen())
+        {
+            return;
+        }
+
+        StartMainModeListening();
+    }
+
+    private void OnTouchMainModePttUp()
+    {
+        if (currentState != UIState.MainMode || uiInputLocked)
+        {
+            return;
+        }
+
+        StopMainModeListening();
+    }
+
+    private void OnTouchSetupVoicePttDown()
+    {
+        if (currentState != UIState.SetupVoice || uiInputLocked)
+        {
+            return;
+        }
+
+        StartSetupVoiceRecording();
+    }
+
+    private void OnTouchSetupVoicePttUp()
+    {
+        if (currentState != UIState.SetupVoice || uiInputLocked)
+        {
+            return;
+        }
+
+        StopSetupVoiceRecording();
+    }
+
+    private void OnTouchKeyboardMainModePressed()
+    {
+        EnsureMainModeChatNoteInputReference();
+
+        if (currentState != UIState.MainMode || uiInputLocked)
+        {
+            return;
+        }
+
+        if (mainModeListening)
+        {
+            UpdateMainModeStatus("Rilascia PTT prima di aprire la tastiera.");
+            return;
+        }
+
+        if (mainModeProcessing)
+        {
+            UpdateMainModeStatus("Attendi fine risposta prima di scrivere.");
+            return;
+        }
+
+        if (mainModeChatNoteActive)
+        {
+            DismissChatNote();
+            return;
+        }
+
+        ShowChatNote(string.Empty);
+        TryOpenSoftwareKeyboardForTouchUi();
+    }
+
+    private void OnTouchConfirmMainModePressed()
+    {
+        if (currentState != UIState.MainMode || uiInputLocked || !mainModeChatNoteActive)
+        {
+            return;
+        }
+
+        SubmitChatNote();
+    }
+
+    private void OnTouchCancelMainModePressed()
+    {
+        if (currentState != UIState.MainMode || uiInputLocked || !mainModeChatNoteActive)
+        {
+            return;
+        }
+
+        DismissChatNote();
+    }
+
+    private void OnTouchConfirmSetMemoryPressed()
+    {
+        if (currentState != UIState.SetupMemory || uiInputLocked)
+        {
+            return;
+        }
+
+        OnSetMemory();
+    }
+
+    private void OnTouchCancelSetMemoryPressed()
+    {
+        if (currentState != UIState.SetupMemory || uiInputLocked)
+        {
+            return;
+        }
+
+        if (memoryPanelTransitionRoutine != null)
+        {
+            StopCoroutine(memoryPanelTransitionRoutine);
+        }
+
+        if (pnlSaveMemory != null && pnlSaveMemory.activeSelf)
+        {
+            memoryPanelTransitionRoutine = StartCoroutine(TransitionToChooseMemory());
+        }
+        else
+        {
+            ShowChooseMemoryPanel();
+        }
+    }
+
+    private void OnTouchDeleteRestoreAvatarPressed()
+    {
+        if (currentState != UIState.AvatarLibrary || uiInputLocked)
+        {
+            return;
+        }
+
+        RequestDeleteSelectedAvatar();
+    }
+
+    private void SetTouchPttVisualState()
+    {
+        if (!touchUiActive)
+        {
+            return;
+        }
+
+        touchPttMainModeText ??= GetButtonLabel(btnTouchPttMainMode);
+        touchPttSetupVoiceText ??= GetButtonLabel(btnTouchPttSetupVoice);
+
+        TMP_SpriteAsset idleMicAsset = GetTouchSprite(UIHintBar.TouchSprite.MicIdle) ??
+                                       GetTouchSprite(UIHintBar.TouchSprite.MicActive);
+        TMP_SpriteAsset activeMicAsset = GetTouchSprite(UIHintBar.TouchSprite.MicActive) ?? idleMicAsset;
+        TMP_SpriteAsset mainModeAsset = mainModeListening ? activeMicAsset : idleMicAsset;
+        TMP_SpriteAsset setupVoiceAsset = setupVoiceRecording ? activeMicAsset : idleMicAsset;
+        string mainModeLabel = mainModeListening ? touchPttMainModeActiveLabel : touchPttMainModeIdleLabel;
+        string setupVoiceLabel = setupVoiceRecording ? touchPttSetupVoiceActiveLabel : touchPttSetupVoiceIdleLabel;
+
+        ApplyTouchButtonIconAndLabel(touchPttMainModeText, mainModeAsset, mainModeLabel, lineBreaksAfterSprite: 2);
+        ApplyTouchButtonIconAndLabel(touchPttSetupVoiceText, setupVoiceAsset, setupVoiceLabel, lineBreaksAfterSprite: 2);
+
+        // Keep PTT buttons usable only in the matching state and avoid stale
+        // inspector/canvas-group interactivity from leaving them "disabled".
+        SetButtonInteractable(btnTouchPttMainMode, currentState == UIState.MainMode);
+        SetButtonInteractable(btnTouchPttSetupVoice, currentState == UIState.SetupVoice);
+    }
+
+    private void UpdateTouchAvatarDeleteButtonVisual()
+    {
+        if (!touchUiActive || touchDeleteRestoreText == null)
+        {
+            return;
+        }
+
+        bool showRestore = avatarLibraryCarousel != null &&
+                           avatarLibraryCarousel.TryGetSelectedAvatarData(out var data) &&
+                           IsLocalAvatar(data);
+
+        TMP_SpriteAsset deleteAsset = GetTouchSprite(UIHintBar.TouchSprite.Delete) ??
+                                      GetTouchSprite(UIHintBar.TouchSprite.Restore);
+        TMP_SpriteAsset restoreAsset = GetTouchSprite(UIHintBar.TouchSprite.Restore) ?? deleteAsset;
+        TMP_SpriteAsset targetAsset = showRestore ? restoreAsset : deleteAsset;
+        string label = showRestore ? "Ripristina" : "Elimina";
+        ApplyTouchButtonIconAndLabel(touchDeleteRestoreText, targetAsset, label, lineBreaksAfterSprite: 2);
+    }
+
+    private void UpdateTouchMainModeActionButtonsVisibility()
+    {
+        if (!touchUiActive)
+        {
+            return;
+        }
+
+        SetButtonVisible(btnTouchConfirmMainMode, mainModeChatNoteActive);
+        SetButtonVisible(btnTouchCancelMainMode, mainModeChatNoteActive);
+        SetButtonVisible(btnTouchKeyboardMainMode, true);
+    }
+
+    private void SetButtonVisible(Button button, bool visible)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        button.gameObject.SetActive(true);
+        var group = GetOrAddCanvasGroup(button.gameObject);
+        if (group != null)
+        {
+            group.alpha = visible ? 1f : 0f;
+            group.interactable = visible;
+            group.blocksRaycasts = visible;
+        }
+    }
+
+    private static void SetButtonInteractable(Button button, bool interactable)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        button.interactable = interactable;
+        var group = button.GetComponent<CanvasGroup>();
+        if (group != null)
+        {
+            group.interactable = interactable;
+            group.blocksRaycasts = interactable;
+        }
+    }
+
+    private static void ApplyTouchButtonIconAndLabel(
+        TextMeshProUGUI label,
+        TMP_SpriteAsset iconAsset,
+        string text,
+        int lineBreaksAfterSprite = 1)
+    {
+        if (label == null)
+        {
+            return;
+        }
+
+        int breakCount = Mathf.Max(0, lineBreaksAfterSprite);
+        string breaks = new string('\n', breakCount);
+
+        if (iconAsset != null)
+        {
+            label.spriteAsset = iconAsset;
+            label.tintAllSprites = true;
+            label.text = $"<sprite=0 tint=1>{breaks}{text}";
+            return;
+        }
+
+        int spriteStart = label.text != null ? label.text.IndexOf("<sprite", StringComparison.OrdinalIgnoreCase) : -1;
+        if (spriteStart >= 0)
+        {
+            int spriteEnd = label.text.IndexOf('>', spriteStart);
+            if (spriteEnd >= 0)
+            {
+                string spriteTag = label.text.Substring(0, spriteEnd + 1);
+                label.tintAllSprites = true;
+                label.text = $"{spriteTag}{breaks}{text}";
+                return;
+            }
+        }
+
+        if (label.spriteAsset != null)
+        {
+            label.tintAllSprites = true;
+            label.text = $"<sprite=0 tint=1>{breaks}{text}";
+            return;
+        }
+
+        label.text = text;
+    }
+
+    private void SetHintBarVisible(bool visible)
+    {
+        GameObject touchHintObject = GetTouchHintBarObject();
+
+        if (touchUiActive)
+        {
+            if (hintBar != null)
+            {
+                hintBar.gameObject.SetActive(false);
+            }
+
+            if (touchHintObject != null)
+            {
+                bool managedByExternalIntro = IsExternalIntroHandlingObject(touchHintObject);
+                if (managedByExternalIntro)
+                {
+                    touchHintObject.SetActive(true);
+                    UpdateTouchAvatarDeleteButtonAvailability();
+                    return;
+                }
+
+                touchHintObject.SetActive(visible);
+                var group = GetOrAddCanvasGroup(touchHintObject);
+                if (group != null)
+                {
+                    group.alpha = visible ? 1f : 0f;
+                    group.interactable = false;
+                    group.blocksRaycasts = false;
+                }
+            }
+
+            UpdateTouchAvatarDeleteButtonAvailability();
+            return;
+        }
+
+        if (touchHintObject != null)
+        {
+            touchHintObject.SetActive(false);
+        }
+
+        if (hintBar != null)
+        {
+            // Never disable the desktop hint bar object in non-touch mode:
+            // it hosts UINavigator/EventSystem in this scene.
+            hintBar.gameObject.SetActive(true);
+            bool managedByExternalIntro = IsExternalIntroHandlingObject(hintBar.gameObject);
+            if (managedByExternalIntro)
+            {
+                return;
+            }
+
+            var desktopHintGroup = GetOrAddCanvasGroup(hintBar.gameObject);
+            if (desktopHintGroup != null)
+            {
+                desktopHintGroup.alpha = visible ? 1f : 0f;
+                desktopHintGroup.interactable = false;
+                desktopHintGroup.blocksRaycasts = false;
+            }
+        }
+
+        UpdateTouchAvatarDeleteButtonAvailability();
+    }
+
+    private bool HasActiveHintBar()
+    {
+        if (touchUiActive)
+        {
+            return GetTouchHintBarObject() != null;
+        }
+
+        return hintBar != null;
+    }
+
+    private void UpdateTouchAvatarDeleteButtonAvailability()
+    {
+        if (!touchUiActive || btnTouchDeleteRestoreAvatarLibrary == null)
+        {
+            return;
+        }
+
+        GameObject touchHintObject = GetTouchHintBarObject();
+        bool hintVisible = touchHintObject != null && touchHintObject.activeInHierarchy;
+        if (hintVisible)
+        {
+            CanvasGroup hintGroup = touchHintObject.GetComponent<CanvasGroup>();
+            hintVisible = hintGroup == null || hintGroup.alpha > 0.01f;
+        }
+
+        bool canUseDelete = currentState == UIState.AvatarLibrary && hintVisible;
+        SetButtonVisible(btnTouchDeleteRestoreAvatarLibrary, canUseDelete);
+    }
+
+    private GameObject GetActiveHintBarObject()
+    {
+        if (touchUiActive)
+        {
+            return GetTouchHintBarObject();
+        }
+
+        return hintBar != null ? hintBar.gameObject : null;
+    }
+
+    private void SetHintBarSpacePressed(bool pressed)
+    {
+        if (touchUiActive)
+        {
+            SetTouchPttVisualState();
+            UpdateHintBar(currentState);
+            return;
+        }
+
+        if (hintBar != null)
+        {
+            hintBar.SetSpacePressed(pressed);
+        }
+    }
+
+    private void UpdateTouchHintBar(UIState state)
+    {
+        UIHintBar touchBar = GetTouchHintBar();
+        if (!touchUiActive || touchBar == null)
+        {
+            return;
+        }
+
+        if (downloadStateActive || carouselDownloading || _previewModeActive)
+        {
+            SetHintBarVisible(false);
+            return;
+        }
+
+        SetHintBarVisible(true);
+
+        switch (state)
+        {
+            case UIState.Boot:
+                touchBar.SetTouchHints(
+                    new UIHintBar.TouchHintItem(
+                        ResolveTouchHintIcon(UIHintBar.TouchSprite.Tap),
+                        "Tocca per saltare")
+                );
+                break;
+            case UIState.MainMenu:
+                string debugToggleAction = debugUiHidden ? "attivare" : "disattivare";
+                touchBar.SetTouchHints(
+                    new UIHintBar.TouchHintItem(
+                        ResolveTouchHintIcon(UIHintBar.TouchSprite.Tap),
+                        "Tocca per selezionare"),
+                    new UIHintBar.TouchHintItem(
+                        ResolveTouchHintIcon(UIHintBar.TouchSprite.HoldActive, UIHintBar.TouchSprite.Tap),
+                        $"Triplo tocco per {debugToggleAction} modalita' debug")
+                );
+                break;
+            case UIState.AvatarLibrary:
+                touchBar.SetTouchHints(
+                    new UIHintBar.TouchHintItem(
+                        ResolveTouchHintIcon(UIHintBar.TouchSprite.SwipeHorizontal, UIHintBar.TouchSprite.Tap),
+                        "Swipe"),
+                    new UIHintBar.TouchHintItem(
+                        ResolveTouchHintIcon(UIHintBar.TouchSprite.Tap),
+                        "Conferma")
+                );
+                break;
+            case UIState.SetupVoice:
+                touchBar.SetTouchHints(
+                    new UIHintBar.TouchHintItem(
+                        setupVoiceRecording
+                            ? ResolveTouchHintIcon(UIHintBar.TouchSprite.HoldActive, UIHintBar.TouchSprite.Hold)
+                            : ResolveTouchHintIcon(UIHintBar.TouchSprite.Hold, UIHintBar.TouchSprite.HoldActive),
+                        setupVoiceRecording
+                            ? "Rilascia per fermare"
+                            : "Tieni il tasto premuto per registrare")
+                );
+                break;
+            case UIState.SetupMemory:
+                if (pnlSaveMemory != null && pnlSaveMemory.activeSelf)
+                {
+                    touchBar.SetTouchHints(
+                        new UIHintBar.TouchHintItem(
+                            ResolveTouchHintIcon(UIHintBar.TouchSprite.Tap),
+                            "Scegli")
+                    );
+                }
+                else
+                {
+                    touchBar.SetTouchHints(
+                        new UIHintBar.TouchHintItem(
+                            ResolveTouchHintIcon(UIHintBar.TouchSprite.SwipeHorizontal, UIHintBar.TouchSprite.Tap),
+                            "Scorri per selezionare"),
+                        new UIHintBar.TouchHintItem(
+                            ResolveTouchHintIcon(UIHintBar.TouchSprite.Tap),
+                            "Tocca per selezionare")
+                    );
+                }
+                break;
+            case UIState.MainMode:
+                touchBar.SetTouchHints(
+                    new UIHintBar.TouchHintItem(
+                        ResolveTouchHintIcon(UIHintBar.TouchSprite.Hold, UIHintBar.TouchSprite.HoldActive),
+                        "Punta il dito!"),
+                    new UIHintBar.TouchHintItem(
+                        ResolveTouchHintIcon(UIHintBar.TouchSprite.Tap),
+                        "Seleziona uno degli elementi")
+                );
+                break;
+            default:
+                touchBar.SetTouchHints();
+                break;
+        }
+    }
+
+    private static TextMeshProUGUI GetButtonLabel(Button button)
+    {
+        return button != null ? button.GetComponentInChildren<TextMeshProUGUI>(true) : null;
+    }
+
+    private void EnsureMainModeChatNoteInputReference()
+    {
+        if (!touchUiActive)
+        {
+            return;
+        }
+
+        if (touchMainModeChatNoteInput != null)
+        {
+            chatNoteInput = touchMainModeChatNoteInput;
+            return;
+        }
+
+        if (chatNoteInput == null && pnlTouchMainMode != null)
+        {
+            chatNoteInput = pnlTouchMainMode.GetComponentInChildren<TMP_InputField>(true);
+        }
+    }
+
+    private void TryOpenSoftwareKeyboardForTouchUi()
+    {
+        if (!touchUiActive || chatNoteInput == null)
+        {
+            return;
+        }
+
+        chatNoteInput.Select();
+        chatNoteInput.ActivateInputField();
+
+        if (TouchScreenKeyboard.isSupported && !TouchScreenKeyboard.visible)
+        {
+            TouchScreenKeyboard.Open(chatNoteInput.text ?? string.Empty, TouchScreenKeyboardType.Default);
+        }
+
+#if (UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN) && !UNITY_WEBGL
+        if (!Application.isMobilePlatform)
+        {
+            TryLaunchWindowsOnScreenKeyboard();
+        }
+#endif
+    }
+
+#if (UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN) && !UNITY_WEBGL
+    private static void TryLaunchWindowsOnScreenKeyboard()
+    {
+        try
+        {
+            var running = System.Diagnostics.Process.GetProcessesByName("osk");
+            if (running != null && running.Length > 0)
+            {
+                return;
+            }
+
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "osk.exe",
+                UseShellExecute = true
+            };
+            System.Diagnostics.Process.Start(startInfo);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[UIFlowController] Impossibile avviare la tastiera su schermo Windows: {e.Message}");
+        }
+    }
+#endif
+
+    private void HandleTouchHintBarDebugTapToggle()
+    {
+        if (!touchUiActive || !enableTouchHintBarDebugTapToggle || !CanToggleDebugUiWithHotkey())
+        {
+            return;
+        }
+
+        GameObject touchHintObject = GetTouchHintBarObject();
+        if (!TryGetTouchHintBarRectForTap(touchHintObject, out var touchHintRect))
+        {
+            return;
+        }
+
+        if (Input.touchCount > 0)
+        {
+            HandleTouchHintBarDebugTapFromTouches(touchHintRect);
+            return;
+        }
+
+        if (touchHintBarTapFingerId >= 0)
+        {
+            touchHintBarTapFingerId = -1;
+        }
+
+        if (Input.GetMouseButtonDown(0))
+        {
+            if (IsScreenPointOverRect(touchHintRect, Input.mousePosition))
+            {
+                RegisterTouchHintBarTap();
+            }
+            else
+            {
+                ResetTouchHintBarTapChain();
+            }
+        }
+    }
+
+    private void HandleTouchHintBarDebugTapFromTouches(RectTransform touchHintRect)
+    {
+        float maxMove = TouchHintBarDebugTapMaxMove;
+        float maxMoveSq = maxMove * maxMove;
+
+        if (touchHintBarTapFingerId < 0)
+        {
+            for (int i = 0; i < Input.touchCount; i++)
+            {
+                Touch touch = Input.GetTouch(i);
+                if (touch.phase != UnityEngine.TouchPhase.Began)
+                {
+                    continue;
+                }
+
+                if (!IsScreenPointOverRect(touchHintRect, touch.position))
+                {
+                    continue;
+                }
+
+                touchHintBarTapFingerId = touch.fingerId;
+                touchHintBarTapStart = touch.position;
+                break;
+            }
+            return;
+        }
+
+        for (int i = 0; i < Input.touchCount; i++)
+        {
+            Touch touch = Input.GetTouch(i);
+            if (touch.fingerId != touchHintBarTapFingerId)
+            {
+                continue;
+            }
+
+            if (touch.phase == UnityEngine.TouchPhase.Canceled)
+            {
+                touchHintBarTapFingerId = -1;
+                return;
+            }
+
+            if ((touch.phase == UnityEngine.TouchPhase.Moved || touch.phase == UnityEngine.TouchPhase.Stationary) &&
+                (touch.position - touchHintBarTapStart).sqrMagnitude > maxMoveSq)
+            {
+                touchHintBarTapFingerId = -1;
+                ResetTouchHintBarTapChain();
+                return;
+            }
+
+            if (touch.phase == UnityEngine.TouchPhase.Ended)
+            {
+                bool inside = IsScreenPointOverRect(touchHintRect, touch.position);
+                bool smallMove = (touch.position - touchHintBarTapStart).sqrMagnitude <= maxMoveSq;
+                touchHintBarTapFingerId = -1;
+
+                if (inside && smallMove)
+                {
+                    RegisterTouchHintBarTap();
+                }
+                else
+                {
+                    ResetTouchHintBarTapChain();
+                }
+                return;
+            }
+        }
+    }
+
+    private static bool IsScreenPointOverRect(RectTransform rectTransform, Vector2 screenPoint)
+    {
+        return rectTransform != null &&
+               RectTransformUtility.RectangleContainsScreenPoint(rectTransform, screenPoint, null);
+    }
+
+    private static bool TryGetTouchHintBarRectForTap(GameObject touchHintObject, out RectTransform rectTransform)
+    {
+        rectTransform = null;
+        if (touchHintObject == null || !touchHintObject.activeInHierarchy)
+        {
+            return false;
+        }
+
+        var group = touchHintObject.GetComponent<CanvasGroup>();
+        if (group != null && group.alpha <= 0.01f)
+        {
+            return false;
+        }
+
+        rectTransform = touchHintObject.GetComponent<RectTransform>();
+        return rectTransform != null;
+    }
+
+    private void RegisterTouchHintBarTap()
+    {
+        float now = Time.unscaledTime;
+        float maxInterval = TouchHintBarDebugTapMaxInterval;
+        int requiredTapCount = Mathf.Max(2, touchHintBarDebugTapCount);
+
+        if (now - touchHintBarLastTapTime > maxInterval)
+        {
+            touchHintBarTapCounter = 0;
+        }
+
+        touchHintBarTapCounter++;
+        touchHintBarLastTapTime = now;
+
+        if (touchHintBarTapCounter >= requiredTapCount)
+        {
+            touchHintBarTapCounter = 0;
+            ToggleDebugUiVisibility();
+        }
+    }
+
+    private void ResetTouchHintBarTapChain()
+    {
+        touchHintBarTapCounter = 0;
+        touchHintBarLastTapTime = 0f;
     }
     
     // Qui teniamo i metodi helper dell'intro.
@@ -463,29 +1619,48 @@ public class UIFlowController : MonoBehaviour
         if (btnNewAvatar != null)
         {
             _btnNewAvatarGroup = btnNewAvatar.GetComponent<CanvasGroup>();
-            if (_btnNewAvatarGroup == null)
-            {
-                Debug.LogError("[UIFlowController] Btn_New richiede CanvasGroup per intro (assegnalo in scena). Intro disabilitata.");
-                enableMainMenuIntro = false;
-            }
         }
 
         if (btnShowList != null)
         {
             _btnShowListGroup = btnShowList.GetComponent<CanvasGroup>();
-            if (_btnShowListGroup == null)
-            {
-                Debug.LogError("[UIFlowController] Btn_LoadList richiede CanvasGroup per intro (assegnalo in scena). Intro disabilitata.");
-                enableMainMenuIntro = false;
-            }
         }
-        
-        // Se manca uno dei due bottoni, disabilitiamo anche l'intro.
-        if (enableMainMenuIntro && (!btnNewAvatar || !btnShowList))
+    }
+
+    private void ConfigureTouchMainMenuButtonsLayout()
+    {
+        if (!touchUiActive || !applyTouchMainMenuButtonLayout)
         {
-            Debug.LogError("[UIFlowController] Btn_New o Btn_LoadList mancante. Intro disabilitata.");
-            enableMainMenuIntro = false;
+            return;
         }
+
+        Vector2 size = new Vector2(
+            Mathf.Max(120f, touchMainMenuButtonWidth),
+            Mathf.Max(60f, touchMainMenuButtonHeight));
+        float halfSpacing = Mathf.Max(20f, touchMainMenuButtonsVerticalSpacing) * 0.5f;
+
+        ConfigureTouchMainMenuButtonRect(btnNewAvatar, size, new Vector2(0f, touchMainMenuButtonsCenterY + halfSpacing));
+        ConfigureTouchMainMenuButtonRect(btnShowList, size, new Vector2(0f, touchMainMenuButtonsCenterY - halfSpacing));
+    }
+
+    private static void ConfigureTouchMainMenuButtonRect(Button button, Vector2 size, Vector2 anchoredPosition)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        var rect = button.GetComponent<RectTransform>();
+        if (rect == null)
+        {
+            return;
+        }
+
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = anchoredPosition;
     }
     
     private void SetMainMenuButtonsVisible(bool visible, bool immediate = false)
@@ -512,50 +1687,6 @@ public class UIFlowController : MonoBehaviour
             _btnShowListGroup.interactable = interactable;
             _btnShowListGroup.blocksRaycasts = interactable;
         }
-    }
-    
-    private IEnumerator MainMenuButtonsIntroRoutine()
-    {
-        // Aspettiamo che il titolo finisca il fade-in.
-        if (_titleCanvasGroup != null)
-        {
-            while (_titleCanvasGroup.alpha < 0.99f)
-            {
-                yield return null;
-            }
-        }
-        
-        // Ritardo extra.
-        if (mainMenuIntroDelay > 0f)
-        {
-            yield return new WaitForSecondsRealtime(mainMenuIntroDelay);
-        }
-        
-        // Dissolvenza in entrata dei bottoni.
-        float elapsed = 0f;
-        while (elapsed < mainMenuButtonsFadeDuration)
-        {
-            elapsed += Time.unscaledDeltaTime;
-            float t = Mathf.Clamp01(elapsed / mainMenuButtonsFadeDuration);
-            
-            if (_btnNewAvatarGroup != null)
-            {
-                _btnNewAvatarGroup.alpha = t;
-            }
-            if (_btnShowListGroup != null)
-            {
-                _btnShowListGroup.alpha = t;
-            }
-            
-            yield return null;
-        }
-        
-        // Completa e rendi interattivi
-        SetMainMenuButtonsVisible(true, immediate: false);
-        _mainMenuButtonsIntroDone = true;
-        
-        // Aggiorniamo il navigator.
-        ConfigureNavigatorForState(UIState.MainMenu, true);
     }
 
     private void BuildHintMap()
@@ -623,7 +1754,7 @@ public class UIFlowController : MonoBehaviour
             }
         }
 #else
-        UpdateDebugText("Funzionalità mobile - usa il prefab originale per mobile");
+        UpdateDebugText("FunzionalitÃƒÂ  mobile - usa il prefab originale per mobile");
 #endif
     }
 
@@ -632,6 +1763,8 @@ public class UIFlowController : MonoBehaviour
         // Quando torniamo a casa, resettiamo il flag.
         _pendingMainModeTransition = false;
         pendingNewAvatarDownload = false;
+        ResetTouchMainModeSwipeTracking();
+        avatarManager?.SetCurrentAvatarDimmed(false, touchChatAvatarDimMultiplier);
         if (mainAvatarSpawnRoutine != null)
         {
             StopCoroutine(mainAvatarSpawnRoutine);
@@ -662,6 +1795,7 @@ public class UIFlowController : MonoBehaviour
         if (currentState == UIState.AvatarLibrary)
         {
             UpdateHintBar(currentState);
+            UpdateTouchAvatarDeleteButtonVisual();
         }
     }
 
@@ -821,6 +1955,9 @@ public class UIFlowController : MonoBehaviour
             avatarLibraryCarousel.ShowLibrary(true);
         }
 
+        UpdateHintBar(UIState.AvatarLibrary);
+        UpdateTouchAvatarDeleteButtonVisual();
+
         deleteAvatarInProgress = false;
         deleteAvatarRoutine = null;
     }
@@ -979,7 +2116,7 @@ public class UIFlowController : MonoBehaviour
         UpdateSetupVoiceStatus(readyMessage);
         if (setupVoicePhraseText != null)
         {
-            setupVoicePhraseText.text = "Preparati ad enunciare ciò che ti sarà chiesto ;)";
+            setupVoicePhraseText.text = "Preparati a pronunciare la frase che ti verra' proposta.";
         }
         UpdateDebugText($"Setup Voice iniziato - Gender: {gender}");
 
@@ -1027,11 +2164,11 @@ public class UIFlowController : MonoBehaviour
                 : "Rieccoti qui. Sei pronto a modificare la tua voce?";
             setupVoicePhraseText.text = voiceConfigured
                 ? reconfigureMessage
-                : "Preparati ad enunciare ciò che ti sarà chiesto ;)";
+                : "Preparati a pronunciare la frase che ti verra' proposta.";
         }
         if (voiceConfigured)
         {
-            UpdateSetupVoiceStatus("Voce già configurata.");
+            UpdateSetupVoiceStatus("Voce gia' configurata.");
             yield return StartCoroutine(SetupVoicePhraseRoutine());
             yield break;
         }
@@ -1078,13 +2215,16 @@ public class UIFlowController : MonoBehaviour
 
         setupVoiceRecording = true;
         setupVoiceCancelling = false;
+        SetHintBarSpacePressed(true);
 
         if (setupVoiceRecText != null)
         {
             setupVoiceRecText.text = "REC";
         }
 
-        UpdateSetupVoiceStatus("Registrazione... (rilascia SPACE per terminare)");
+        UpdateSetupVoiceStatus(touchUiActive
+            ? "Registrazione... (rilascia PTT per terminare)"
+            : "Registrazione... (rilascia SPACE per terminare)");
         UpdateDebugText("Setup Voice: registrazione in corso...");
         UpdateHintBar(UIState.SetupVoice);
     }
@@ -1102,6 +2242,7 @@ public class UIFlowController : MonoBehaviour
         }
 
         setupVoiceRecording = false;
+        SetHintBarSpacePressed(false);
         UpdateHintBar(UIState.SetupVoice);
         if (setupVoiceRoutine != null)
         {
@@ -1114,6 +2255,7 @@ public class UIFlowController : MonoBehaviour
     {
         setupVoiceCancelling = true;
         setupVoiceRecording = false;
+        SetHintBarSpacePressed(false);
         setupVoicePhraseReady = false;
         if (setupVoiceRoutine != null)
         {
@@ -1218,26 +2360,6 @@ public class UIFlowController : MonoBehaviour
 
         describeFilePickerActive = true;
         setupMemoryRoutine = StartCoroutine(DescribeImageRoutine());
-    }
-
-    private void OnRememberNote()
-    {
-        if (currentState != UIState.SetupMemory)
-        {
-            return;
-        }
-
-        if (uiInputLocked)
-        {
-            return;
-        }
-
-        if (setupMemoryRoutine != null)
-        {
-            StopCoroutine(setupMemoryRoutine);
-        }
-
-        setupMemoryRoutine = StartCoroutine(RememberNoteRoutine());
     }
 
     private void ShowChooseMemoryPanel()
@@ -1627,8 +2749,9 @@ public class UIFlowController : MonoBehaviour
     private IEnumerator FadeUiBlockedRoutine(bool blocked)
     {
         GameObject panel = GetPanel(currentState);
+        GameObject activeHintObject = GetActiveHintBarObject();
         CanvasGroup panelGroup = panel != null ? GetOrAddCanvasGroup(panel) : null;
-        CanvasGroup hintGroup = hintBar != null ? GetOrAddCanvasGroup(hintBar.gameObject) : null;
+        CanvasGroup hintGroup = activeHintObject != null ? GetOrAddCanvasGroup(activeHintObject) : null;
 
         if (blocked)
         {
@@ -1651,9 +2774,9 @@ public class UIFlowController : MonoBehaviour
                 }
             }
 
-            if (hintBar != null)
+            if (activeHintObject != null)
             {
-                uiBlockHintWasActive = hintBar.gameObject.activeSelf;
+                uiBlockHintWasActive = activeHintObject.activeSelf;
                 uiBlockHintAlpha = hintGroup != null ? hintGroup.alpha : 1f;
                 if (uiBlockHintWasActive && hintGroup != null)
                 {
@@ -1684,9 +2807,9 @@ public class UIFlowController : MonoBehaviour
             panel.SetActive(true);
         }
 
-        if (uiBlockHintWasActive && hintBar != null)
+        if (uiBlockHintWasActive && activeHintObject != null)
         {
-            hintBar.gameObject.SetActive(true);
+            activeHintObject.SetActive(true);
         }
 
         while (elapsed < duration)
@@ -1731,9 +2854,9 @@ public class UIFlowController : MonoBehaviour
 
             uiBlockActive = false;
 
-            if (hintBar != null && !uiBlockHintWasActive)
+            if (activeHintObject != null && !uiBlockHintWasActive)
             {
-                hintBar.gameObject.SetActive(false);
+                activeHintObject.SetActive(false);
             }
 
             if (panel != null && !uiBlockPanelWasActive)
@@ -1745,14 +2868,26 @@ public class UIFlowController : MonoBehaviour
 
     private Vector3 GetRingsVisiblePosition(UIState state)
     {
-        if (state == UIState.SetupVoice && setupVoiceOperationInProgress && ringsSetupVoiceAnchor != null)
+        if (state == UIState.SetupVoice && setupVoiceOperationInProgress)
         {
-            return ringsSetupVoiceAnchor.position;
+            Transform anchor = touchUiActive && ringsTouchSetupVoiceAnchor != null
+                ? ringsTouchSetupVoiceAnchor
+                : ringsSetupVoiceAnchor;
+            if (anchor != null)
+            {
+                return anchor.position;
+            }
         }
 
-        if (state == UIState.SetupMemory && setupMemoryOperationInProgress && ringsSetupMemoryAnchor != null)
+        if (state == UIState.SetupMemory && setupMemoryOperationInProgress)
         {
-            return ringsSetupMemoryAnchor.position;
+            Transform anchor = touchUiActive && ringsTouchSetupMemoryAnchor != null
+                ? ringsTouchSetupMemoryAnchor
+                : ringsSetupMemoryAnchor;
+            if (anchor != null)
+            {
+                return anchor.position;
+            }
         }
 
         return ringsDefaultPosition;
@@ -1903,7 +3038,7 @@ public class UIFlowController : MonoBehaviour
 
         if (currentState == UIState.MainMode)
         {
-            // Se il chat note è attivo o appena chiuso, blocca il back
+            // Se il chat note ÃƒÂ¨ attivo o appena chiuso, blocca il back
             if (mainModeChatNoteActive)
             {
                 DismissChatNote();
@@ -2154,6 +3289,10 @@ public class UIFlowController : MonoBehaviour
         }
 
         UpdateCameraAnchorForState(state);
+        UpdateTouchAvatarDeleteButtonVisual();
+        UpdateTouchAvatarDeleteButtonAvailability();
+        UpdateTouchMainModeActionButtonsVisibility();
+        UpdateTouchAvatarDimming();
     }
 
     private GameObject GetPanel(UIState state)
@@ -2418,7 +3557,7 @@ public class UIFlowController : MonoBehaviour
         if (active)
         {
             _previewModeActive = true;
-            if (hintBar != null) hintBar.gameObject.SetActive(false);
+            SetHintBarVisible(false);
             SetTitleVisible(false);
         }
         else
@@ -2429,7 +3568,7 @@ public class UIFlowController : MonoBehaviour
                 _previewModeActive = false;
                 if (!downloadStateActive && !carouselDownloading)
                 {
-                    if (hintBar != null) hintBar.gameObject.SetActive(true);
+                    SetHintBarVisible(true);
                     SetTitleVisible(true);
                 }
             }
@@ -2441,14 +3580,14 @@ public class UIFlowController : MonoBehaviour
         carouselDownloading = on;
         if (on)
         {
-            if (hintBar != null) hintBar.gameObject.SetActive(false);
+            SetHintBarVisible(false);
             SetTitleVisible(false);
         }
         else
         {
             if (!downloadStateActive && !_previewModeActive)
             {
-                if (hintBar != null) hintBar.gameObject.SetActive(true);
+                SetHintBarVisible(true);
                 SetTitleVisible(true);
             }
         }
@@ -2467,6 +3606,10 @@ public class UIFlowController : MonoBehaviour
         if (debugText != null)
         {
             debugText.text = message;
+        }
+        if (touchDebugText != null && touchDebugText != debugText)
+        {
+            touchDebugText.text = message;
         }
         Debug.Log("[UIFlowController] " + message);
     }
@@ -2512,6 +3655,89 @@ public class UIFlowController : MonoBehaviour
         }
 
         UpdateDebugText(message);
+    }
+
+    private static bool IsSubmitKeyDown()
+    {
+        if (Input.GetKeyDown(KeyCode.Return))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = Keyboard.current;
+        if (keyboard != null)
+        {
+            return keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame;
+        }
+#endif
+        return false;
+    }
+
+    private static bool IsKeyDown(KeyCode keyCode)
+    {
+        if (Input.GetKeyDown(keyCode))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = Keyboard.current;
+        if (keyboard == null)
+        {
+            return false;
+        }
+
+        return keyCode switch
+        {
+            KeyCode.Space => keyboard.spaceKey.wasPressedThisFrame,
+            KeyCode.Return => keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame,
+            KeyCode.Backspace => keyboard.backspaceKey.wasPressedThisFrame,
+            KeyCode.Delete => keyboard.deleteKey.wasPressedThisFrame,
+            KeyCode.Insert => keyboard.insertKey.wasPressedThisFrame,
+            KeyCode.LeftArrow => keyboard.leftArrowKey.wasPressedThisFrame,
+            KeyCode.RightArrow => keyboard.rightArrowKey.wasPressedThisFrame,
+            KeyCode.UpArrow => keyboard.upArrowKey.wasPressedThisFrame,
+            KeyCode.DownArrow => keyboard.downArrowKey.wasPressedThisFrame,
+            KeyCode.Escape => keyboard.escapeKey.wasPressedThisFrame,
+            _ => false
+        };
+#else
+        return false;
+#endif
+    }
+
+    private static bool IsKeyUp(KeyCode keyCode)
+    {
+        if (Input.GetKeyUp(keyCode))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = Keyboard.current;
+        if (keyboard == null)
+        {
+            return false;
+        }
+
+        return keyCode switch
+        {
+            KeyCode.Space => keyboard.spaceKey.wasReleasedThisFrame,
+            KeyCode.Return => keyboard.enterKey.wasReleasedThisFrame || keyboard.numpadEnterKey.wasReleasedThisFrame,
+            KeyCode.Backspace => keyboard.backspaceKey.wasReleasedThisFrame,
+            KeyCode.Delete => keyboard.deleteKey.wasReleasedThisFrame,
+            KeyCode.Insert => keyboard.insertKey.wasReleasedThisFrame,
+            KeyCode.LeftArrow => keyboard.leftArrowKey.wasReleasedThisFrame,
+            KeyCode.RightArrow => keyboard.rightArrowKey.wasReleasedThisFrame,
+            KeyCode.UpArrow => keyboard.upArrowKey.wasReleasedThisFrame,
+            KeyCode.DownArrow => keyboard.downArrowKey.wasReleasedThisFrame,
+            KeyCode.Escape => keyboard.escapeKey.wasReleasedThisFrame,
+            _ => false
+        };
+#else
+        return false;
+#endif
     }
 
     private static bool IsInputFieldFocused(TMP_InputField inputField)
@@ -2583,6 +3809,28 @@ public class UIFlowController : MonoBehaviour
     private void ApplyMainModeDebugVisibility()
     {
         bool showMainModeDebug = !debugUiHidden && !mainModeChatNoteActive;
+        if (touchUiActive)
+        {
+            if (!showMainModeDebug)
+            {
+                if (mainModeTranscriptText != null)
+                {
+                    mainModeTranscriptText.gameObject.SetActive(false);
+                }
+                if (mainModeReplyText != null)
+                {
+                    mainModeReplyText.gameObject.SetActive(false);
+                }
+                return;
+            }
+
+            TouchMainModeTextView target = touchMainModeReplyAvailable && touchMainModeTextView == TouchMainModeTextView.Reply
+                ? TouchMainModeTextView.Reply
+                : TouchMainModeTextView.Transcript;
+            SetTouchMainModeTextViewImmediate(target);
+            return;
+        }
+
         if (mainModeTranscriptText != null)
         {
             mainModeTranscriptText.gameObject.SetActive(showMainModeDebug);
@@ -2750,7 +3998,7 @@ public class UIFlowController : MonoBehaviour
         }
 
         setupVoicePhraseReady = true;
-        UpdateSetupVoiceStatus("Tieni premuto SPACE per registrare.");
+        UpdateSetupVoiceStatus(touchUiActive ? "Tieni premuto PTT per registrare." : "Tieni premuto SPACE per registrare.");
     }
 
     private IEnumerator IngestFileRoutine()
@@ -2987,33 +4235,6 @@ public class UIFlowController : MonoBehaviour
         }
     }
 
-    private IEnumerator RememberNoteRoutine()
-    {
-        string text = setupMemoryNoteInput != null ? setupMemoryNoteInput.text : null;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            UpdateSetupMemoryLog("Nota vuota.");
-            UpdateDebugText("Remember note: nota vuota.");
-            PlayErrorClip();
-            yield break;
-        }
-
-        if (servicesConfig == null)
-        {
-            UpdateSetupMemoryLog("ServicesConfig mancante.");
-            UpdateDebugText("Remember note: ServicesConfig mancante.");
-            PlayErrorClip();
-            yield break;
-        }
-
-        UpdateDebugText($"Remember note: {text.Substring(0, Mathf.Min(30, text.Length))}...");
-        yield return StartCoroutine(RememberText(text, new RememberMeta { source_type = "manual_note" }));
-        if (setupMemoryNoteInput != null)
-        {
-            setupMemoryNoteInput.text = string.Empty;
-        }
-    }
-
     private IEnumerator RememberText(
         string text,
         RememberMeta meta,
@@ -3093,11 +4314,11 @@ public class UIFlowController : MonoBehaviour
         mainModeChatNoteActive = false;
         ttsAudioSource = GetOrCreateLipSyncAudioSource();
         ResetMainModeTexts();
-        if (hintBar != null)
-        {
-            hintBar.SetSpacePressed(false);
-        }
+        ResetTouchMainModeConversationUi();
+        SetHintBarSpacePressed(false);
         HideChatNoteImmediate();
+        UpdateTouchAvatarDimming();
+        UpdateTouchMainModeActionButtonsVisibility();
 
         var idleLook = avatarManager != null ? avatarManager.idleLook : null;
         if (idleLook != null)
@@ -3107,7 +4328,7 @@ public class UIFlowController : MonoBehaviour
 
         lastMousePosition = Input.mousePosition;
         lastMouseMoveTime = Time.time;
-        UpdateMainModeStatus("Tieni premuto SPACE per parlare.");
+        UpdateMainModeStatus(touchUiActive ? "Tieni premuto PTT per parlare." : "Tieni premuto SPACE per parlare.");
 
         if (mainModeCheckRoutine != null)
         {
@@ -3131,6 +4352,11 @@ public class UIFlowController : MonoBehaviour
         if (mainModeReplyText != null)
         {
             mainModeReplyText.text = string.Empty;
+        }
+
+        if (touchUiActive)
+        {
+            ResetTouchMainModeConversationUi();
         }
     }
 
@@ -3198,20 +4424,22 @@ public class UIFlowController : MonoBehaviour
         // Nota chat attiva: gestiamo Enter (conferma) e Delete (annulla).
         if (mainModeChatNoteActive)
         {
-            if (Input.GetKeyDown(KeyCode.Return))
+            if (IsSubmitKeyDown())
             {
                 SubmitChatNote();
                 return;
             }
-            if (Input.GetKeyDown(KeyCode.Delete))
+            if (IsKeyDown(KeyCode.Delete))
             {
                 DismissChatNote();
                 return;
             }
 
-            // Controlla se il testo è stato svuotato (backspace fino a vuoto)
-            if (chatNoteInput != null && string.IsNullOrWhiteSpace(chatNoteInput.text)
-                && !Input.GetKeyDown(KeyCode.Backspace)
+            // Controlla se il testo ÃƒÂ¨ stato svuotato (backspace fino a vuoto)
+            if (!touchUiActive &&
+                chatNoteInput != null &&
+                string.IsNullOrWhiteSpace(chatNoteInput.text)
+                && !IsKeyDown(KeyCode.Backspace)
                 && !Input.GetMouseButtonDown(0))
             {
                 DismissChatNote();
@@ -3220,7 +4448,7 @@ public class UIFlowController : MonoBehaviour
         }
 
         // Normale: spazio per parlare
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (IsKeyDown(KeyCode.Space))
         {
             if (TryInterruptMainModeSpeechAndListen())
             {
@@ -3228,7 +4456,7 @@ public class UIFlowController : MonoBehaviour
             }
             StartMainModeListening();
         }
-        if (Input.GetKeyUp(KeyCode.Space))
+        if (IsKeyUp(KeyCode.Space))
         {
             StopMainModeListening();
         }
@@ -3247,6 +4475,372 @@ public class UIFlowController : MonoBehaviour
                 }
             }
         }
+    }
+
+    private void HandleTouchMainModeSwipeInput()
+    {
+        if (!touchUiActive ||
+            currentState != UIState.MainMode ||
+            mainModeChatNoteActive ||
+            !touchMainModeReplyShownOnce ||
+            uiInputLocked)
+        {
+            ResetTouchMainModeSwipeTracking();
+            return;
+        }
+
+        if (Input.touchCount > 0)
+        {
+            HandleTouchMainModeSwipeFromTouches();
+            return;
+        }
+
+        HandleTouchMainModeSwipeFromMouse();
+    }
+
+    private void HandleTouchMainModeSwipeFromTouches()
+    {
+        if (!touchMainModeSwipeTracking)
+        {
+            for (int i = 0; i < Input.touchCount; i++)
+            {
+                Touch touch = Input.GetTouch(i);
+                if (touch.phase == UnityEngine.TouchPhase.Began)
+                {
+                    touchMainModeSwipeTracking = true;
+                    touchMainModeSwipeFingerId = touch.fingerId;
+                    touchMainModeSwipeStart = touch.position;
+                    break;
+                }
+            }
+            return;
+        }
+
+        bool fingerFound = false;
+        for (int i = 0; i < Input.touchCount; i++)
+        {
+            Touch touch = Input.GetTouch(i);
+            if (touch.fingerId != touchMainModeSwipeFingerId)
+            {
+                continue;
+            }
+
+            fingerFound = true;
+            if (touch.phase == UnityEngine.TouchPhase.Ended || touch.phase == UnityEngine.TouchPhase.Canceled)
+            {
+                Vector2 delta = touch.position - touchMainModeSwipeStart;
+                ProcessTouchMainModeSwipeDelta(delta);
+                ResetTouchMainModeSwipeTracking();
+            }
+            break;
+        }
+
+        if (!fingerFound)
+        {
+            ResetTouchMainModeSwipeTracking();
+        }
+    }
+
+    private void HandleTouchMainModeSwipeFromMouse()
+    {
+        if (!touchMainModeSwipeTracking)
+        {
+            if (Input.GetMouseButtonDown(0))
+            {
+                touchMainModeSwipeTracking = true;
+                touchMainModeSwipeFingerId = -1;
+                touchMainModeSwipeStart = Input.mousePosition;
+            }
+            return;
+        }
+
+        if (Input.GetMouseButtonUp(0))
+        {
+            Vector2 end = Input.mousePosition;
+            ProcessTouchMainModeSwipeDelta(end - touchMainModeSwipeStart);
+            ResetTouchMainModeSwipeTracking();
+        }
+    }
+
+    private void ProcessTouchMainModeSwipeDelta(Vector2 delta)
+    {
+        float horizontal = Mathf.Abs(delta.x);
+        float vertical = Mathf.Abs(delta.y);
+        if (horizontal < touchMainModeSwipeMinDistance || horizontal <= vertical)
+        {
+            return;
+        }
+
+        if (delta.x < 0f && touchMainModeTextView == TouchMainModeTextView.Transcript && touchMainModeReplyAvailable)
+        {
+            RequestTouchMainModeTextView(TouchMainModeTextView.Reply, animated: true, direction: 1);
+        }
+        else if (delta.x > 0f && touchMainModeTextView == TouchMainModeTextView.Reply)
+        {
+            RequestTouchMainModeTextView(TouchMainModeTextView.Transcript, animated: true, direction: -1);
+        }
+    }
+
+    private void ResetTouchMainModeSwipeTracking()
+    {
+        touchMainModeSwipeTracking = false;
+        touchMainModeSwipeFingerId = -1;
+    }
+
+    private void ResetTouchMainModeConversationUi()
+    {
+        touchMainModeReplyAvailable = false;
+        touchMainModeReplyShownOnce = false;
+        ResetTouchMainModeSwipeTracking();
+        RequestTouchMainModeTextView(TouchMainModeTextView.Transcript, animated: false, direction: 0);
+    }
+
+    private void OnMainModeTranscriptUpdated()
+    {
+        if (!touchUiActive)
+        {
+            return;
+        }
+
+        touchMainModeReplyAvailable = false;
+        touchMainModeReplyShownOnce = false;
+        RequestTouchMainModeTextView(TouchMainModeTextView.Transcript, animated: false, direction: 0);
+        if (currentState == UIState.MainMode)
+        {
+            UpdateHintBar(UIState.MainMode);
+        }
+    }
+
+    private void OnMainModeReplyReady()
+    {
+        if (!touchUiActive)
+        {
+            return;
+        }
+
+        touchMainModeReplyAvailable = true;
+        if (currentState == UIState.MainMode)
+        {
+            UpdateHintBar(UIState.MainMode);
+        }
+    }
+
+    private void OnMainModeReplySpeechStarted()
+    {
+        if (!touchUiActive || !touchMainModeReplyAvailable)
+        {
+            return;
+        }
+
+        touchMainModeReplyShownOnce = true;
+        RequestTouchMainModeTextView(TouchMainModeTextView.Reply, animated: true, direction: 1);
+        if (currentState == UIState.MainMode)
+        {
+            UpdateHintBar(UIState.MainMode);
+        }
+    }
+
+    private bool EnsureTouchMainModeTextLayoutCache()
+    {
+        if (!touchUiActive || mainModeTranscriptText == null || mainModeReplyText == null)
+        {
+            return false;
+        }
+
+        if (touchMainModeTextLayoutCached)
+        {
+            return true;
+        }
+
+        var transcriptRect = mainModeTranscriptText.rectTransform;
+        var replyRect = mainModeReplyText.rectTransform;
+        if (transcriptRect == null || replyRect == null)
+        {
+            return false;
+        }
+
+        touchMainModeTranscriptGroup = GetOrAddCanvasGroup(mainModeTranscriptText.gameObject);
+        touchMainModeReplyGroup = GetOrAddCanvasGroup(mainModeReplyText.gameObject);
+        touchMainModeTranscriptDefaultPos = transcriptRect.anchoredPosition;
+        touchMainModeReplyDefaultPos = replyRect.anchoredPosition;
+        touchMainModeTextLayoutCached = true;
+        return true;
+    }
+
+    private void RequestTouchMainModeTextView(TouchMainModeTextView target, bool animated, int direction)
+    {
+        if (!EnsureTouchMainModeTextLayoutCache())
+        {
+            return;
+        }
+
+        if (!touchMainModeReplyAvailable && target == TouchMainModeTextView.Reply)
+        {
+            target = TouchMainModeTextView.Transcript;
+        }
+
+        if (touchMainModeTextSwitchRoutine != null)
+        {
+            StopCoroutine(touchMainModeTextSwitchRoutine);
+            touchMainModeTextSwitchRoutine = null;
+        }
+
+        bool canShowText = !debugUiHidden && !mainModeChatNoteActive;
+        if (!animated || !canShowText || target == touchMainModeTextView)
+        {
+            SetTouchMainModeTextViewImmediate(target);
+            return;
+        }
+
+        touchMainModeTextSwitchRoutine = StartCoroutine(AnimateTouchMainModeTextViewSwitch(target, direction));
+    }
+
+    private IEnumerator AnimateTouchMainModeTextViewSwitch(TouchMainModeTextView target, int direction)
+    {
+        if (!EnsureTouchMainModeTextLayoutCache())
+        {
+            touchMainModeTextSwitchRoutine = null;
+            yield break;
+        }
+
+        bool toReply = target == TouchMainModeTextView.Reply;
+        var fromText = toReply ? mainModeTranscriptText : mainModeReplyText;
+        var toText = toReply ? mainModeReplyText : mainModeTranscriptText;
+        if (fromText == null || toText == null)
+        {
+            SetTouchMainModeTextViewImmediate(target);
+            touchMainModeTextSwitchRoutine = null;
+            yield break;
+        }
+
+        var fromRect = fromText.rectTransform;
+        var toRect = toText.rectTransform;
+        if (fromRect == null || toRect == null)
+        {
+            SetTouchMainModeTextViewImmediate(target);
+            touchMainModeTextSwitchRoutine = null;
+            yield break;
+        }
+
+        CanvasGroup fromGroup = toReply ? touchMainModeTranscriptGroup : touchMainModeReplyGroup;
+        CanvasGroup toGroup = toReply ? touchMainModeReplyGroup : touchMainModeTranscriptGroup;
+        Vector2 fromDefault = toReply ? touchMainModeTranscriptDefaultPos : touchMainModeReplyDefaultPos;
+        Vector2 toDefault = toReply ? touchMainModeReplyDefaultPos : touchMainModeTranscriptDefaultPos;
+
+        float sign = direction >= 0 ? 1f : -1f;
+        float offset = Mathf.Max(0f, touchMainModeTextSwitchOffset) * sign;
+
+        fromText.gameObject.SetActive(true);
+        toText.gameObject.SetActive(true);
+        fromRect.anchoredPosition = fromDefault;
+        toRect.anchoredPosition = toDefault + new Vector2(offset, 0f);
+        if (fromGroup != null)
+        {
+            fromGroup.alpha = 1f;
+            fromGroup.interactable = false;
+            fromGroup.blocksRaycasts = false;
+        }
+        if (toGroup != null)
+        {
+            toGroup.alpha = 0f;
+            toGroup.interactable = false;
+            toGroup.blocksRaycasts = false;
+        }
+
+        float duration = Mathf.Max(0f, touchMainModeTextSwitchDuration);
+        if (duration <= 0f)
+        {
+            SetTouchMainModeTextViewImmediate(target);
+            touchMainModeTextSwitchRoutine = null;
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+
+            fromRect.anchoredPosition = Vector2.LerpUnclamped(fromDefault, fromDefault + new Vector2(-offset, 0f), t);
+            toRect.anchoredPosition = Vector2.LerpUnclamped(toDefault + new Vector2(offset, 0f), toDefault, t);
+            if (fromGroup != null)
+            {
+                fromGroup.alpha = Mathf.Lerp(1f, 0f, t);
+            }
+            if (toGroup != null)
+            {
+                toGroup.alpha = Mathf.Lerp(0f, 1f, t);
+            }
+
+            yield return null;
+        }
+
+        SetTouchMainModeTextViewImmediate(target);
+        touchMainModeTextSwitchRoutine = null;
+    }
+
+    private void SetTouchMainModeTextViewImmediate(TouchMainModeTextView target)
+    {
+        if (!EnsureTouchMainModeTextLayoutCache())
+        {
+            return;
+        }
+
+        bool canShowText = !debugUiHidden && !mainModeChatNoteActive;
+        if (!touchMainModeReplyAvailable && target == TouchMainModeTextView.Reply)
+        {
+            target = TouchMainModeTextView.Transcript;
+        }
+
+        bool showTranscript = target == TouchMainModeTextView.Transcript;
+        if (!canShowText)
+        {
+            if (mainModeTranscriptText != null)
+            {
+                mainModeTranscriptText.gameObject.SetActive(false);
+            }
+            if (mainModeReplyText != null)
+            {
+                mainModeReplyText.gameObject.SetActive(false);
+            }
+            return;
+        }
+
+        var transcriptRect = mainModeTranscriptText.rectTransform;
+        var replyRect = mainModeReplyText.rectTransform;
+        transcriptRect.anchoredPosition = touchMainModeTranscriptDefaultPos;
+        replyRect.anchoredPosition = touchMainModeReplyDefaultPos;
+
+        if (touchMainModeTranscriptGroup != null)
+        {
+            touchMainModeTranscriptGroup.alpha = showTranscript ? 1f : 0f;
+            touchMainModeTranscriptGroup.interactable = false;
+            touchMainModeTranscriptGroup.blocksRaycasts = false;
+        }
+        if (touchMainModeReplyGroup != null)
+        {
+            touchMainModeReplyGroup.alpha = showTranscript ? 0f : 1f;
+            touchMainModeReplyGroup.interactable = false;
+            touchMainModeReplyGroup.blocksRaycasts = false;
+        }
+
+        mainModeTranscriptText.gameObject.SetActive(showTranscript);
+        mainModeReplyText.gameObject.SetActive(!showTranscript);
+        touchMainModeTextView = showTranscript ? TouchMainModeTextView.Transcript : TouchMainModeTextView.Reply;
+    }
+
+    private void UpdateTouchAvatarDimming()
+    {
+        if (avatarManager == null)
+        {
+            return;
+        }
+
+        bool shouldDim = touchUiActive &&
+                         currentState == UIState.MainMode &&
+                         mainModeChatNoteActive &&
+                         (IsInputFieldFocused(chatNoteInput) || TouchScreenKeyboard.visible);
+        avatarManager.SetCurrentAvatarDimmed(shouldDim, touchChatAvatarDimMultiplier);
     }
 
     // Chat Note: mostra / nascondi / invia
@@ -3272,10 +4866,18 @@ public class UIFlowController : MonoBehaviour
         chatNoteInput.gameObject.SetActive(false);
         chatNoteInput.text = string.Empty;
         mainModeChatNoteActive = false;
+        UpdateTouchAvatarDimming();
+        ResetTouchMainModeSwipeTracking();
         ApplyMainModeDebugVisibility();
+        UpdateTouchMainModeActionButtonsVisibility();
     }
 
     private void ShowChatNote(char initialChar)
+    {
+        ShowChatNote(initialChar.ToString());
+    }
+
+    private void ShowChatNote(string initialText)
     {
         if (chatNoteInput == null) return;
 
@@ -3287,7 +4889,7 @@ public class UIFlowController : MonoBehaviour
 
         // Prepariamo la chat.
         chatNoteInput.onFocusSelectAll = false;
-        chatNoteInput.text = initialChar.ToString();
+        chatNoteInput.text = initialText ?? string.Empty;
         chatNoteInput.gameObject.SetActive(true);
         FocusChatNoteWithoutSelection();
 
@@ -3296,10 +4898,14 @@ public class UIFlowController : MonoBehaviour
         chatNoteTransitionRoutine = StartCoroutine(FadeChatNote(true, () =>
         {
             FocusChatNoteWithoutSelection();
+            UpdateTouchAvatarDimming();
         }));
 
+        UpdateTouchAvatarDimming();
+        ResetTouchMainModeSwipeTracking();
         UpdateHintBar(UIState.MainMode);
         ConfigureNavigatorForState(UIState.MainMode, true);
+        UpdateTouchMainModeActionButtonsVisibility();
     }
 
     private void DismissChatNote()
@@ -3319,11 +4925,15 @@ public class UIFlowController : MonoBehaviour
                 chatNoteInput.text = string.Empty;
                 chatNoteInput.gameObject.SetActive(false);
             }
+            UpdateTouchAvatarDimming();
         }));
 
         // Ripristiniamo trascrizione e risposta.
+        UpdateTouchAvatarDimming();
+        ResetTouchMainModeSwipeTracking();
         ApplyMainModeDebugVisibility();
-        UpdateMainModeStatus("Tieni premuto SPACE per parlare.");
+        UpdateMainModeStatus(touchUiActive ? "Tieni premuto PTT per parlare." : "Tieni premuto SPACE per parlare.");
+        UpdateTouchMainModeActionButtonsVisibility();
 
         UpdateHintBar(UIState.MainMode);
         ConfigureNavigatorForState(UIState.MainMode, true);
@@ -3353,10 +4963,14 @@ public class UIFlowController : MonoBehaviour
                 chatNoteInput.text = string.Empty;
                 chatNoteInput.gameObject.SetActive(false);
             }
+            UpdateTouchAvatarDimming();
         }));
 
         // Ripristiniamo trascrizione e risposta.
+        UpdateTouchAvatarDimming();
+        ResetTouchMainModeSwipeTracking();
         ApplyMainModeDebugVisibility();
+        UpdateTouchMainModeActionButtonsVisibility();
 
         UpdateHintBar(UIState.MainMode);
         ConfigureNavigatorForState(UIState.MainMode, true);
@@ -3371,7 +4985,7 @@ public class UIFlowController : MonoBehaviour
         // Aspettiamo un frame per evitare che il backspace che svuota il campo
         // venga intercettato anche dal navigator come "GoBack".
         yield return null;
-        yield return null;          // Ne usiamo due: è utile!
+        yield return null;          // Ne usiamo due: ÃƒÂ¨ utile!
         chatNoteJustDismissed = false;
     }
 
@@ -3445,6 +5059,7 @@ public class UIFlowController : MonoBehaviour
         {
             mainModeTranscriptText.text = userText;
         }
+        OnMainModeTranscriptUpdated();
 
         if (servicesConfig == null)
         {
@@ -3498,6 +5113,7 @@ public class UIFlowController : MonoBehaviour
         {
             mainModeReplyText.text = reply;
         }
+        OnMainModeReplyReady();
 
         if (autoRemembered)
         {
@@ -3505,12 +5121,13 @@ public class UIFlowController : MonoBehaviour
         }
 
         yield return StartCoroutine(SpeakMainModeReply(reply));
-        UpdateMainModeStatus("Tieni premuto SPACE per parlare.");
+        UpdateMainModeStatus(touchUiActive ? "Tieni premuto PTT per parlare." : "Tieni premuto SPACE per parlare.");
         mainModeProcessing = false;
     }
 
     private IEnumerator SpeakMainModeReply(string reply)
     {
+        OnMainModeReplySpeechStarted();
         TriggerMainModeWaitPhrase();
         UpdateMainModeStatus("Sto parlando...");
         mainModeSpeaking = true;
@@ -3556,10 +5173,7 @@ public class UIFlowController : MonoBehaviour
         mainModeSpeaking = false;
         mainModeProcessing = false;
 
-        if (hintBar != null)
-        {
-            hintBar.SetSpacePressed(false);
-        }
+        SetHintBarSpacePressed(false);
 
         var idleLook = avatarManager != null ? avatarManager.idleLook : null;
         if (idleLook != null)
@@ -3648,7 +5262,7 @@ public class UIFlowController : MonoBehaviour
 
     private void RequestMainModeHintRefresh()
     {
-        if (hintBar == null || currentState != UIState.MainMode)
+        if (!HasActiveHintBar() || currentState != UIState.MainMode)
         {
             return;
         }
@@ -3709,11 +5323,10 @@ public class UIFlowController : MonoBehaviour
             return;
         }
 
-        UpdateMainModeStatus("In ascolto... (rilascia SPACE per terminare)");
-        if (hintBar != null)
-        {
-            hintBar.SetSpacePressed(true);
-        }
+        UpdateMainModeStatus(touchUiActive
+            ? "In ascolto... (rilascia PTT per terminare)"
+            : "In ascolto... (rilascia SPACE per terminare)");
+        SetHintBarSpacePressed(true);
         // Evitiamo un redesign UI nello stesso frame di avvio ascolto (riduce possibili "scatti" percepiti).
         RequestMainModeHintRefresh();
         var idleLook = avatarManager != null ? avatarManager.idleLook : null;
@@ -3731,10 +5344,7 @@ public class UIFlowController : MonoBehaviour
         }
 
         mainModeListening = false;
-        if (hintBar != null)
-        {
-            hintBar.SetSpacePressed(false);
-        }
+        SetHintBarSpacePressed(false);
         RequestMainModeHintRefresh();
         var idleLook = avatarManager != null ? avatarManager.idleLook : null;
         if (idleLook != null)
@@ -3793,6 +5403,7 @@ public class UIFlowController : MonoBehaviour
         {
             mainModeTranscriptText.text = transcript;
         }
+        OnMainModeTranscriptUpdated();
 
         if (servicesConfig == null)
         {
@@ -3846,6 +5457,7 @@ public class UIFlowController : MonoBehaviour
         {
             mainModeReplyText.text = reply;
         }
+        OnMainModeReplyReady();
 
         if (autoRemembered)
         {
@@ -3853,7 +5465,7 @@ public class UIFlowController : MonoBehaviour
         }
 
         yield return StartCoroutine(SpeakMainModeReply(reply));
-        UpdateMainModeStatus("Tieni premuto SPACE per parlare.");
+        UpdateMainModeStatus(touchUiActive ? "Tieni premuto PTT per parlare." : "Tieni premuto SPACE per parlare.");
         mainModeProcessing = false;
     }
 
@@ -4286,10 +5898,9 @@ public class UIFlowController : MonoBehaviour
         mainModeProcessing = false;
         mainModeSpeaking = false;
         mainModeTtsInterruptedByUser = false;
-        if (hintBar != null)
-        {
-            hintBar.SetSpacePressed(false);
-        }
+        SetHintBarSpacePressed(false);
+        ResetTouchMainModeSwipeTracking();
+        UpdateTouchAvatarDimming();
         var idleLook = avatarManager != null ? avatarManager.idleLook : null;
         if (idleLook != null)
         {
@@ -4309,7 +5920,7 @@ public class UIFlowController : MonoBehaviour
         bool anyKey = Input.anyKeyDown;
         if (anyKey)
         {
-            if (!Input.GetKeyDown(KeyCode.Space))
+            if (!IsKeyDown(KeyCode.Space))
             {
                 idleLook.SetExternalLookTarget(null);
                 return;
@@ -4445,6 +6056,19 @@ public class UIFlowController : MonoBehaviour
         {
             Debug.LogError("[UIFlowController] camSetupMemoryRightAnchor non assegnato in Inspector (Cam_SetupMemory).");
         }
+
+        if (touchUiActive)
+        {
+            if (camTouchSetupVoiceAnchor == null)
+            {
+                Debug.Log("[UIFlowController] camTouchSetupVoiceAnchor non assegnato: uso fallback Cam_SetupVoice.");
+            }
+
+            if (camTouchSetupMemoryAnchor == null)
+            {
+                Debug.Log("[UIFlowController] camTouchSetupMemoryAnchor non assegnato: uso fallback Cam_SetupMemory.");
+            }
+        }
     }
 
     private AudioSource GetOrCreateLipSyncAudioSource()
@@ -4503,10 +6127,14 @@ public class UIFlowController : MonoBehaviour
         switch (state)
         {
             case UIState.SetupVoice:
-                currentCameraAnchor = camSetupVoiceLeftAnchor;
+                currentCameraAnchor = touchUiActive && camTouchSetupVoiceAnchor != null
+                    ? camTouchSetupVoiceAnchor
+                    : camSetupVoiceLeftAnchor;
                 break;
             case UIState.SetupMemory:
-                currentCameraAnchor = camSetupMemoryRightAnchor;
+                currentCameraAnchor = touchUiActive && camTouchSetupMemoryAnchor != null
+                    ? camTouchSetupMemoryAnchor
+                    : camSetupMemoryRightAnchor;
                 break;
             default:
                 break;
@@ -5441,14 +7069,14 @@ public class UIFlowController : MonoBehaviour
     {
         string[] phrases =
         {
-            "Questa mattina ho attraversato il mercato coperto della citta antica, ho ascoltato i venditori raccontare la provenienza delle spezie, poi mi sono fermato davanti a una bottega di legno profumato, dove un artigiano paziente lucidava strumenti delicati mentre la pioggia leggera tamburellava regolare sul tetto e l'aria portava odore di agrumi maturi dalla piazza vicina.",
-            "Nel pomeriggio sono salito lungo un sentiero di pietra tra castagni e muretti, ho incontrato un pastore gentile che indicava le nuvole in arrivo, e quando il vento ha cambiato direzione abbiamo cercato riparo in una vecchia stalla, parlando lentamente di stagioni, raccolti e memoria familiare, prima di rientrare con passo lento verso il villaggio illuminato.",
-            "Durante il viaggio in treno verso la costa ho letto ad alta voce alcune pagine annotate, osservando dal finestrino campi dorati, fiumi tranquilli e piccole stazioni dimenticate, finche al tramonto una luce arancione ha riempito il vagone e tutti sono rimasti in silenzio, come davanti a una scena sospesa, mentre un bambino salutava dal corridoio con un sorriso curioso.",
-            "Ieri sera, nella biblioteca del quartiere, una restauratrice mi ha mostrato manoscritti fragili, mappe sbiadite e fotografie d'epoca, spiegando con precisione come proteggere carta e inchiostro dall'umidita, mentre fuori le biciclette passavano veloci e una campana lontana scandiva il tempo con ritmo sorprendentemente calmo, e ogni pagina restituiva una voce antica ma presente.",
-            "All'alba ho preparato il caffe in una cucina stretta ma luminosa, ho aperto le finestre verso il cortile interno e ho sentito i primi rumori del panificio, poi ho scritto appunti ordinati su un quaderno blu, cercando parole nitide e semplici per descrivere una giornata intera senza fretta, concentrandomi sulla pronuncia chiara di ogni termine importante.",
-            "Nel laboratorio sonoro abbiamo registrato passi, fruscii di tessuto, colpi metallici e respiri controllati, regolando con cura la distanza dai microfoni e la dinamica della voce, finche una traccia pulita ha unito tutti i dettagli in modo coerente, restituendo un paesaggio acustico credibile, ricco e leggibile, distinguendo chiaramente consonanti morbide, pause naturali e finali sonore.",
-            "Quando la nebbia e scesa sulla valle, il guardiano del faro ha acceso una lampada supplementare e ci ha invitati a osservare il mare dalla terrazza piu alta, raccontando episodi di navigazione prudente, segnali di emergenza e rotte sicure, con una calma pratica che rendeva ogni istruzione chiara e affidabile, senza fretta e con tono costante.",
-            "Stamattina, dopo una lunga riunione tecnica, abbiamo verificato cablaggi, alimentazione, sensori e connessioni di rete uno per uno, annotando anomalie minime e tempi di risposta, poi abbiamo rieseguito tutti i test in sequenza fino a ottenere risultati stabili, ripetibili e coerenti con le specifiche concordate, con attenzione alla dizione, al ritmo e alla respirazione costante."
+            "Questa mattina ho attraversato il mercato coperto della citta' antica, ho ascoltato i venditori raccontare la provenienza delle spezie, poi mi sono fermato davanti a una bottega di legno profumato, dove un artigiano paziente lucidava strumenti delicati mentre la pioggia leggera tamburellava sul tetto e l'aria portava odore di agrumi maturi dalla piazza vicina.",
+            "Nel pomeriggio sono salito lungo un sentiero di pietra tra castagni e muretti, ho incontrato un pastore gentile che indicava le nuvole in arrivo e, quando il vento ha cambiato direzione, abbiamo cercato riparo in una vecchia stalla, parlando lentamente di stagioni, raccolti e memoria familiare, prima di rientrare con passo calmo verso il villaggio illuminato.",
+            "Durante il viaggio in treno verso la costa ho letto ad alta voce alcune pagine annotate, osservando dal finestrino campi dorati, fiumi tranquilli e piccole stazioni dimenticate, finche' al tramonto una luce arancione ha riempito il vagone e tutti sono rimasti in silenzio, come davanti a una scena sospesa, mentre un bambino salutava dal corridoio con un sorriso curioso.",
+            "Ieri sera, nella biblioteca del quartiere, una restauratrice mi ha mostrato manoscritti fragili, mappe sbiadite e fotografie d'epoca, spiegando con precisione come proteggere carta e inchiostro dall'umidita', mentre fuori le biciclette passavano veloci e una campana lontana scandiva il tempo con ritmo sorprendentemente calmo, e ogni pagina restituiva una voce antica ma presente.",
+            "All'alba ho preparato il caffe' in una cucina stretta ma luminosa, ho aperto le finestre verso il cortile interno e ho sentito i primi rumori del panificio, poi ho scritto appunti ordinati su un quaderno blu, cercando parole nitide e semplici per descrivere una giornata intera senza fretta, concentrandomi sulla pronuncia chiara di ogni termine importante.",
+            "Nel laboratorio sonoro abbiamo registrato passi, fruscii di tessuto, colpi metallici e respiri controllati, regolando con cura la distanza dai microfoni e la dinamica della voce, finche' una traccia pulita ha unito tutti i dettagli in modo coerente, restituendo un paesaggio acustico credibile, ricco e leggibile, con consonanti morbide, pause naturali e finali sonore.",
+            "Quando la nebbia e' scesa sulla valle, il guardiano del faro ha acceso una lampada supplementare e ci ha invitati a osservare il mare dalla terrazza piu' alta, raccontando episodi di navigazione prudente, segnali di emergenza e rotte sicure, con una calma pratica che rendeva ogni istruzione chiara e affidabile, senza fretta e con tono costante.",
+            "Stamattina, dopo una lunga riunione tecnica, abbiamo verificato cablaggi, alimentazione, sensori e connessioni di rete uno per uno, annotando anomalie minime e tempi di risposta, poi abbiamo ripetuto tutti i test in sequenza fino a ottenere risultati stabili, ripetibili e coerenti con le specifiche concordate, con attenzione alla dizione, al ritmo e alla respirazione costante."
         };
 
         int index = Random.Range(0, phrases.Length);
@@ -5671,7 +7299,16 @@ public class UIFlowController : MonoBehaviour
         Require(mainModeTranscriptText, "mainModeTranscriptText (Txt_MainModeTranscript)");
         Require(mainModeReplyText, "mainModeReplyText (Txt_MainModeReply)");
 
-        Require(hintBar, "hintBar (UI_HintBar)");
+        if (touchUiActive)
+        {
+            ResolveTouchHintBarReferences();
+            Require(touchHintBarObject, "touchHintBarObject (UI_HintBar_Touch)");
+            Require(touchHintBarComponent, "UIHintBar component on touchHintBarObject");
+        }
+        else
+        {
+            Require(hintBar, "hintBar (UI_HintBar)");
+        }
         Require(navigator, "navigator (UINavigator)");
         Require(avatarManager, "avatarManager (AvatarManager)");
         Require(avaturnSystem, "avaturnSystem (AvaturnSystem)");
@@ -5697,6 +7334,14 @@ public class UIFlowController : MonoBehaviour
 
     private void UpdateHintBar(UIState state)
     {
+        if (touchUiActive)
+        {
+            UpdateTouchHintBar(state);
+            UpdateTouchAvatarDeleteButtonVisual();
+            SetTouchPttVisualState();
+            return;
+        }
+
         if (hintBar == null)
             return;
 
@@ -5791,7 +7436,7 @@ public class UIFlowController : MonoBehaviour
 
         if (avatarManager != null)
         {
-            avatarManager.SetCurrentAvatarVisible(!inLibrary);
+            avatarManager.SetCurrentAvatarVisible(ShouldShowAvatarInState(state));
         }
 
         UpdateRingsForState(state);
@@ -5806,6 +7451,13 @@ public class UIFlowController : MonoBehaviour
                 ringsController.SetOrbitSpeedMultiplier(1f);
             }
         }
+    }
+
+    private static bool ShouldShowAvatarInState(UIState state)
+    {
+        return state == UIState.SetupVoice ||
+               state == UIState.SetupMemory ||
+               state == UIState.MainMode;
     }
 
     private void ConfigureNavigatorForState(UIState state, bool resetIndex)
@@ -5824,12 +7476,8 @@ public class UIFlowController : MonoBehaviour
                 axisMode = UINavigator.AxisMode.Vertical;
                 break;
             case UIState.MainMenu:
-                // Finche' l'intro non e' completa, non includiamo i bottoni nel navigator.
-                if (!enableMainMenuIntro || _mainMenuButtonsIntroDone)
-                {
-                    if (btnNewAvatar != null) selectables.Add(btnNewAvatar);
-                    if (btnShowList != null) selectables.Add(btnShowList);
-                }
+                if (btnNewAvatar != null) selectables.Add(btnNewAvatar);
+                if (btnShowList != null) selectables.Add(btnShowList);
                 axisMode = UINavigator.AxisMode.Vertical;
                 break;
             case UIState.AvatarLibrary:
@@ -5849,7 +7497,15 @@ public class UIFlowController : MonoBehaviour
                     }
                     else if (pnlSaveMemory != null && pnlSaveMemory.activeSelf)
                     {
-                        if (btnSetMemory != null) selectables.Add(btnSetMemory);
+                        if (touchUiActive)
+                        {
+                            if (btnTouchConfirmSetMemory != null) selectables.Add(btnTouchConfirmSetMemory);
+                            if (btnTouchCancelSetMemory != null) selectables.Add(btnTouchCancelSetMemory);
+                        }
+                        else if (btnSetMemory != null)
+                        {
+                            selectables.Add(btnSetMemory);
+                        }
                     }
                 }
                 break;
@@ -5923,7 +7579,7 @@ public class UIFlowController : MonoBehaviour
         
         // Qui nascondiamo Title e HintBar in modo esplicito.
         if (_titleCanvasGroup != null) _titleCanvasGroup.alpha = 0f;
-        if (hintBar != null) hintBar.gameObject.SetActive(false);
+        SetHintBarVisible(false);
 
         SetMainMenuButtonsVisible(false, immediate: true);
 
@@ -5952,13 +7608,10 @@ public class UIFlowController : MonoBehaviour
         if (!carouselDownloading && !_previewModeActive)
         {
             SetTitleVisible(true);
-            if (hintBar != null) hintBar.gameObject.SetActive(true);
+            SetHintBarVisible(true);
         }
 
-        if (!enableMainMenuIntro || _mainMenuButtonsIntroDone)
-        {
-            SetMainMenuButtonsVisible(true, immediate: true);
-        }
+        SetMainMenuButtonsVisible(true, immediate: true);
 
         if (ringsController != null)
         {
