@@ -66,11 +66,24 @@ OUTPUT_SAMPLE_RATE = int(os.getenv("COQUI_OUTPUT_SR", "24000"))
 # repetition_penalty: penalizza ripetizioni (aiuta con balbuzie/stuttering)
 XTTS_GPT_COND_LEN = int(os.getenv("COQUI_GPT_COND_LEN", "12"))
 XTTS_GPT_COND_CHUNK_LEN = int(os.getenv("COQUI_GPT_COND_CHUNK_LEN", "4"))
-XTTS_TEMPERATURE = float(os.getenv("COQUI_TEMPERATURE", "0.65"))
-XTTS_REPETITION_PENALTY = float(os.getenv("COQUI_REPETITION_PENALTY", "5.0"))
+XTTS_TEMPERATURE = float(os.getenv("COQUI_TEMPERATURE", "0.45"))
+XTTS_REPETITION_PENALTY = float(os.getenv("COQUI_REPETITION_PENALTY", "4.0"))
 XTTS_LENGTH_PENALTY = float(os.getenv("COQUI_LENGTH_PENALTY", "1.0"))
-XTTS_TOP_K = int(os.getenv("COQUI_TOP_K", "50"))
-XTTS_TOP_P = float(os.getenv("COQUI_TOP_P", "0.85"))
+XTTS_TOP_K = int(os.getenv("COQUI_TOP_K", "40"))
+XTTS_TOP_P = float(os.getenv("COQUI_TOP_P", "0.80"))
+XTTS_MAX_REF_LEN = int(os.getenv("COQUI_MAX_REF_LEN", "10"))
+XTTS_SOUND_NORM_REFS = os.getenv("COQUI_SOUND_NORM_REFS", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+PRELOAD_ON_STARTUP = os.getenv("COQUI_PRELOAD_ON_STARTUP", "1").strip().lower() in {"1", "true", "yes", "on"}
+WARMUP_ON_STARTUP = os.getenv("COQUI_WARMUP_ON_STARTUP", "1").strip().lower() in {"1", "true", "yes", "on"}
+WARMUP_TEXT = os.getenv("COQUI_WARMUP_TEXT", "Ciao.")
+WARMUP_LANG = os.getenv("COQUI_WARMUP_LANG", DEFAULT_LANG)
+WARMUP_AVATAR_ID = os.getenv("COQUI_WARMUP_AVATAR_ID", "default")
+
+REFERENCE_TRIM_SILENCE = os.getenv("COQUI_REFERENCE_TRIM_SILENCE", "1").strip().lower() in {"1", "true", "yes", "on"}
+REFERENCE_SILENCE_THRESHOLD = float(os.getenv("COQUI_REFERENCE_SILENCE_THRESHOLD", "0.01"))
+REFERENCE_TRIM_PAD_SEC = float(os.getenv("COQUI_REFERENCE_TRIM_PAD_SEC", "0.12"))
+REFERENCE_MAX_SEC = float(os.getenv("COQUI_REFERENCE_MAX_SEC", "14"))
 
 # -------------------- Applicazione --------------------
 
@@ -162,6 +175,52 @@ def _clean_tts_text(text: str) -> str:
     s = re.sub(r'^[.,;:!?\s]+', '', s)
 
     return s.strip()
+
+
+# Prepara i bytes del file WAV di riferimento, con validazione, trimming silenzio e normalizzazione.
+def _prepare_reference_wav_bytes(data: bytes) -> bytes:
+    if not data:
+        raise ValueError("File speaker_wav vuoto.")
+
+    try:
+        wav, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=False)
+    except Exception as exc:
+        raise ValueError(f"Formato speaker_wav non valido: {exc}")
+
+    wav = np.asarray(wav, dtype=np.float32)
+    if wav.ndim == 2:
+        wav = np.mean(wav, axis=1, dtype=np.float32)
+    elif wav.ndim > 2:
+        wav = wav.reshape(-1).astype(np.float32)
+
+    wav = np.nan_to_num(wav, nan=0.0, posinf=0.0, neginf=0.0).reshape(-1)
+    if wav.size < 128:
+        raise ValueError("File speaker_wav troppo corto.")
+
+    if REFERENCE_TRIM_SILENCE:
+        threshold = max(1e-4, float(REFERENCE_SILENCE_THRESHOLD))
+        non_silent = np.where(np.abs(wav) >= threshold)[0]
+        if non_silent.size > 0:
+            pad = max(0, int(float(REFERENCE_TRIM_PAD_SEC) * max(1, int(sr))))
+            start = max(0, int(non_silent[0]) - pad)
+            end = min(wav.size, int(non_silent[-1]) + pad + 1)
+            wav = wav[start:end]
+
+    max_sec = max(1.0, float(REFERENCE_MAX_SEC))
+    max_samples = int(max_sec * max(1, int(sr)))
+    if wav.size > max_samples:
+        wav = wav[:max_samples]
+
+    if wav.size < 128:
+        raise ValueError("File speaker_wav troppo corto dopo preprocess.")
+
+    peak = float(np.max(np.abs(wav)))
+    if peak > 1e-6:
+        wav = (wav / peak) * 0.97
+
+    out = io.BytesIO()
+    sf.write(out, wav, samplerate=int(sr), format="WAV", subtype="PCM_16")
+    return out.getvalue()
 
 
 def _safe_avatar_id(avatar_id: str) -> str:
@@ -302,6 +361,8 @@ def _tts_generate(text: str, language: str, speaker_wav_path: str):
                 length_penalty=XTTS_LENGTH_PENALTY,
                 top_k=XTTS_TOP_K,
                 top_p=XTTS_TOP_P,
+                max_ref_len=XTTS_MAX_REF_LEN,
+                sound_norm_refs=XTTS_SOUND_NORM_REFS,
             )
             return _tts.tts(**synth_kwargs)  # type: ignore[attr-defined]
         except TypeError:
@@ -463,6 +524,28 @@ def _split_text(text: str, max_chars: int = 220) -> list[str]:
     return chunks
 
 
+def _run_startup_warmup() -> None:
+    warmup_lang = (WARMUP_LANG or DEFAULT_LANG).strip() or DEFAULT_LANG
+    warmup_text = _clean_tts_text(WARMUP_TEXT or "Ciao.")
+    if not warmup_text:
+        warmup_text = "Ciao."
+
+    warmup_avatar_id = _safe_avatar_id(WARMUP_AVATAR_ID)
+    speaker_path = _resolve_speaker_path(warmup_avatar_id)
+    if speaker_path is None:
+        print("[WARN] Coqui startup warmup skipped: no speaker reference found.", flush=True)
+        return
+
+    started = time.perf_counter()
+    _ = _synth_to_pcm16_bytes(text=warmup_text, language=warmup_lang, speaker_wav_path=speaker_path)
+    elapsed = time.perf_counter() - started
+    print(
+        f"[INFO] Coqui startup warmup complete in {elapsed:.2f}s "
+        f"(lang={warmup_lang}, avatar_id={warmup_avatar_id}).",
+        flush=True,
+    )
+
+
 # -------------------- Lifespan --------------------
 
 
@@ -470,6 +553,25 @@ def _split_text(text: str, max_chars: int = 220) -> list[str]:
 def _on_startup() -> None:
     Path(AVATAR_VOICES_DIR).mkdir(parents=True, exist_ok=True)
     (HERE / "voices").mkdir(parents=True, exist_ok=True)
+
+    if PRELOAD_ON_STARTUP:
+        started = time.perf_counter()
+        try:
+            _ensure_loaded()
+            elapsed = time.perf_counter() - started
+            print(f"[INFO] Coqui preload complete in {elapsed:.2f}s (device={_device_used}).", flush=True)
+        except Exception as exc:
+            print(f"[ERR] Coqui preload failed: {exc}", flush=True)
+            return
+
+    if WARMUP_ON_STARTUP:
+        try:
+            if _tts is None:
+                _ensure_loaded()
+            _run_startup_warmup()
+        except Exception as exc:
+            print(f"[WARN] Coqui startup warmup failed: {exc}", flush=True)
+
     return
 
 
@@ -498,9 +600,13 @@ async def set_avatar_voice(
     if not speaker_wav.filename:
         raise HTTPException(status_code=400, detail="File speaker_wav mancante.")
 
-    data = await speaker_wav.read()
-    if not data or len(data) < 512:
+    raw_data = await speaker_wav.read()
+    if not raw_data or len(raw_data) < 512:
         raise HTTPException(status_code=400, detail="File speaker_wav vuoto o troppo piccolo.")
+    try:
+        data = _prepare_reference_wav_bytes(raw_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     out_path = _avatar_voice_path(safe)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -629,17 +735,23 @@ async def tts(
 
     speaker_path: Optional[str] = None
     tmp_path: Optional[Path] = None
+    speaker_source = "none"
 
     # 1) file caricato
     if speaker_wav is not None and speaker_wav.filename:
         data = await speaker_wav.read()
         if data and len(data) >= 512:
+            try:
+                data = _prepare_reference_wav_bytes(data)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
             suffix = Path(speaker_wav.filename).suffix or ".wav"
             fd, tmp_name = tempfile.mkstemp(prefix="speaker_", suffix=suffix)
             os.close(fd)
             tmp_path = Path(tmp_name)
             tmp_path.write_bytes(data)
             speaker_path = str(tmp_path)
+            speaker_source = "upload"
 
             if save_voice:
                 out_path = _avatar_voice_path(safe)
@@ -651,12 +763,14 @@ async def tts(
         avatar_ref = _avatar_voice_path(safe)
         if _file_has_content(avatar_ref):
             speaker_path = str(avatar_ref)
+            speaker_source = "avatar"
 
     # 3) fallback di default
     if speaker_path is None:
         default_ref = Path(DEFAULT_SPEAKER_WAV)
         if _file_has_content(default_ref):
             speaker_path = str(default_ref)
+            speaker_source = "default"
 
     if speaker_path is None:
         raise HTTPException(
@@ -680,6 +794,7 @@ async def tts(
         "Content-Disposition": f'attachment; filename="{filename}"',
         "X-Avatar-Id": safe,
         "X-Coqui-Lang": language,
+        "X-Speaker-Source": speaker_source,
     }
     return Response(content=wav_bytes, media_type="audio/wav", headers=headers)
 
@@ -704,16 +819,22 @@ async def tts_stream(
 
     speaker_path: Optional[str] = None
     tmp_path: Optional[Path] = None
+    speaker_source = "none"
 
     if speaker_wav is not None and speaker_wav.filename:
         data = await speaker_wav.read()
         if data and len(data) >= 512:
+            try:
+                data = _prepare_reference_wav_bytes(data)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
             suffix = Path(speaker_wav.filename).suffix or ".wav"
             fd, tmp_name = tempfile.mkstemp(prefix="speaker_", suffix=suffix)
             os.close(fd)
             tmp_path = Path(tmp_name)
             tmp_path.write_bytes(data)
             speaker_path = str(tmp_path)
+            speaker_source = "upload"
 
             if save_voice:
                 out_path = _avatar_voice_path(safe)
@@ -724,11 +845,13 @@ async def tts_stream(
         avatar_ref = _avatar_voice_path(safe)
         if _file_has_content(avatar_ref):
             speaker_path = str(avatar_ref)
+            speaker_source = "avatar"
 
     if speaker_path is None:
         default_ref = Path(DEFAULT_SPEAKER_WAV)
         if _file_has_content(default_ref):
             speaker_path = str(default_ref)
+            speaker_source = "default"
 
     if speaker_path is None:
         raise HTTPException(
@@ -761,6 +884,7 @@ async def tts_stream(
         "X-Coqui-Lang": language,
         "X-Audio-Rate": str(OUTPUT_SAMPLE_RATE),
         "X-Audio-Format": "pcm_s16le",
+        "X-Speaker-Source": speaker_source,
     }
     return StreamingResponse(_stream(), media_type="audio/wav", headers=headers)
 

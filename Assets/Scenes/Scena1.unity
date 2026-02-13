@@ -3181,8 +3181,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 388, y: 164}
-  m_SizeDelta: {x: 700, y: 80}
+  m_AnchoredPosition: {x: 388, y: 119.293}
+  m_SizeDelta: {x: 700, y: 169.415}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &388222985
 MonoBehaviour:
@@ -3234,9 +3234,9 @@ MonoBehaviour:
   m_fontSize: 30
   m_fontSizeBase: 30
   m_fontWeight: 400
-  m_enableAutoSizing: 0
-  m_fontSizeMin: 0
-  m_fontSizeMax: 0
+  m_enableAutoSizing: 1
+  m_fontSizeMin: 15
+  m_fontSizeMax: 30
   m_fontStyle: 0
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
@@ -6934,7 +6934,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 3.265, y: -319.403}
+  m_AnchoredPosition: {x: 3.265, y: -350.403}
   m_SizeDelta: {x: 515.878, y: -1235.35}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &901363462
@@ -10940,7 +10940,7 @@ MonoBehaviour:
   touchHintBarDebugTapCount: 3
   applyTouchMainMenuButtonLayout: 1
   touchMainMenuButtonWidth: 360
-  touchMainMenuButtonHeight: 104
+  touchMainMenuButtonHeight: 90
   touchMainMenuButtonsVerticalSpacing: 128
   touchMainMenuButtonsCenterY: -205
   enableMainAvatarSpawnAnimation: 1
@@ -10989,7 +10989,7 @@ MonoBehaviour:
   setupVoiceMinSimilarity: 0.7
   audioRecorder: {fileID: 953168849}
   longRequestTimeoutSeconds: 0
-  setupVoiceTargetWords: 32
+  setupVoiceTargetWords: 25
   setupVoiceWordSlack: 10
   setupVoiceMinCharsOverride: 0
   webController: {fileID: 1480375624}
@@ -11004,10 +11004,10 @@ MonoBehaviour:
   cameraRotateSpeed: 6
   cameraReturnDuration: 0.35
   enableTtsWebGlStreaming: 1
-  enableTtsWebGlStreamingLogs: 0
+  enableTtsWebGlStreamingLogs: 1
   enableTtsWebGlUnityAudio: 1
   webGlPreferChunkPlayer: 0
-  ttsStreamMaxChunkChars: 110
+  ttsStreamMaxChunkChars: 140
   transitionDuration: 0.25
   slideOffset: 40
   avaturnSystem: {fileID: 1480375626}
@@ -12262,7 +12262,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 3.2651, y: -226}
+  m_AnchoredPosition: {x: 3.2651, y: -257}
   m_SizeDelta: {x: 515.878, y: -1240.319}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1482831231
@@ -12925,8 +12925,8 @@ MonoBehaviour:
   m_fontSizeBase: 35
   m_fontWeight: 400
   m_enableAutoSizing: 0
-  m_fontSizeMin: 18
-  m_fontSizeMax: 32
+  m_fontSizeMin: 35
+  m_fontSizeMax: 35
   m_fontStyle: 0
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512

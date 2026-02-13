@@ -1019,24 +1019,9 @@ public class AvatarLibraryCarousel : MonoBehaviour
             }
         }
         
-        // Forza un refresh delle mesh
-        var meshFilters = modelRoot.GetComponentsInChildren<MeshFilter>(true);
-        foreach (var mf in meshFilters)
-        {
-            if (mf.sharedMesh != null)
-            {
-                mf.sharedMesh = Instantiate(mf.sharedMesh);
-            }
-        }
-        
-        var skinnedMeshRenderers = modelRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-        foreach (var smr in skinnedMeshRenderers)
-        {
-            if (smr.sharedMesh != null)
-            {
-                smr.sharedMesh = Instantiate(smr.sharedMesh);
-            }
-        }
+        // Non clonare le mesh runtime: su WebGL alcune SkinnedMesh importate possono
+        // emettere warning sui vertex streams dopo Instantiate(sharedMesh).
+        // Qui non modifichiamo i vertici, quindi il refresh renderer/materiali sopra e' sufficiente.
     }
 
     private void SetLayerRecursively(GameObject obj, int layer)

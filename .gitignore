@@ -77,5 +77,8 @@ Thumbs.db
 .git_stream_a
 .git_stream_b
 
-#Ignora i file bezi
+# Ignora i file bezi
 .bezisidekick/
+
+# Ignora la tesi
+Tesi/

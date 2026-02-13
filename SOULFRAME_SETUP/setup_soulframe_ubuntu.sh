@@ -586,7 +586,7 @@ COQUI_TTS_MODEL=tts_models/multilingual/multi-dataset/xtts_v2
 COQUI_LANG=it
 COQUI_DEFAULT_SPEAKER_WAV=$BACKEND_DIR/voices/default.wav
 COQUI_AVATAR_VOICES_DIR=$BACKEND_DIR/voices/avatars
-COQUI_TTS_DEVICE=auto
+COQUI_TTS_DEVICE=cuda
 # Imposta a 1 solo se accetti i termini Coqui CPML / licenza commerciale.
 COQUI_TOS_AGREED=1
 
