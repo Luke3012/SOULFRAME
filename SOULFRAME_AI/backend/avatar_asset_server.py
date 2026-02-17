@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,9 +79,21 @@ def is_valid_http_url(url: str) -> bool:
 
 
 def compute_hash(url: str) -> str:
-    import hashlib
-
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+def cached_glb_url(public_base: str, avatar_id: str) -> str:
+    return f"{public_base}/avatars/{avatar_id}/model.glb"
+
+
+def remove_avatar_entry(data: Dict[str, Any], avatar_id: str) -> None:
+    data["avatars"] = [entry for entry in data.get("avatars", []) if entry.get("avatar_id") != avatar_id]
+
+
+def touch_avatar_access(item: Dict[str, Any], resolved_path: Optional[Path] = None) -> None:
+    if resolved_path is not None:
+        item["file_path"] = str(resolved_path)
+    item["last_access"] = utc_now()
 
 
 def get_avatar_by_id(data: Dict[str, Any], avatar_id: str) -> Optional[Dict[str, Any]]:
@@ -208,7 +221,7 @@ def list_avatars(request: Request) -> Dict[str, Any]:
             item["file_path"] = str(resolved)
             metadata_changed = True
 
-        cached_url = f"{public_base}/avatars/{item['avatar_id']}/model.glb"
+        cached_url = cached_glb_url(public_base, item["avatar_id"])
         item_copy = dict(item)
         item_copy["cached_glb_url"] = cached_url
         items.append(item_copy)
@@ -233,19 +246,16 @@ def import_avatar(payload: ImportRequest, request: Request) -> Dict[str, Any]:
     if existing:
         existing_path = resolve_avatar_file_path(existing)
         if existing_path is not None:
-            existing["file_path"] = str(existing_path)
-            existing["last_access"] = utc_now()
+            touch_avatar_access(existing, existing_path)
             save_metadata(data)
             return {
                 "ok": True,
                 "avatar_id": existing["avatar_id"],
-                "cached_glb_url": f"{public_base}/avatars/{existing['avatar_id']}/model.glb",
+                "cached_glb_url": cached_glb_url(public_base, existing["avatar_id"]),
                 "bytes": existing.get("bytes", 0),
                 "dedup": True,
             }
-        data["avatars"] = [
-            entry for entry in data.get("avatars", []) if entry.get("avatar_id") != existing.get("avatar_id")
-        ]
+        remove_avatar_entry(data, str(existing.get("avatar_id", "")))
 
     avatar_id = payload.avatar_id or f"avaturn_{url_hash[:8]}"
     avatar_id = next_unique_avatar_id(data, avatar_id)
@@ -276,7 +286,7 @@ def import_avatar(payload: ImportRequest, request: Request) -> Dict[str, Any]:
     return {
         "ok": True,
         "avatar_id": avatar_id,
-        "cached_glb_url": f"{public_base}/avatars/{avatar_id}/model.glb",
+        "cached_glb_url": cached_glb_url(public_base, avatar_id),
         "bytes": bytes_written,
         "dedup": False,
     }
@@ -291,12 +301,11 @@ def get_avatar_model(avatar_id: str) -> FileResponse:
 
     path = resolve_avatar_file_path(item)
     if path is None:
-        data["avatars"] = [entry for entry in data.get("avatars", []) if entry.get("avatar_id") != avatar_id]
+        remove_avatar_entry(data, avatar_id)
         save_metadata(data)
         raise HTTPException(status_code=404, detail="File missing")
 
-    item["file_path"] = str(path)
-    item["last_access"] = utc_now()
+    touch_avatar_access(item, path)
     save_metadata(data)
 
     return FileResponse(path, media_type="model/gltf-binary", filename=path.name)
@@ -310,7 +319,7 @@ def delete_avatar(avatar_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Avatar not found")
 
     file_path = Path(item.get("file_path", ""))
-    data["avatars"] = [entry for entry in data.get("avatars", []) if entry.get("avatar_id") != avatar_id]
+    remove_avatar_entry(data, avatar_id)
     save_metadata(data)
 
     if file_path.exists():

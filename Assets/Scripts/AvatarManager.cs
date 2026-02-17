@@ -62,7 +62,7 @@ public class AvatarManager : MonoBehaviour
             // Se abbiamo già un URL valido (http/file) o è un modello locale, usa quello e basta
             if (!string.IsNullOrEmpty(url) &&
                 (isWebGL || url.StartsWith("http://") || url.StartsWith("https://") || url.StartsWith("file://") ||
-                 bodyId == "local" || (avatarId != null && avatarId.StartsWith("LOCAL_"))))
+                 AvatarManager.IsLocalAvatarId(bodyId, avatarId)))
             {
                 return new AvatarInfo(url, urlType, bodyId, gender, avatarId);
             }
@@ -280,6 +280,11 @@ public class AvatarManager : MonoBehaviour
 
         string host = uri.Host.ToLowerInvariant();
         return host == "127.0.0.1" || host == "localhost" || host == "::1";
+    }
+
+    private static bool IsLocalAvatarId(string bodyId, string avatarId)
+    {
+        return bodyId == "local" || (!string.IsNullOrEmpty(avatarId) && avatarId.StartsWith("LOCAL_"));
     }
 
     private string BuildAvatarServiceUrl(string pathAndQuery)
@@ -1759,7 +1764,7 @@ public class AvatarManager : MonoBehaviour
             return false;
         }
 
-        if (avatarData.bodyId == "local" || (avatarData.avatarId != null && avatarData.avatarId.StartsWith("LOCAL_")))
+        if (IsLocalAvatarId(avatarData.bodyId, avatarData.avatarId))
         {
             return true;
         }

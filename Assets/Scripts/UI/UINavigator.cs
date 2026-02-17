@@ -153,7 +153,15 @@ public class UINavigator : MonoBehaviour
             return false;
         }
 
-        if (!IsSubmitPressed())
+        bool submitPressed = Input.GetKeyDown(KeyCode.Return);
+#if ENABLE_INPUT_SYSTEM
+        if (!submitPressed)
+        {
+            submitPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.Enter) ||
+                            IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.NumpadEnter);
+        }
+#endif
+        if (!submitPressed)
         {
             return false;
         }
@@ -197,14 +205,28 @@ public class UINavigator : MonoBehaviour
             }
         }
 
-        if (IsBackPressed())
+        bool backPressed = Input.GetKeyDown(KeyCode.Backspace);
+#if ENABLE_INPUT_SYSTEM
+        if (!backPressed)
+        {
+            backPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.Backspace);
+        }
+#endif
+        if (backPressed)
         {
             PlayAudio(backClip);
             backAction?.Invoke();
             return true;
         }
 
-        if (IsExitPressed() && allowExit)
+        bool exitPressed = Input.GetKeyDown(KeyCode.Escape);
+#if ENABLE_INPUT_SYSTEM
+        if (!exitPressed)
+        {
+            exitPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.Escape);
+        }
+#endif
+        if (exitPressed && allowExit)
         {
             PlayAudio(backClip);
             exitAction?.Invoke();
@@ -220,25 +242,59 @@ public class UINavigator : MonoBehaviour
 
         if (axisMode == AxisMode.Vertical || axisMode == AxisMode.Both)
         {
-            if (IsMoveUpPressed())
+            bool moveUpPressed = Input.GetKeyDown(KeyCode.UpArrow);
+#if ENABLE_INPUT_SYSTEM
+            if (!moveUpPressed)
+            {
+                moveUpPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.UpArrow);
+            }
+#endif
+            if (moveUpPressed)
             {
                 direction = -1;
             }
-            else if (IsMoveDownPressed())
+            else
             {
-                direction = 1;
+                bool moveDownPressed = Input.GetKeyDown(KeyCode.DownArrow);
+#if ENABLE_INPUT_SYSTEM
+                if (!moveDownPressed)
+                {
+                    moveDownPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.DownArrow);
+                }
+#endif
+                if (moveDownPressed)
+                {
+                    direction = 1;
+                }
             }
         }
 
         if (direction == 0 && (axisMode == AxisMode.Horizontal || axisMode == AxisMode.Both))
         {
-            if (IsMoveLeftPressed())
+            bool moveLeftPressed = Input.GetKeyDown(KeyCode.LeftArrow);
+#if ENABLE_INPUT_SYSTEM
+            if (!moveLeftPressed)
+            {
+                moveLeftPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.LeftArrow);
+            }
+#endif
+            if (moveLeftPressed)
             {
                 direction = -1;
             }
-            else if (IsMoveRightPressed())
+            else
             {
-                direction = 1;
+                bool moveRightPressed = Input.GetKeyDown(KeyCode.RightArrow);
+#if ENABLE_INPUT_SYSTEM
+                if (!moveRightPressed)
+                {
+                    moveRightPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.RightArrow);
+                }
+#endif
+                if (moveRightPressed)
+                {
+                    direction = 1;
+                }
             }
         }
 
@@ -423,104 +479,12 @@ public class UINavigator : MonoBehaviour
         audioSource.PlayOneShot(clip, 0.4f);
     }
 
-    private static bool IsSubmitPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.Return))
-        {
-            return true;
-        }
-
 #if ENABLE_INPUT_SYSTEM
+    private static bool IsInputSystemKeyPressed(UnityEngine.InputSystem.Key key)
+    {
         var keyboard = Keyboard.current;
-        if (keyboard != null)
-        {
-            return keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame;
-        }
-#endif
-        return false;
+        return keyboard != null && keyboard[key].wasPressedThisFrame;
     }
-
-    private static bool IsBackPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.Backspace))
-        {
-            return true;
-        }
-
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.backspaceKey.wasPressedThisFrame;
-#else
-        return false;
 #endif
-    }
 
-    private static bool IsExitPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.Escape))
-        {
-            return true;
-        }
-
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
-#else
-        return false;
-#endif
-    }
-
-    private static bool IsMoveUpPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.UpArrow))
-        {
-            return true;
-        }
-
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.upArrowKey.wasPressedThisFrame;
-#else
-        return false;
-#endif
-    }
-
-    private static bool IsMoveDownPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.DownArrow))
-        {
-            return true;
-        }
-
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.downArrowKey.wasPressedThisFrame;
-#else
-        return false;
-#endif
-    }
-
-    private static bool IsMoveLeftPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.LeftArrow))
-        {
-            return true;
-        }
-
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.leftArrowKey.wasPressedThisFrame;
-#else
-        return false;
-#endif
-    }
-
-    private static bool IsMoveRightPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.RightArrow))
-        {
-            return true;
-        }
-
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.rightArrowKey.wasPressedThisFrame;
-#else
-        return false;
-#endif
-    }
 }

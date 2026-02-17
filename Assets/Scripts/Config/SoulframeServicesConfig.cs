@@ -45,8 +45,7 @@ public class SoulframeServicesConfig : ScriptableObject
             return trimmed; // Se non è un URI valido, lo lasciamo così com'è.
         }
 
-        string host = uri.Host.ToLowerInvariant();
-        bool isLoopback = host == "127.0.0.1" || host == "localhost" || host == "::1";
+        bool isLoopback = IsLoopbackHost(uri.Host);
         if (isLoopback && uri.Port == legacyPort) 
         {
             return useRelativeApiPaths ? webPath : trimmed;
@@ -68,7 +67,17 @@ public class SoulframeServicesConfig : ScriptableObject
             return false;
         }
 
-        string host = uri.Host.ToLowerInvariant();
-        return host == "127.0.0.1" || host == "localhost" || host == "::1";
+        return IsLoopbackHost(uri.Host);
+    }
+
+    private static bool IsLoopbackHost(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        string normalized = host.Trim().ToLowerInvariant();
+        return normalized == "127.0.0.1" || normalized == "localhost" || normalized == "::1";
     }
 }

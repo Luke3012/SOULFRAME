@@ -254,31 +254,74 @@ public class AvatarLibraryCarousel : MonoBehaviour
         // Qui verifichiamo se conferma/indietro sono ancora bloccati all'ingresso.
         bool lockConfirmAndBack = Time.unscaledTime < inputLockedUntil;
 
-        if (IsMoveLeftPressed())
+        bool moveLeftPressed = Input.GetKeyDown(KeyCode.LeftArrow);
+#if ENABLE_INPUT_SYSTEM
+        if (!moveLeftPressed)
+        {
+            moveLeftPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.LeftArrow);
+        }
+#endif
+        if (moveLeftPressed)
         {
             SetSelectedIndex(selectedIndex - 1);
         }
-        else if (IsMoveRightPressed())
+        else
         {
-            SetSelectedIndex(selectedIndex + 1);
+            bool moveRightPressed = Input.GetKeyDown(KeyCode.RightArrow);
+#if ENABLE_INPUT_SYSTEM
+            if (!moveRightPressed)
+            {
+                moveRightPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.RightArrow);
+            }
+#endif
+            if (moveRightPressed)
+            {
+                SetSelectedIndex(selectedIndex + 1);
+            }
         }
 
         // Solo se non bloccati
         if (!lockConfirmAndBack)
         {
-            if (IsSubmitPressed())
+            bool submitPressed = Input.GetKeyDown(KeyCode.Return);
+#if ENABLE_INPUT_SYSTEM
+            if (!submitPressed)
+            {
+                submitPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.Enter) ||
+                                IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.NumpadEnter);
+            }
+#endif
+            if (submitPressed)
             {
                 ConfirmSelection();
             }
-            else if (IsDeletePressed())
+            else
             {
-                uiFlowController?.RequestDeleteSelectedAvatar();
-                return;
-            }
-            else if (IsBackPressed())
-            {
-                uiFlowController?.GoBack();
-                return;
+                bool deletePressed = Input.GetKeyDown(KeyCode.Delete);
+#if ENABLE_INPUT_SYSTEM
+                if (!deletePressed)
+                {
+                    deletePressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.Delete);
+                }
+#endif
+                if (deletePressed)
+                {
+                    uiFlowController?.RequestDeleteSelectedAvatar();
+                    return;
+                }
+
+                bool backPressed = Input.GetKeyDown(KeyCode.Backspace);
+#if ENABLE_INPUT_SYSTEM
+                if (!backPressed)
+                {
+                    backPressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.Backspace);
+                }
+#endif
+                if (backPressed)
+                {
+                    uiFlowController?.GoBack();
+                    return;
+                }
             }
         }
 
@@ -312,7 +355,8 @@ public class AvatarLibraryCarousel : MonoBehaviour
                     trackedTouchFingerId = touch.fingerId;
                     trackedTouchStartPosition = touch.position;
                     trackedTouchStartTime = Time.unscaledTime;
-                    trackedTouchStartedOverUi = IsTouchOverUi(touch.fingerId);
+                    var eventSystem = EventSystem.current;
+                    trackedTouchStartedOverUi = eventSystem != null && eventSystem.IsPointerOverGameObject(touch.fingerId);
                     trackedTouchConsumedBySwipe = false;
                     break;
 
@@ -360,88 +404,13 @@ public class AvatarLibraryCarousel : MonoBehaviour
         }
     }
 
-    private static bool IsTouchOverUi(int fingerId)
-    {
-        var eventSystem = EventSystem.current;
-        return eventSystem != null && eventSystem.IsPointerOverGameObject(fingerId);
-    }
-
-    private static bool IsSubmitPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.Return))
-        {
-            return true;
-        }
-
 #if ENABLE_INPUT_SYSTEM
+    private static bool IsInputSystemKeyPressed(UnityEngine.InputSystem.Key key)
+    {
         var keyboard = UnityEngine.InputSystem.Keyboard.current;
-        if (keyboard != null)
-        {
-            return keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame;
-        }
-#endif
-        return false;
+        return keyboard != null && keyboard[key].wasPressedThisFrame;
     }
-
-    private static bool IsBackPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.Backspace))
-        {
-            return true;
-        }
-
-#if ENABLE_INPUT_SYSTEM
-        return UnityEngine.InputSystem.Keyboard.current != null &&
-               UnityEngine.InputSystem.Keyboard.current.backspaceKey.wasPressedThisFrame;
-#else
-        return false;
 #endif
-    }
-
-    private static bool IsDeletePressed()
-    {
-        if (Input.GetKeyDown(KeyCode.Delete))
-        {
-            return true;
-        }
-
-#if ENABLE_INPUT_SYSTEM
-        return UnityEngine.InputSystem.Keyboard.current != null &&
-               UnityEngine.InputSystem.Keyboard.current.deleteKey.wasPressedThisFrame;
-#else
-        return false;
-#endif
-    }
-
-    private static bool IsMoveLeftPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.LeftArrow))
-        {
-            return true;
-        }
-
-#if ENABLE_INPUT_SYSTEM
-        return UnityEngine.InputSystem.Keyboard.current != null &&
-               UnityEngine.InputSystem.Keyboard.current.leftArrowKey.wasPressedThisFrame;
-#else
-        return false;
-#endif
-    }
-
-    private static bool IsMoveRightPressed()
-    {
-        if (Input.GetKeyDown(KeyCode.RightArrow))
-        {
-            return true;
-        }
-
-#if ENABLE_INPUT_SYSTEM
-        return UnityEngine.InputSystem.Keyboard.current != null &&
-               UnityEngine.InputSystem.Keyboard.current.rightArrowKey.wasPressedThisFrame;
-#else
-        return false;
-#endif
-    }
 
     private void SetSelectedIndex(int index)
     {
@@ -945,7 +914,9 @@ public class AvatarLibraryCarousel : MonoBehaviour
         // Molti avatar GLTF hanno armature e skinned mesh come siblings; clonare separatamente
         // puÃƒÂ² lasciare bones/rootBone puntati all'originale e rompersi quando il loader viene distrutto.
         // Spostiamo (reparent) l'intera gerarchia preservando le trasformazioni.
-        bool isLocal = item.data.bodyId == "local" || (item.data.avatarId != null && item.data.avatarId.StartsWith("LOCAL_"));
+        var avatarData = item.data;
+        bool isLocal = avatarData != null &&
+                       (avatarData.bodyId == "local" || (!string.IsNullOrEmpty(avatarData.avatarId) && avatarData.avatarId.StartsWith("LOCAL_")));
         while (loaderTransform.childCount > 0)
         {
             var child = loaderTransform.GetChild(0);

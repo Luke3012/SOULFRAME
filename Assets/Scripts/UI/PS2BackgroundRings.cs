@@ -169,10 +169,11 @@ public class PS2BackgroundRings : MonoBehaviour
         // colore particella (HDR per far lavorare il Bloom)
         // Se ha gia' PS2_RingAdditive con tinta blu, di default NON raddoppia la tinta:
         Color baseColor = (ringMaterial != null && !overrideMaterialColor) ? Color.white : ringTint;
+        float hdrIntensity = particleHDRIntensity;
         Color particleColor = new Color(
-            baseColor.r * particleHDRIntensity,
-            baseColor.g * particleHDRIntensity,
-            baseColor.b * particleHDRIntensity,
+            baseColor.r * hdrIntensity,
+            baseColor.g * hdrIntensity,
+            baseColor.b * hdrIntensity,
             ringTint.a
         );
 

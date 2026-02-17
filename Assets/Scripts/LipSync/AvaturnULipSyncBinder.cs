@@ -16,13 +16,16 @@ public class AvaturnULipSyncBinder : MonoBehaviour
     public string[] oNames = { "viseme_oh", "viseme_O", "O", "v_O", "Mouth_O", "mouthO", "MTH_O" };
     public string[] nNames = { "viseme_nn", "N", "v_N", "Mouth_N", "mouthN", "MTH_N" };
 
-    public string[] jawOpenFallbackNames = { "jawOpen", "JawOpen", "MouthOpen", "mouthOpen" };
-
     [Header("Tuning")]
     [Range(0f, 200f)] public float maxWeight = 1f;
     [Range(0f, 4f)] public float vowelGain = 1.2f;
-    [Range(0f, 2f)] public float jawFallbackGain = 1.0f;
     [Range(0f, 20f)] public float smooth = 12f;
+    
+    [Header("WebGL Assist")]
+    [SerializeField] private bool enableWebGlAssist = true;
+    [SerializeField, Range(1f, 6f)] private float webGlWeightBoost = 1.8f;
+    [SerializeField, Range(0.05f, 1f)] private float webGlCloseSpeedMultiplier = 0.35f;
+    [SerializeField, Range(0f, 1f)] private float webGlVolumeFloor = 0.05f;
 
     [Header("Debug")]
     public bool logSetupSummary = true;
@@ -30,14 +33,14 @@ public class AvaturnULipSyncBinder : MonoBehaviour
 
     private Dictionary<SkinnedMeshRenderer, Indices> _indices = new Dictionary<SkinnedMeshRenderer, Indices>();
 
-    private float _a, _i, _u, _e, _o, _n, _jaw;
+    private float _a, _i, _u, _e, _o, _n;
     private float _volume;
 
     [Serializable]
     private struct Indices
     {
-        public int a, i, u, e, o, n, jaw;
-        public bool HasAny => a >= 0 || i >= 0 || u >= 0 || e >= 0 || o >= 0 || n >= 0 || jaw >= 0;
+        public int a, i, u, e, o, n;
+        public bool HasAny => a >= 0 || i >= 0 || u >= 0 || e >= 0 || o >= 0 || n >= 0;
     }
 
     public void Setup(Transform avatarRoot)
@@ -75,7 +78,6 @@ public class AvaturnULipSyncBinder : MonoBehaviour
                 e = FindBlendShapeIndex(r, eNames),
                 o = FindBlendShapeIndex(r, oNames),
                 n = FindBlendShapeIndex(r, nNames),
-                jaw = FindBlendShapeIndex(r, jawOpenFallbackNames),
             };
 
             if (idx.HasAny)
@@ -129,15 +131,16 @@ public class AvaturnULipSyncBinder : MonoBehaviour
         float dt = Mathf.Max(0f, Time.unscaledDeltaTime);
         float blend = 1f - Mathf.Exp(-smooth * dt);
 
-        _a = Mathf.Lerp(_a, a, blend);
-        _i = Mathf.Lerp(_i, i, blend);
-        _u = Mathf.Lerp(_u, u, blend);
-        _e = Mathf.Lerp(_e, e, blend);
-        _o = Mathf.Lerp(_o, o, blend);
-        _n = Mathf.Lerp(_n, n, blend);
+        bool webGlAssistActive = enableWebGlAssist && Application.platform == RuntimePlatform.WebGLPlayer;
+        float closeBlendMultiplier = webGlAssistActive ? Mathf.Clamp01(webGlCloseSpeedMultiplier) : 1f;
 
-        var speechAmount = Mathf.Clamp01((_a + _i + _u + _e + _o + _n) * 0.5f);
-        _jaw = Mathf.Lerp(_jaw, speechAmount, blend);
+        _a = SmoothPhoneme(_a, a, blend, closeBlendMultiplier);
+        _i = SmoothPhoneme(_i, i, blend, closeBlendMultiplier);
+        _u = SmoothPhoneme(_u, u, blend, closeBlendMultiplier);
+        _e = SmoothPhoneme(_e, e, blend, closeBlendMultiplier);
+        _o = SmoothPhoneme(_o, o, blend, closeBlendMultiplier);
+        _n = SmoothPhoneme(_n, n, blend, closeBlendMultiplier);
+
     }
 
     private void LateUpdate()
@@ -158,19 +161,18 @@ public class AvaturnULipSyncBinder : MonoBehaviour
             }
 
             var idx = kv.Value;
+            bool webGlAssistActive = enableWebGlAssist && Application.platform == RuntimePlatform.WebGLPlayer;
+            float volume = webGlAssistActive ? Mathf.Max(_volume, webGlVolumeFloor) : _volume;
+            float gain = webGlAssistActive ? (vowelGain * webGlWeightBoost) : vowelGain;
 
             ZeroAll(r, idx);
 
-            Apply(r, idx.a, _a * _volume * vowelGain);
-            Apply(r, idx.i, _i * _volume * vowelGain);
-            Apply(r, idx.u, _u * _volume * vowelGain);
-            Apply(r, idx.e, _e * _volume * vowelGain);
-            Apply(r, idx.o, _o * _volume * vowelGain);
-            Apply(r, idx.n, _n * _volume * vowelGain);
-
-            bool hasVisemes = idx.a >= 0 || idx.i >= 0 || idx.u >= 0 || idx.e >= 0 || idx.o >= 0 || idx.n >= 0;
-            if (!hasVisemes)
-                Apply(r, idx.jaw, _jaw * _volume * jawFallbackGain);
+            Apply(r, idx.a, _a * volume * gain);
+            Apply(r, idx.i, _i * volume * gain);
+            Apply(r, idx.u, _u * volume * gain);
+            Apply(r, idx.e, _e * volume * gain);
+            Apply(r, idx.o, _o * volume * gain);
+            Apply(r, idx.n, _n * volume * gain);
         }
 
         if (dead != null)
@@ -193,7 +195,6 @@ public class AvaturnULipSyncBinder : MonoBehaviour
         if (idx.e >= 0) r.SetBlendShapeWeight(idx.e, 0);
         if (idx.o >= 0) r.SetBlendShapeWeight(idx.o, 0);
         if (idx.n >= 0) r.SetBlendShapeWeight(idx.n, 0);
-        if (idx.jaw >= 0) r.SetBlendShapeWeight(idx.jaw, 0);
     }
 
     private static int FindBlendShapeIndex(SkinnedMeshRenderer r, string[] candidates)
@@ -214,6 +215,12 @@ public class AvaturnULipSyncBinder : MonoBehaviour
         return -1;
     }
 
+    private static float SmoothPhoneme(float current, float target, float blend, float closeBlendMultiplier)
+    {
+        float t = target >= current ? blend : (blend * closeBlendMultiplier);
+        return Mathf.Lerp(current, target, Mathf.Clamp01(t));
+    }
+
     public void ClearTargets()
     {
         // azzera pesi e svuota tutto
@@ -228,11 +235,8 @@ public class AvaturnULipSyncBinder : MonoBehaviour
         _indices.Clear();
         targetRenderers = Array.Empty<SkinnedMeshRenderer>();
 
-        _a = _i = _u = _e = _o = _n = _jaw = 0f;
+        _a = _i = _u = _e = _o = _n = 0f;
         _volume = 0f;
     }
-
-
-    private readonly List<SkinnedMeshRenderer> _toRemove = new List<SkinnedMeshRenderer>(16);
 
 }

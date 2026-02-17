@@ -52,11 +52,9 @@ from typing import Any, Optional, List, Tuple, TYPE_CHECKING, cast
 
 import requests
 import chromadb
-from chromadb.config import Settings
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from rank_bm25 import BM25Okapi
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # Compatibilita' hnswlib: aggiungiamo file_handle_count atteso da chroma su Index
@@ -388,6 +386,13 @@ def ollama_chat(messages: list[dict[str, str]]) -> str:
     return (data.get("message") or {}).get("content", "") or ""
 
 
+def _embed_one_or_http_500(text: str) -> List[float]:
+    try:
+        return ollama_embed_many([text])[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore embedding: {e}")
+
+
 # -----------------------------
 # Inizializzazione Chroma (cartella persistente per avatar)
 # -----------------------------
@@ -484,6 +489,13 @@ def _sanitize_metadata(meta: dict | None) -> dict:
     if not meta:
         return {}
     return {k: v if isinstance(v, (str, int, float, bool, type(None))) else str(v) for k, v in meta.items()}
+
+
+def _safe_collection_count(col: Any) -> int:
+    try:
+        return col.count()
+    except Exception:
+        return 0
 
 
 # -----------------------------
@@ -768,7 +780,7 @@ def _hybrid_search(
                 include=["documents", "metadatas"],
             )
             return (res.get("documents") or [[]])[0], (res.get("metadatas") or [[]])[0]
-        except:
+        except Exception:
             return [], []
 
 
@@ -788,7 +800,7 @@ app.add_middleware(
 
 # Gestore globale delle eccezioni
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
+async def global_exception_handler(request: Request, exc: Exception):
     print(f"[EXCEPTION] {type(exc).__name__}: {exc}")
     import traceback
     traceback.print_exc()
@@ -883,6 +895,32 @@ def _auto_remember(avatar_id: str, original_text: str, remember_content: str, co
         return None
 
 
+def _build_context_from_docs(docs: List[str], metas: List[dict], max_chars: int) -> str:
+    parts: List[str] = []
+    total = 0
+    for d, m in zip(docs, metas):
+        if not d:
+            continue
+        src = (m or {}).get("source_filename") or (m or {}).get("source_type") or "memoria"
+        page = (m or {}).get("page")
+        tag = f"[{src}{' p.' + str(page) if page else ''}]"
+        piece = f"{tag} {d}"
+        if total + len(piece) > max_chars:
+            break
+        parts.append(piece)
+        total += len(piece)
+    return "\n\n".join(parts)
+
+
+def _build_rag_used_payload(docs: List[str], metas: List[dict]) -> List[dict]:
+    rag_used: List[dict] = []
+    for d, m in zip(docs, metas):
+        if not d:
+            continue
+        rag_used.append({"text": d, "meta": m or {}})
+    return rag_used
+
+
 # -----------------------------
 # Endpoint
 # -----------------------------
@@ -911,10 +949,7 @@ def health():
 @app.get("/avatar_stats")
 def avatar_stats(avatar_id: str):
     col = get_collection(avatar_id)
-    try:
-        count = col.count()
-    except Exception:
-        count = 0
+    count = _safe_collection_count(col)
     return {
         "avatar_id": avatar_id,
         "count": count,
@@ -958,18 +993,12 @@ def recall(req: RecallReq):
     if not q:
         raise HTTPException(status_code=400, detail="Query vuota.")
 
-    try:
-        count = col.count()
-    except Exception:
-        count = 0
+    count = _safe_collection_count(col)
 
     if count == 0:
         return {"documents": [[]], "metadatas": [[]], "distances": [[]], "ids": [[]]}
 
-    try:
-        qemb = ollama_embed_many([q])[0]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Errore embedding: {e}")
+    qemb = _embed_one_or_http_500(q)
 
     # Ricerca ibrida ottimizzata
     try:
@@ -1014,16 +1043,10 @@ def chat(req: ChatReq):
         auto_remember_id = _auto_remember(req.avatar_id, q, remember_content, col)
         auto_remembered = auto_remember_id is not None
 
-    try:
-        count = col.count()
-    except Exception:
-        count = 0
+    count = _safe_collection_count(col)
 
     if count > 0:
-        try:
-            qemb = ollama_embed_many([q])[0]
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Errore embedding: {e}")
+        qemb = _embed_one_or_http_500(q)
 
         try:
             # Ricerca ibrida ottimizzata
@@ -1058,24 +1081,7 @@ def chat(req: ChatReq):
     docs, metas = _dedupe_chunks(docs, metas)
 
     # contesto compatto con sorgente
-    ctx_parts: List[str] = []
-    total = 0
-    for d, m in zip(docs, metas):
-        if not d:
-            continue
-
-        src = (m or {}).get("source_filename") or (m or {}).get("source_type") or "memoria"
-        page = (m or {}).get("page")
-        tag = f"[{src}{' p.' + str(page) if page else ''}]"
-        piece = f"{tag} {d}"
-
-        if total + len(piece) > MAX_CONTEXT_CHARS:
-            break
-
-        ctx_parts.append(piece)
-        total += len(piece)
-
-    context = "\n\n".join(ctx_parts)
+    context = _build_context_from_docs(docs, metas, max_chars=MAX_CONTEXT_CHARS)
     persona_cues = _extract_persona_cues(docs, metas)
 
     system = req.system or (
@@ -1116,11 +1122,7 @@ def chat(req: ChatReq):
     ).strip()
     answer = _sanitize_chat_answer(raw_answer) or "Non lo so."
 
-    rag_used = []
-    for d, m in zip(docs, metas):
-        if not d:
-            continue
-        rag_used.append({"text": d, "meta": m or {}})
+    rag_used = _build_rag_used_payload(docs, metas)
 
     return {"text": answer, "rag_used": rag_used, "auto_remembered": auto_remembered}
 

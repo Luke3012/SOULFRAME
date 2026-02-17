@@ -23,7 +23,6 @@ public class AudioRecorder : MonoBehaviour
 #if !UNITY_WEBGL || UNITY_EDITOR
     private AudioClip activeClip;
     private string activeDevice;
-    private float recordStartTime;
 #endif
 
     public bool HasMicrophoneAvailable()
@@ -85,7 +84,6 @@ public class AudioRecorder : MonoBehaviour
         activeDevice = Microphone.devices[0];
         int lengthSec = Mathf.CeilToInt(seconds);
         activeClip = Microphone.Start(activeDevice, false, lengthSec, sampleRate);
-        recordStartTime = Time.realtimeSinceStartup;
 
         float startTime = Time.realtimeSinceStartup;
         while (Time.realtimeSinceStartup - startTime < seconds)
@@ -127,7 +125,6 @@ public class AudioRecorder : MonoBehaviour
 
         activeDevice = Microphone.devices[0];
         activeClip = Microphone.Start(activeDevice, false, 30, sampleRate);
-        recordStartTime = Time.realtimeSinceStartup;
         return true;
 #endif
     }

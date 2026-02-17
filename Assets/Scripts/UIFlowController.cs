@@ -41,6 +41,7 @@ public class UIFlowController : MonoBehaviour
     public GameObject pnlSetupVoice;
     public GameObject pnlSetupMemory;
     public GameObject pnlMainMode;
+    public GameObject pnlLoading;
 
     [Header("Services Config")]
     [SerializeField] private SoulframeServicesConfig servicesConfig;
@@ -150,6 +151,10 @@ public class UIFlowController : MonoBehaviour
 
     private const float TouchHintBarDebugTapMaxInterval = 0.45f;
     private const float TouchHintBarDebugTapMaxMove = 35f;
+    private const float CoquiBootProbeTimeoutSeconds = 3f;
+    private const float CoquiBootPollIntervalSeconds = 0.75f;
+    private const float CoquiBootMaxWaitSeconds = 180f;
+    private const float CoquiBootRingsSlowFactor = 0.08f;
 
     [Header("Main Avatar Spawn Animation")]
     [SerializeField] private bool enableMainAvatarSpawnAnimation = true;
@@ -180,6 +185,7 @@ public class UIFlowController : MonoBehaviour
     [SerializeField] private Vector3 ringsHiddenOffset = new Vector3(0f, 0f, 2f);
     [SerializeField] private float ringsTransitionDuration = 0.6f;
     [SerializeField] private PS2BackgroundRings ringsController;
+    [SerializeField] private PS2PostProcessingBootstrap postProcessingBootstrap;
 
     [Header("Download State")]
     [SerializeField] private float downloadRingsSpeedMultiplier = 2f;
@@ -213,10 +219,7 @@ public class UIFlowController : MonoBehaviour
     [SerializeField] private float cameraReturnDuration = 0.35f;
 
     [Header("TTS")]
-    [SerializeField] private bool enableTtsWebGlStreaming = true;
     [SerializeField] private bool enableTtsWebGlStreamingLogs = false;
-    [SerializeField] private bool enableTtsWebGlUnityAudio = true;
-    [SerializeField] private bool webGlPreferChunkPlayer = false;
     [SerializeField, Range(40, 400)] private int ttsStreamMaxChunkChars = 140;
 
 
@@ -246,6 +249,7 @@ public class UIFlowController : MonoBehaviour
     private bool carouselDownloading;
     private bool webOverlayOpen;
     private Coroutine bootRoutine;
+    private bool coquiInitializationRingsVisualActive;
     private Coroutine setupVoiceRoutine;
     private UnityWebRequest setupVoiceRequest;
     private string setupVoicePhrase;
@@ -267,14 +271,8 @@ public class UIFlowController : MonoBehaviour
     private Coroutine mainModeHintRefreshRoutine;
     private UnityWebRequest mainModeRequest;
     private readonly List<UnityWebRequest> mainModeRequests = new List<UnityWebRequest>();
-#if UNITY_WEBGL && !UNITY_EDITOR
-    private bool ttsStreamActive;
-    private bool ttsStreamDone;
-#endif
     private string ttsStreamError;
-    private PcmStreamPlayer ttsStreamPlayer;
     private PcmChunkPlayer ttsChunkPlayer;
-    private bool ttsUseChunkPlayer;
     private int ttsPlaybackSessionId;
     private int ttsActiveSessionId = -1;
     private bool ttsAcceptIncomingSamples;
@@ -354,14 +352,6 @@ public class UIFlowController : MonoBehaviour
 
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")] private static extern int EnsureDynCallV();
-    [DllImport("__Internal")] private static extern void TtsStream_Start(
-        string url,
-        string text,
-        string avatarId,
-        string language,
-        string targetObject,
-        int maxChunkChars);
-    [DllImport("__Internal")] private static extern void TtsStream_Stop();
 #endif
 
     void Awake()
@@ -438,6 +428,7 @@ public class UIFlowController : MonoBehaviour
         if (btnSetupMemoryDescribe != null) btnSetupMemoryDescribe.onClick.AddListener(StartDescribeImage);
         if (btnSetMemory != null) btnSetMemory.onClick.AddListener(OnSetMemory);
         BindTouchUiActions();
+        BindBootLoadingTouchSkip();
         
         // Qui abbiamo tolto i bottoni di ritorno/navigazione e usiamo Backspace da tastiera.
         // La barra suggerimenti mostra i prompt tastiera (Arrows/Enter/Backspace/ecc...).
@@ -467,20 +458,12 @@ public class UIFlowController : MonoBehaviour
 
         UpdateHintBar(UIState.Boot);
 
-        UpdateDebugText("INIZIALIZZAZIONE");
-
         if (avaturnSystem != null)
         {
             avaturnSystem.SetupAvatarCallbacks(OnAvatarReceived, null);
         }
 
         EnsureCameraAnchors();
-
-        if (bootRoutine != null)
-        {
-            StopCoroutine(bootRoutine);
-        }
-        BeginBootSequence();
     }
 
     void Update()
@@ -551,6 +534,68 @@ public class UIFlowController : MonoBehaviour
         panelMap[UIState.SetupVoice] = pnlSetupVoice;
         panelMap[UIState.SetupMemory] = pnlSetupMemory;
         panelMap[UIState.MainMode] = pnlMainMode;
+    }
+
+    private bool IsBootLoadingPanelVisible()
+    {
+        if (pnlLoading == null || !pnlLoading.activeSelf)
+        {
+            return false;
+        }
+
+        var group = GetOrAddCanvasGroup(pnlLoading);
+        return group == null || group.alpha > 0.01f;
+    }
+
+    private IEnumerator ShowBootLoadingPanel()
+    {
+        if (pnlLoading == null || IsBootLoadingPanelVisible())
+        {
+            yield break;
+        }
+
+        // Manteniamo il pannello sopra touch overlay/hint bar durante il boot.
+        pnlLoading.transform.SetAsLastSibling();
+        yield return StartCoroutine(TransitionPanels(null, pnlLoading));
+        pnlLoading.transform.SetAsLastSibling();
+    }
+
+    private float GetCoquiBootRingsSlowMultiplier()
+    {
+        return Mathf.Max(0.02f, bootRingsSpeedMultiplier * CoquiBootRingsSlowFactor);
+    }
+
+    private void SetCoquiInitializationRingsVisual(bool active)
+    {
+        coquiInitializationRingsVisualActive = active;
+        if (postProcessingBootstrap != null)
+        {
+            postProcessingBootstrap.SetInitializationScatterPulseActive(active);
+        }
+
+        if (ringsController == null)
+        {
+            return;
+        }
+
+        if (active)
+        {
+            ringsController.SetOrbitSpeedMultiplier(GetCoquiBootRingsSlowMultiplier());
+            return;
+        }
+
+        if (currentState == UIState.Boot)
+        {
+            ringsController.SetOrbitSpeedMultiplier(bootRingsSpeedMultiplier);
+        }
+        else if (downloadStateActive)
+        {
+            ringsController.SetOrbitSpeedMultiplier(downloadRingsSpeedMultiplier);
+        }
+        else
+        {
+            ringsController.SetOrbitSpeedMultiplier(1f);
+        }
     }
 
     private void ResolveIntroSequenceMode()
@@ -840,6 +885,42 @@ public class UIFlowController : MonoBehaviour
         UpdateTouchAvatarDeleteButtonVisual();
         UpdateTouchAvatarDeleteButtonAvailability();
         UpdateTouchMainModeActionButtonsVisibility();
+    }
+
+    private void BindBootLoadingTouchSkip()
+    {
+        if (pnlLoading == null)
+        {
+            return;
+        }
+
+        var trigger = pnlLoading.GetComponent<EventTrigger>();
+        if (trigger == null)
+        {
+            trigger = pnlLoading.AddComponent<EventTrigger>();
+        }
+
+        if (trigger.triggers == null)
+        {
+            trigger.triggers = new List<EventTrigger.Entry>();
+        }
+
+        AddEventTriggerListener(trigger, EventTriggerType.PointerClick, OnBootLoadingPanelPointerClick);
+    }
+
+    private void OnBootLoadingPanelPointerClick(BaseEventData _)
+    {
+        if (!touchUiActive || uiInputLocked)
+        {
+            return;
+        }
+
+        if (currentState != UIState.Boot || !IsBootLoadingPanelVisible())
+        {
+            return;
+        }
+
+        GoBack();
     }
 
     private static void BindButtonClick(Button button, UnityEngine.Events.UnityAction action)
@@ -1724,6 +1805,24 @@ public class UIFlowController : MonoBehaviour
             }
 
             GetOrAddCanvasGroup(panel);
+        }
+
+        if (pnlLoading != null)
+        {
+            var rect = pnlLoading.GetComponent<RectTransform>();
+            if (rect != null && !panelDefaultPositions.ContainsKey(pnlLoading))
+            {
+                panelDefaultPositions[pnlLoading] = rect.anchoredPosition;
+            }
+
+            var loadingGroup = GetOrAddCanvasGroup(pnlLoading);
+            if (loadingGroup != null)
+            {
+                loadingGroup.alpha = 0f;
+                loadingGroup.interactable = false;
+                loadingGroup.blocksRaycasts = false;
+            }
+            pnlLoading.SetActive(false);
         }
     }
 
@@ -3072,6 +3171,8 @@ public class UIFlowController : MonoBehaviour
             StopCoroutine(bootRoutine);
             bootRoutine = null;
         }
+
+        SetCoquiInitializationRingsVisual(false);
     }
 
     private void GoBackToPreviousSetupState(bool skipMainMode)
@@ -3176,6 +3277,10 @@ public class UIFlowController : MonoBehaviour
         }
 
         GameObject fromPanel = GetPanel(currentState);
+        if (fromPanel == null && currentState == UIState.Boot && IsBootLoadingPanelVisible())
+        {
+            fromPanel = pnlLoading;
+        }
         GameObject toPanel = GetPanel(targetState);
 
         currentState = targetState;
@@ -3238,6 +3343,19 @@ public class UIFlowController : MonoBehaviour
             canvasGroup.blocksRaycasts = active;
 
             ResetPanelPosition(pair.Value);
+        }
+
+        if (targetState != UIState.Boot && pnlLoading != null)
+        {
+            var loadingGroup = GetOrAddCanvasGroup(pnlLoading);
+            if (loadingGroup != null)
+            {
+                loadingGroup.alpha = 0f;
+                loadingGroup.interactable = false;
+                loadingGroup.blocksRaycasts = false;
+            }
+            pnlLoading.SetActive(false);
+            ResetPanelPosition(pnlLoading);
         }
 
         UpdateHintBar(targetState);
@@ -3419,6 +3537,19 @@ public class UIFlowController : MonoBehaviour
                 otherGroup.blocksRaycasts = false;
             }
             ResetPanelPosition(pair.Value);
+        }
+
+        if (pnlLoading != null && pnlLoading != toPanel)
+        {
+            var loadingGroup = GetOrAddCanvasGroup(pnlLoading);
+            if (loadingGroup != null)
+            {
+                loadingGroup.alpha = 0f;
+                loadingGroup.interactable = false;
+                loadingGroup.blocksRaycasts = false;
+            }
+            pnlLoading.SetActive(false);
+            ResetPanelPosition(pnlLoading);
         }
     }
 
@@ -3852,8 +3983,27 @@ public class UIFlowController : MonoBehaviour
 
     private IEnumerator BootstrapRoutine()
     {
-        UpdateDebugText("INIZIALIZZAZIONE");
         yield return null;
+
+        if (servicesConfig == null)
+        {
+            UpdateDebugText("ServicesConfig mancante. Vai al menu principale.");
+            GoToMainMenu();
+            yield break;
+        }
+
+        bool coquiReady = false;
+        string coquiStartupError = null;
+        yield return StartCoroutine(WaitForCoquiStartupIfNeeded(
+            () => coquiReady = true,
+            error => coquiStartupError = error));
+
+        if (!coquiReady)
+        {
+            ReportServiceError("Coqui", coquiStartupError);
+            GoToMainMenu();
+            yield break;
+        }
 
         if (avatarManager == null)
         {
@@ -3866,13 +4016,6 @@ public class UIFlowController : MonoBehaviour
         if (string.IsNullOrEmpty(avatarId))
         {
             UpdateDebugText("Nessun avatar attivo. Vai al menu principale.");
-            GoToMainMenu();
-            yield break;
-        }
-
-        if (servicesConfig == null)
-        {
-            UpdateDebugText("ServicesConfig mancante. Vai al menu principale.");
             GoToMainMenu();
             yield break;
         }
@@ -3931,6 +4074,114 @@ public class UIFlowController : MonoBehaviour
 
         UpdateDebugText("Sistema pronto.");
         GoToMainMenu();
+    }
+
+    private IEnumerator WaitForCoquiStartupIfNeeded(
+        System.Action onReady,
+        System.Action<string> onFailure)
+    {
+        SetCoquiInitializationRingsVisual(false);
+
+        if (servicesConfig == null)
+        {
+            onFailure?.Invoke("ServicesConfig mancante.");
+            yield break;
+        }
+
+        string healthUrl = BuildServiceUrl(servicesConfig.coquiBaseUrl, "health");
+        bool ready = false;
+        string error = null;
+        yield return StartCoroutine(TryReachCoquiHealth(
+            healthUrl,
+            CoquiBootProbeTimeoutSeconds,
+            () => ready = true,
+            e => error = e));
+
+        if (ready)
+        {
+            SetCoquiInitializationRingsVisual(false);
+            onReady?.Invoke();
+            yield break;
+        }
+
+        SetCoquiInitializationRingsVisual(true);
+        UpdateDebugText("Inizializzazione");
+        yield return StartCoroutine(ShowBootLoadingPanel());
+
+        float startedAt = Time.realtimeSinceStartup;
+        string lastError = error;
+
+        while (Time.realtimeSinceStartup - startedAt < CoquiBootMaxWaitSeconds)
+        {
+            ready = false;
+            error = null;
+
+            yield return StartCoroutine(TryReachCoquiHealth(
+                healthUrl,
+                CoquiBootProbeTimeoutSeconds,
+                () => ready = true,
+                e => error = e));
+
+            if (ready)
+            {
+                SetCoquiInitializationRingsVisual(false);
+                onReady?.Invoke();
+                yield break;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                lastError = error;
+            }
+
+            yield return new WaitForSecondsRealtime(CoquiBootPollIntervalSeconds);
+        }
+
+        string timeoutMessage = string.IsNullOrWhiteSpace(lastError)
+            ? $"Timeout inizializzazione Coqui ({CoquiBootMaxWaitSeconds:0}s)."
+            : $"Timeout inizializzazione Coqui ({CoquiBootMaxWaitSeconds:0}s): {lastError}";
+        SetCoquiInitializationRingsVisual(false);
+        onFailure?.Invoke(timeoutMessage);
+    }
+
+    private IEnumerator TryReachCoquiHealth(
+        string healthUrl,
+        float timeoutSeconds,
+        System.Action onSuccess,
+        System.Action<string> onFailure)
+    {
+        using (var request = UnityWebRequest.Get(healthUrl))
+        {
+            request.timeout = Mathf.Max(1, Mathf.CeilToInt(timeoutSeconds));
+            var operation = request.SendWebRequest();
+
+            float startedAt = Time.realtimeSinceStartup;
+            while (!operation.isDone)
+            {
+                if (Time.realtimeSinceStartup - startedAt >= timeoutSeconds)
+                {
+                    request.Abort();
+                    onFailure?.Invoke($"Timeout health ({timeoutSeconds:0.##}s)");
+                    yield break;
+                }
+
+                yield return null;
+            }
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                onSuccess?.Invoke();
+                yield break;
+            }
+
+            string error = request.error;
+            if (string.IsNullOrWhiteSpace(error))
+            {
+                long code = request.responseCode;
+                error = code > 0 ? $"HTTP {code}" : "Network error";
+            }
+            onFailure?.Invoke(error);
+        }
     }
 
     private int GetRequestTimeoutSeconds(bool longOperation = false)
@@ -5222,14 +5473,6 @@ public class UIFlowController : MonoBehaviour
         ttsActiveSessionId = -1;
         ttsPlaybackSessionId++;
 
-#if UNITY_WEBGL && !UNITY_EDITOR
-        if (ttsStreamActive)
-        {
-            TtsStream_Stop();
-            ttsStreamActive = false;
-            ttsStreamDone = true;
-        }
-#endif
         ttsStreamError = null;
         ttsStreamBytes = 0;
         ttsStreamSampleRate = 0;
@@ -5242,11 +5485,6 @@ public class UIFlowController : MonoBehaviour
         if (ttsAudioSource != null)
         {
             ttsAudioSource.Stop();
-        }
-
-        if (ttsStreamPlayer != null)
-        {
-            ttsStreamPlayer.StopStream();
         }
 
         if (ttsChunkPlayer != null)
@@ -5591,11 +5829,43 @@ public class UIFlowController : MonoBehaviour
             yield break;
         }
 
+        // In WebGL i clip da rete possono essere non pronti per qualche frame:
+        // evitiamo Play() su clip non ancora loaded.
+        yield return StartCoroutine(EnsureAudioClipLoaded(clip, 1.5f));
+        if (clip.loadState != AudioDataLoadState.Loaded)
+        {
+            yield break;
+        }
+
         source.Stop();
         source.loop = false;
         source.clip = clip;
         source.volume = 0.8f;
         source.Play();
+    }
+
+    private IEnumerator EnsureAudioClipLoaded(AudioClip clip, float timeoutSeconds)
+    {
+        if (clip == null)
+        {
+            yield break;
+        }
+
+        if (clip.loadState == AudioDataLoadState.Loaded)
+        {
+            yield break;
+        }
+
+        if (clip.loadState == AudioDataLoadState.Unloaded)
+        {
+            clip.LoadAudioData();
+        }
+
+        float deadline = Time.realtimeSinceStartup + Mathf.Max(0.1f, timeoutSeconds);
+        while (clip.loadState == AudioDataLoadState.Loading && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
     }
 
     private void RequestWebGlMicrophonePermissionIfNeeded()
@@ -5622,102 +5892,8 @@ public class UIFlowController : MonoBehaviour
             yield break;
         }
 
-        if (Application.platform == RuntimePlatform.WebGLPlayer)
-        {
-            if (enableTtsWebGlUnityAudio)
-            {
-                yield return StartCoroutine(PlayTtsReplyNativeStream(text));
-                yield break;
-            }
-
-            if (enableTtsWebGlStreaming)
-            {
-                yield return StartCoroutine(PlayTtsReplyWebGl(text));
-                yield break;
-            }
-        }
-
         yield return StartCoroutine(PlayTtsReplyNativeStream(text));
     }
-
-    private IEnumerator PlayTtsReplyWebGl(string text)
-    {
-#if UNITY_WEBGL && !UNITY_EDITOR
-        string avatarId = avatarManager != null ? avatarManager.CurrentAvatarId : null;
-        string url = BuildServiceUrl(servicesConfig.coquiBaseUrl, "tts_stream");
-        string safeAvatarId = string.IsNullOrEmpty(avatarId) ? "default" : avatarId;
-
-        if (enableTtsWebGlStreamingLogs)
-        {
-            int len = string.IsNullOrEmpty(text) ? 0 : text.Length;
-            Debug.Log($"[UIFlowController] WebGL TTS stream start (len={len}, avatar={safeAvatarId}).");
-        }
-
-        ttsStreamDone = false;
-        ttsStreamActive = true;
-        ttsStreamError = null;
-        ttsStreamBytes = 0;
-        ttsStreamSampleRate = 0;
-        ttsStreamChannels = 0;
-
-        int chunkChars = Mathf.Clamp(ttsStreamMaxChunkChars, 40, 400);
-        TtsStream_Start(url, text ?? string.Empty, safeAvatarId, "it", gameObject.name, chunkChars);
-
-        while (!ttsStreamDone)
-        {
-            yield return null;
-        }
-
-        ttsStreamActive = false;
-        if (!string.IsNullOrEmpty(ttsStreamError))
-        {
-            UpdateMainModeStatus($"Errore TTS: {ttsStreamError}");
-            PlayErrorClip();
-            if (enableTtsWebGlStreamingLogs)
-            {
-                Debug.LogWarning($"[UIFlowController] WebGL TTS stream error: {ttsStreamError}");
-            }
-            yield break;
-        }
-
-        if (enableTtsWebGlStreamingLogs)
-        {
-            Debug.Log("[UIFlowController] WebGL TTS stream completed.");
-        }
-#else
-        yield break;
-#endif
-    }
-
-#if UNITY_WEBGL && !UNITY_EDITOR
-    public void OnTtsStreamCompleted(string stats)
-    {
-        ttsStreamDone = true;
-        ttsStreamError = null;
-        if (mainModeTtsInterruptedByUser)
-        {
-            mainModeTtsInterruptedByUser = false;
-        }
-
-        if (enableTtsWebGlStreamingLogs && !string.IsNullOrEmpty(stats))
-        {
-            Debug.Log($"[UIFlowController] WebGL TTS stream stats: {stats}");
-        }
-    }
-
-    public void OnTtsStreamError(string message)
-    {
-        ttsStreamDone = true;
-        if (mainModeTtsInterruptedByUser)
-        {
-            ttsStreamError = null;
-            mainModeTtsInterruptedByUser = false;
-            return;
-        }
-        ttsStreamError = string.IsNullOrEmpty(message) ? "Stream error" : message;
-        PlayErrorClip();
-    }
-#endif
 
     private IEnumerator PlayTtsReplyNativeStream(string text)
     {
@@ -5828,20 +6004,6 @@ public class UIFlowController : MonoBehaviour
 
         if (!IsTtsSessionActive(sessionId))
         {
-            yield break;
-        }
-
-        bool noUnityPlayback = ttsUseChunkPlayer && ttsChunkPlayer != null && ttsChunkPlayer.PlayedChunksCount <= 0;
-        bool noAudioPayload = ttsStreamBytes <= 0;
-        if (Application.platform == RuntimePlatform.WebGLPlayer
-            && enableTtsWebGlStreaming
-            && (noUnityPlayback || noAudioPayload))
-        {
-            if (enableTtsWebGlStreamingLogs)
-            {
-                Debug.LogWarning("[UIFlowController] Native Unity audio path did not play chunks in WebGL. Falling back to JS stream path.");
-            }
-            yield return StartCoroutine(PlayTtsReplyWebGl(text));
             yield break;
         }
 
@@ -5975,74 +6137,31 @@ public class UIFlowController : MonoBehaviour
             ttsAudioSource = GetOrCreateLipSyncAudioSource();
         }
 
-        // WebGL non supporta i gestori di streaming AudioClip (AudioClip.Create con stream=true):
-        // forziamo sempre il player a blocchi per evitare clip non caricati o avvisi runtime.
-        bool preferChunk = Application.platform == RuntimePlatform.WebGLPlayer || webGlPreferChunkPlayer;
-        ttsUseChunkPlayer = preferChunk;
-
-        if (preferChunk)
+        if (ttsChunkPlayer == null)
         {
+            ttsChunkPlayer = gameObject.GetComponent<PcmChunkPlayer>();
             if (ttsChunkPlayer == null)
             {
-                ttsChunkPlayer = gameObject.GetComponent<PcmChunkPlayer>();
-                if (ttsChunkPlayer == null)
-                {
-                    ttsChunkPlayer = gameObject.AddComponent<PcmChunkPlayer>();
-                }
-            }
-            ttsChunkPlayer.Begin(ttsAudioSource, sampleRate, channels);
-            if (ttsStreamPlayer != null)
-            {
-                ttsStreamPlayer.StopStream();
+                ttsChunkPlayer = gameObject.AddComponent<PcmChunkPlayer>();
             }
         }
-        else
-        {
-            if (ttsStreamPlayer == null)
-            {
-                ttsStreamPlayer = gameObject.GetComponent<PcmStreamPlayer>();
-                if (ttsStreamPlayer == null)
-                {
-                    ttsStreamPlayer = gameObject.AddComponent<PcmStreamPlayer>();
-                }
-            }
-            ttsStreamPlayer.Begin(ttsAudioSource, sampleRate, channels);
-            if (ttsChunkPlayer != null)
-            {
-                ttsChunkPlayer.StopStream();
-            }
-        }
+
+        ttsChunkPlayer.Begin(ttsAudioSource, sampleRate, channels);
     }
 
     private void EnqueueTtsSamples(float[] samples)
     {
-        if (ttsUseChunkPlayer)
-        {
-            ttsChunkPlayer?.Enqueue(samples);
-        }
-        else
-        {
-            ttsStreamPlayer?.Enqueue(samples);
-        }
+        ttsChunkPlayer?.Enqueue(samples);
     }
 
     private void EndTtsStreamPlayback()
     {
-        if (ttsUseChunkPlayer)
-        {
-            ttsChunkPlayer?.EndStream();
-            return;
-        }
-        ttsStreamPlayer?.EndStream();
+        ttsChunkPlayer?.EndStream();
     }
 
     private bool IsTtsStreamDrained()
     {
-        if (ttsUseChunkPlayer)
-        {
-            return ttsChunkPlayer == null || ttsChunkPlayer.IsDrained;
-        }
-        return ttsStreamPlayer == null || ttsStreamPlayer.IsDrained;
+        return ttsChunkPlayer == null || ttsChunkPlayer.IsDrained;
     }
 
     private void EnsureCameraAnchors()
@@ -6279,126 +6398,10 @@ public class UIFlowController : MonoBehaviour
         return $"bytes={ttsStreamBytes}, duration={duration:0.00}s";
     }
 
-    private sealed class PcmStreamPlayer : MonoBehaviour
-    {
-        private readonly Queue<float[]> queue = new Queue<float[]>();
-        private float[] current;
-        private int currentOffset;
-        private int channels = 1;
-        private int sampleRate = 24000;
-        private bool streamEnded;
-        private AudioSource source;
-        private readonly object locker = new object();
-
-        public bool IsDrained
-        {
-            get
-            {
-                lock (locker)
-                {
-                    bool empty = (current == null || currentOffset >= current.Length) && queue.Count == 0;
-                    return streamEnded && empty;
-                }
-            }
-        }
-
-        public void Begin(AudioSource audioSource, int sampleRate, int channels)
-        {
-            if (audioSource == null)
-            {
-                return;
-            }
-
-            this.source = audioSource;
-            this.sampleRate = Mathf.Max(8000, sampleRate);
-            this.channels = Mathf.Max(1, channels);
-            streamEnded = false;
-
-            lock (locker)
-            {
-                queue.Clear();
-                current = null;
-                currentOffset = 0;
-            }
-
-            source.Stop();
-            source.loop = true;
-            source.clip = AudioClip.Create("tts_stream", this.sampleRate, this.channels, this.sampleRate, true, OnRead);
-            source.Play();
-        }
-
-        public void Enqueue(float[] samples)
-        {
-            if (samples == null || samples.Length == 0)
-            {
-                return;
-            }
-
-            lock (locker)
-            {
-                queue.Enqueue(samples);
-            }
-        }
-
-        public void EndStream()
-        {
-            streamEnded = true;
-        }
-
-        public void StopStream()
-        {
-            streamEnded = true;
-            lock (locker)
-            {
-                queue.Clear();
-                current = null;
-                currentOffset = 0;
-            }
-            if (source != null)
-            {
-                source.Stop();
-            }
-        }
-
-        private void OnRead(float[] data)
-        {
-            int offset = 0;
-            while (offset < data.Length)
-            {
-                if (current == null || currentOffset >= current.Length)
-                {
-                    lock (locker)
-                    {
-                        if (queue.Count > 0)
-                        {
-                            current = queue.Dequeue();
-                            currentOffset = 0;
-                        }
-                        else
-                        {
-                            current = null;
-                        }
-                    }
-
-                    if (current == null)
-                    {
-                        Array.Clear(data, offset, data.Length - offset);
-                        return;
-                    }
-                }
-
-                int available = current.Length - currentOffset;
-                int needed = data.Length - offset;
-                int take = Math.Min(available, needed);
-                Array.Copy(current, currentOffset, data, offset, take);
-                currentOffset += take;
-                offset += take;
-            }
-        }
-    }
-
     private sealed class PcmChunkPlayer : MonoBehaviour
     {
+        private const int WebGlMinFramesPerClip = 2048;
+        private const float WebGlGatherBudgetSeconds = 0.06f;
         private readonly Queue<float[]> queue = new Queue<float[]>();
         private AudioSource source;
         private int channels = 1;
@@ -6506,9 +6509,52 @@ public class UIFlowController : MonoBehaviour
                     continue;
                 }
 
+                if (Application.platform == RuntimePlatform.WebGLPlayer)
+                {
+                    int minSamples = Mathf.Max(1, WebGlMinFramesPerClip * Mathf.Max(1, channels));
+                    if (chunk.Length < minSamples)
+                    {
+                        float gatherDeadline = Time.realtimeSinceStartup + WebGlGatherBudgetSeconds;
+                        while (chunk.Length < minSamples)
+                        {
+                            float[] next = null;
+                            lock (locker)
+                            {
+                                if (queue.Count > 0)
+                                {
+                                    next = queue.Dequeue();
+                                }
+                            }
+
+                            if (next != null && next.Length > 0)
+                            {
+                                chunk = MergeChunks(chunk, next);
+                                continue;
+                            }
+
+                            if (streamEnded || Time.realtimeSinceStartup >= gatherDeadline)
+                            {
+                                break;
+                            }
+
+                            yield return null;
+                        }
+                    }
+                }
+
                 int frames = Mathf.Max(1, chunk.Length / channels);
                 var clip = AudioClip.Create("tts_stream_chunk", frames, channels, sampleRate, false);
                 clip.SetData(chunk, 0);
+
+                if (clip.loadState != AudioDataLoadState.Loaded)
+                {
+                    clip.LoadAudioData();
+                    float deadline = Time.realtimeSinceStartup + 0.25f;
+                    while (clip.loadState == AudioDataLoadState.Loading && Time.realtimeSinceStartup < deadline)
+                    {
+                        yield return null;
+                    }
+                }
 
                 source.Stop();
                 source.loop = false;
@@ -6524,6 +6570,16 @@ public class UIFlowController : MonoBehaviour
                     yield return null;
                 }
             }
+        }
+
+        private static float[] MergeChunks(float[] a, float[] b)
+        {
+            int aLen = a.Length;
+            int bLen = b.Length;
+            var merged = new float[aLen + bLen];
+            Buffer.BlockCopy(a, 0, merged, 0, aLen * sizeof(float));
+            Buffer.BlockCopy(b, 0, merged, aLen * sizeof(float), bLen * sizeof(float));
+            return merged;
         }
     }
 
@@ -7275,6 +7331,7 @@ public class UIFlowController : MonoBehaviour
         Require(pnlSetupVoice, "pnlSetupVoice (Pnl_SetupVoice)");
         Require(pnlSetupMemory, "pnlSetupMemory (Pnl_SetupMemory)");
         Require(pnlMainMode, "pnlMainMode (Pnl_MainMode)");
+        Require(pnlLoading, "pnlLoading (Pnl_Loading)");
 
         Require(btnNewAvatar, "btnNewAvatar (Btn_New)");
         Require(btnShowList, "btnShowList (Btn_LoadList)");
@@ -7438,17 +7495,33 @@ public class UIFlowController : MonoBehaviour
         {
             avatarManager.SetCurrentAvatarVisible(ShouldShowAvatarInState(state));
         }
+        if (postProcessingBootstrap != null)
+        {
+            postProcessingBootstrap.SetAvatarForegroundScatterActive(ShouldShowAvatarInState(state));
+        }
 
         UpdateRingsForState(state);
         if (ringsController != null)
         {
             if (state == UIState.Boot)
             {
-                ringsController.SetOrbitSpeedMultiplier(bootRingsSpeedMultiplier);
+                if (coquiInitializationRingsVisualActive)
+                {
+                    ringsController.SetOrbitSpeedMultiplier(GetCoquiBootRingsSlowMultiplier());
+                }
+                else
+                {
+                    ringsController.SetOrbitSpeedMultiplier(bootRingsSpeedMultiplier);
+                }
             }
             else if (!downloadStateActive)
             {
                 ringsController.SetOrbitSpeedMultiplier(1f);
+                coquiInitializationRingsVisualActive = false;
+                if (postProcessingBootstrap != null)
+                {
+                    postProcessingBootstrap.SetInitializationScatterPulseActive(false);
+                }
             }
         }
     }
@@ -7552,7 +7625,6 @@ public class UIFlowController : MonoBehaviour
         }
 
         Vector3 target = visible ? GetRingsVisiblePosition(currentState) : GetRingsHiddenPosition();
-
         if (ringsRoutine != null)
         {
             StopCoroutine(ringsRoutine);

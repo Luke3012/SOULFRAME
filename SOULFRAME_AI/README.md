@@ -262,6 +262,14 @@ Per cambiare i parametri su Windows modifica direttamente `ai_services.cmd`.
 - **OCR**: configurato per italiano+inglese, modificabile con env `RAG_OCR_LANG`
 - **Memoria RAG**: i database per avatar sono salvati in `backend/rag_store/`
 
+### Warmup Coqui al boot
+
+Dopo l'avvio del servizio TTS, il backend esegue una inizializzazione/warmup del modello Coqui
+usando una frase breve (`"ciao"`). Questa e' in genere la fase piu lenta del primo startup.
+
+Nel frontend Unity, durante questa fase viene mostrato lo stato di inizializzazione (loading panel
+e animazioni dedicate), e l'interfaccia completa viene resa disponibile quando il TTS risulta pronto.
+
 ## Troubleshooting
 
 ### "Ollama non raggiungibile"

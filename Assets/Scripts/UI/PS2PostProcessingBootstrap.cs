@@ -21,6 +21,20 @@ public class PS2PostProcessingBootstrap : MonoBehaviour
     [SerializeField, Range(0f, 2f)] private float webglBloomIntensityMultiplier = 0.6f;
     [SerializeField, Range(-0.2f, 0.6f)] private float webglBloomThresholdOffset = 0.1f;
 
+    [Header("Initialization Pulse")]
+    [SerializeField, Min(0f)] private float initializationScatterPulseSpeed = 0.8f;
+    [SerializeField, Range(0f, 1f)] private float avatarForegroundScatter = 0.4f;
+
+    private Bloom runtimeBloom;
+    private bool initializationScatterPulseActive;
+    private bool avatarForegroundScatterActive;
+    private float baseScatter;
+
+    private void Awake()
+    {
+        baseScatter = Mathf.Clamp01(bloomScatter);
+    }
+
     private void Start()
     {
         if (!applyOnStart) return;
@@ -33,6 +47,51 @@ public class PS2PostProcessingBootstrap : MonoBehaviour
             if (ensurePostOnAllCameras)
                 EnsureCamerasHavePostProcessing(isWebGL);
         }
+    }
+
+    private void Update()
+    {
+        if (!initializationScatterPulseActive)
+        {
+            return;
+        }
+
+        if (!TryResolveRuntimeBloom())
+        {
+            return;
+        }
+
+        if (initializationScatterPulseSpeed <= 0f)
+        {
+            runtimeBloom.scatter.Override(1f);
+            return;
+        }
+
+        float t = 0.5f + (0.5f * Mathf.Sin(Time.unscaledTime * Mathf.PI * 2f * initializationScatterPulseSpeed));
+        float scatter = Mathf.Lerp(baseScatter, 1f, t);
+        runtimeBloom.scatter.Override(scatter);
+    }
+
+    public void SetInitializationScatterPulseActive(bool active)
+    {
+        initializationScatterPulseActive = active;
+        if (initializationScatterPulseActive)
+        {
+            return;
+        }
+
+        ApplyCurrentStaticScatter();
+    }
+
+    public void SetAvatarForegroundScatterActive(bool active)
+    {
+        avatarForegroundScatterActive = active;
+        if (initializationScatterPulseActive)
+        {
+            return;
+        }
+
+        ApplyCurrentStaticScatter();
     }
 
     private void EnsureCamerasHavePostProcessing(bool isWebGL)
@@ -78,5 +137,43 @@ public class PS2PostProcessingBootstrap : MonoBehaviour
         bloom.tint.Override(bloomTint);
            
         bloom.highQualityFiltering.Override(highQualityFiltering);
+
+        runtimeBloom = bloom;
+        baseScatter = Mathf.Clamp01(bloomScatter);
+    }
+
+    private bool TryResolveRuntimeBloom()
+    {
+        if (runtimeBloom != null)
+        {
+            return true;
+        }
+
+        var volume = GetComponent<Volume>();
+        if (volume == null || volume.profile == null)
+        {
+            return false;
+        }
+
+        if (!volume.profile.TryGet(out Bloom bloom))
+        {
+            return false;
+        }
+
+        runtimeBloom = bloom;
+        baseScatter = runtimeBloom.scatter.overrideState ? runtimeBloom.scatter.value : bloomScatter;
+        baseScatter = Mathf.Clamp01(baseScatter);
+        return true;
+    }
+
+    private void ApplyCurrentStaticScatter()
+    {
+        if (!TryResolveRuntimeBloom())
+        {
+            return;
+        }
+
+        float targetScatter = avatarForegroundScatterActive ? avatarForegroundScatter : baseScatter;
+        runtimeBloom.scatter.Override(Mathf.Clamp01(targetScatter));
     }
 }

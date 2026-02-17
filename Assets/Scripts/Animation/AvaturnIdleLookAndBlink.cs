@@ -348,8 +348,7 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
             headYaw += _speechYaw;
             headPitch += _speechPitch;
 
-            var targetRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, headRoll);
-            _head.localRotation = Quaternion.Slerp(_head.localRotation, targetRot, Time.deltaTime * focusSpeed);
+            ApplyHeadRotation(headPitch, headYaw, headRoll, focusSpeed);
         }
         else if (_isListening && _head.parent != null)
         {
@@ -361,8 +360,8 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
                 _listeningEarSide = Mathf.Sign(camYaw);
             }
 
-            float swayYaw = (Mathf.PerlinNoise(_seed + 503f, Time.time * listeningSwaySpeed) - 0.5f) * 2f * listeningSwayDeg;
-            float swayRoll = (Mathf.PerlinNoise(_seed + 607f, Time.time * listeningSwaySpeed) - 0.5f) * 2f * listeningSwayDeg;
+            float swayYaw = SignedPerlin(503f, listeningSwaySpeed, listeningSwayDeg);
+            float swayRoll = SignedPerlin(607f, listeningSwaySpeed, listeningSwayDeg);
 
             float targetYaw = _listeningEarSide * listeningEarYawDeg + swayYaw;
             float targetPitch = Mathf.Clamp(camPitch * listeningPitchFollow, -listeningPitchClampDeg, listeningPitchClampDeg);
@@ -375,8 +374,7 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
             headPitch = Mathf.Lerp(currentPitch, targetPitch, _listeningBlend);
             headRoll = Mathf.Lerp(currentRoll, targetRoll, _listeningBlend);
 
-            var targetRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, headRoll);
-            _head.localRotation = Quaternion.Slerp(_head.localRotation, targetRot, Time.deltaTime * listeningFocusSpeed);
+            ApplyHeadRotation(headPitch, headYaw, headRoll, listeningFocusSpeed);
         }
         else if (_mainModeEnabled && _externalLookTarget.HasValue && _head.parent != null)
         {
@@ -384,8 +382,7 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
             headYaw = Mathf.Clamp(headYaw, -externalYawClampDeg, externalYawClampDeg);
             headPitch = Mathf.Clamp(headPitch, -externalPitchClampDeg, externalPitchClampDeg);
 
-            var targetRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, headRoll);
-            _head.localRotation = Quaternion.Slerp(_head.localRotation, targetRot, Time.deltaTime * externalLookSpeed);
+            ApplyHeadRotation(headPitch, headYaw, headRoll, externalLookSpeed);
         }
         else
         {
@@ -394,11 +391,10 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
             _speechYaw = Mathf.Lerp(_speechYaw, _speechYawTarget, Time.deltaTime * speakingHeadReturnLerp);
             _speechPitch = Mathf.Lerp(_speechPitch, _speechPitchTarget, Time.deltaTime * speakingHeadReturnLerp);
 
-            headYaw = (Mathf.PerlinNoise(_seed, Time.time * idleSpeed) - 0.5f) * 2f * idleYawDeg;
-            headPitch = (Mathf.PerlinNoise(_seed + 17f, Time.time * idleSpeed) - 0.5f) * 2f * idlePitchDeg;
+            headYaw = SignedPerlin(0f, idleSpeed, idleYawDeg);
+            headPitch = SignedPerlin(17f, idleSpeed, idlePitchDeg);
 
-            var idleRot = _headBaseLocalRot * Quaternion.Euler(headPitch, headYaw, headRoll);
-            _head.localRotation = Quaternion.Slerp(_head.localRotation, idleRot, Time.deltaTime * 2f);
+            ApplyHeadRotation(headPitch, headYaw, headRoll, 2f);
         }
 
         if (!enableEyes) return;
@@ -412,8 +408,8 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
             eyeYaw *= eyeFocusMultiplier;
             eyePitch *= eyeFocusMultiplier;
 
-            float sYaw = (Mathf.PerlinNoise(_seed + 303f, Time.time * speakingEyeSaccadeSpeed) - 0.5f) * 2f * speakingEyeSaccadeYawDeg;
-            float sPitch = (Mathf.PerlinNoise(_seed + 404f, Time.time * speakingEyeSaccadeSpeed) - 0.5f) * 2f * speakingEyeSaccadePitchDeg;
+            float sYaw = SignedPerlin(303f, speakingEyeSaccadeSpeed, speakingEyeSaccadeYawDeg);
+            float sPitch = SignedPerlin(404f, speakingEyeSaccadeSpeed, speakingEyeSaccadePitchDeg);
             eyeYaw += sYaw;
             eyePitch += sPitch;
 
@@ -422,8 +418,8 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
         }
         else if (_isListening)
         {
-            float sYaw = (Mathf.PerlinNoise(_seed + 701f, Time.time * eyeSaccadeSpeed) - 0.5f) * 2f * eyeSaccadeYawDeg;
-            float sPitch = (Mathf.PerlinNoise(_seed + 809f, Time.time * eyeSaccadeSpeed) - 0.5f) * 2f * eyeSaccadePitchDeg;
+            float sYaw = SignedPerlin(701f, eyeSaccadeSpeed, eyeSaccadeYawDeg);
+            float sPitch = SignedPerlin(809f, eyeSaccadeSpeed, eyeSaccadePitchDeg);
 
             eyeYaw = headYaw * eyeFollowHeadIdle + sYaw;
             eyePitch = headPitch * eyeFollowHeadIdle + sPitch;
@@ -443,8 +439,8 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
         }
         else
         {
-            float sYaw = (Mathf.PerlinNoise(_seed + 101f, Time.time * eyeSaccadeSpeed) - 0.5f) * 2f * eyeSaccadeYawDeg;
-            float sPitch = (Mathf.PerlinNoise(_seed + 202f, Time.time * eyeSaccadeSpeed) - 0.5f) * 2f * eyeSaccadePitchDeg;
+            float sYaw = SignedPerlin(101f, eyeSaccadeSpeed, eyeSaccadeYawDeg);
+            float sPitch = SignedPerlin(202f, eyeSaccadeSpeed, eyeSaccadePitchDeg);
 
             eyeYaw = headYaw * eyeFollowHeadIdle + sYaw;
             eyePitch = headPitch * eyeFollowHeadIdle + sPitch;
@@ -474,6 +470,17 @@ public class AvaturnIdleLookAndBlink : MonoBehaviour
         var dirLocal = Quaternion.Inverse(referenceSpace.rotation) * dirWorld.normalized;
         yawDeg = Mathf.Atan2(dirLocal.x, dirLocal.z) * Mathf.Rad2Deg;
         pitchDeg = -Mathf.Asin(Mathf.Clamp(dirLocal.y, -1f, 1f)) * Mathf.Rad2Deg;
+    }
+
+    private float SignedPerlin(float seedOffset, float speed, float amplitude)
+    {
+        return (Mathf.PerlinNoise(_seed + seedOffset, Time.time * speed) - 0.5f) * 2f * amplitude;
+    }
+
+    private void ApplyHeadRotation(float pitch, float yaw, float roll, float speed)
+    {
+        var targetRot = _headBaseLocalRot * Quaternion.Euler(pitch, yaw, roll);
+        _head.localRotation = Quaternion.Slerp(_head.localRotation, targetRot, Time.deltaTime * speed);
     }
 
     static float NormalizeSignedAngle(float angleDeg)

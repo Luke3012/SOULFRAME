@@ -36,7 +36,6 @@ public class WebGLAudioCapture : MonoBehaviour, IAudioCaptureWebGL
     // cosi' instradiamo il callback verso l'istanza corretta. Conviene usare una sola istanza
     // per tipo di operazione alla volta: piu' istanze o operazioni sovrapposte possono
     // generare comportamenti inattesi.
-    private static WebGLAudioCapture activeInstance;
     private static WebGLAudioCapture activeStopInstance;
     private static WebGLAudioCapture activeCaptureInstance;
     private static bool permissionGranted = false;
@@ -80,7 +79,6 @@ public class WebGLAudioCapture : MonoBehaviour, IAudioCaptureWebGL
             return permissionGranted;
         }
         permissionRequested = true;
-        activeInstance = this;
         WebGLAudio_RequestPermission(OnPermissionResult);
         return permissionGranted;
 #else

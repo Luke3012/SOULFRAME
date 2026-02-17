@@ -48,6 +48,17 @@ Il frontend Unity e' pensato per essere diretto da usare:
 - RAG: il backend usa Ollama + ChromaDB per memoria per-avatar, con ricerca ibrida semantica + keyword.
 - TTS: Coqui XTTS v2 genera la risposta vocale (`/tts`, `/tts_stream`).
 
+### Inizializzazione Coqui al boot
+
+All'avvio, Coqui-TTS viene inizializzato con una frase breve ("ciao") per fare warmup del modello.
+Questa e' in genere la fase piu' lenta del boot TTS.
+
+Per questo motivo il frontend mostra uno stato di inizializzazione dedicato:
+
+- pannello di loading durante il bootstrap iniziale,
+- transizioni UI e animazioni dei background rings per accompagnare l'attesa,
+- ingresso dell'interfaccia completa solo quando il servizio TTS risulta pronto.
+
 ### Setup voce (profilo vocale avatar)
 
 Nel setup voce:
@@ -82,6 +93,13 @@ MainMode e' la fase operativa della conversazione:
 5. UI aggiornata con stato, testo utente e risposta.
 
 Da MainMode puoi anche tornare rapidamente a setup voce/setup memoria se vuoi aggiornare il profilo.
+
+## Limitazioni WebGL (Lip Sync)
+
+Il lip sync di Unity in WebGL ha limitazioni note rispetto all'esecuzione in Play Mode/Desktop.
+
+- Sono stati applicati fix per mantenere la bocca piu' aperta durante la parlata.
+- Nonostante questi fix, il movimento labiale in WebGL puo' risultare meno preciso/naturale.
 
 ## Struttura repo
 

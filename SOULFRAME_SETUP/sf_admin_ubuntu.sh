@@ -132,7 +132,7 @@ sf_all() {
 shutdown_vm() {
   echo "[WARN] Questa azione spegnerà completamente la VM."
   read -r -p "Confermi shutdown VM ora? [s/N]: " yn
-  if [[ "${yn,,}" == "s" ]]; then
+  if is_yes "$yn"; then
     echo "[INFO] Arresto servizi e shutdown..."
     sf_all stop || true
     shutdown -h now
@@ -144,6 +144,14 @@ shutdown_vm() {
 normalize_lf_file() {
   local target="$1"
   sed -i 's/\r$//' "$target"
+}
+
+is_yes() {
+  [[ "${1,,}" == "s" ]]
+}
+
+is_no() {
+  [[ "${1,,}" == "n" ]]
 }
 
 is_managed_backup_path() {
@@ -235,7 +243,7 @@ manage_backups() {
         fi
         local target="${BACKUP_PATHS[$((idx - 1))]}"
         read -r -p "Confermi eliminazione? [s/N]: " yn
-        if [[ "${yn,,}" == "s" ]]; then
+        if is_yes "$yn"; then
           delete_backup_path "$target"
         else
           echo "[INFO] Operazione annullata."
@@ -247,7 +255,7 @@ manage_backups() {
           continue
         fi
         read -r -p "Confermi eliminazione di TUTTI i backup? [s/N]: " yn
-        if [[ "${yn,,}" != "s" ]]; then
+        if ! is_yes "$yn"; then
           echo "[INFO] Operazione annullata."
           continue
         fi
@@ -272,7 +280,7 @@ manage_backups() {
         local to_delete=$((count - keep_n))
         echo "[WARN] Verranno eliminati $to_delete backup."
         read -r -p "Confermi? [s/N]: " yn
-        if [[ "${yn,,}" != "s" ]]; then
+        if ! is_yes "$yn"; then
           echo "[INFO] Operazione annullata."
           continue
         fi
@@ -488,7 +496,7 @@ cleanup_update_sources_after_confirm() {
   echo "[INFO] File sorgente usati da update (dentro $UPDATE_DIR):"
   printf '  - %s\n' "${unique[@]}"
   read -r -p "Eliminare questi file sorgente ora? [s/N]: " yn
-  if [[ "${yn,,}" != "s" ]]; then
+  if ! is_yes "$yn"; then
     echo "[INFO] Pulizia sorgenti annullata."
     return 0
   fi
@@ -596,7 +604,7 @@ update_build() {
 
   if [[ "$ask_restart" == "1" ]]; then
     read -r -p "Riavviare i servizi ora? [s/N]: " yn
-    if [[ "${yn,,}" == "s" ]]; then
+    if is_yes "$yn"; then
       sf_all start
     fi
   fi
@@ -695,7 +703,7 @@ update_backend() {
 
   if [[ "$ask_restart" == "1" ]]; then
     read -r -p "Riavviare i servizi ora? [s/N]: " yn
-    if [[ "${yn,,}" == "s" ]]; then
+    if is_yes "$yn"; then
       systemctl daemon-reload
       sf_all start
     fi
@@ -736,7 +744,7 @@ update_all() {
   fi
 
   read -r -p "Procedere con update completo ora? [S/n]: " yn
-  if [[ "${yn,,}" == "n" ]]; then
+  if is_no "$yn"; then
     echo "[INFO] Update annullato."
     return
   fi
@@ -755,7 +763,7 @@ update_all() {
   update_backend 1 0 0
 
   read -r -p "Riavviare i servizi ora? [s/N]: " yn
-  if [[ "${yn,,}" == "s" ]]; then
+  if is_yes "$yn"; then
     systemctl daemon-reload
     sf_all start
   fi
@@ -782,7 +790,7 @@ edit_params() {
   "${EDITOR:-nano}" "$target"
 
   read -r -p "Riavviare i servizi ora? [s/N]: " yn
-  if [[ "${yn,,}" == "s" ]]; then
+  if is_yes "$yn"; then
     sf_all restart
   fi
 }

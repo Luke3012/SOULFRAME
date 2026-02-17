@@ -283,6 +283,65 @@ def _resolve_speaker_path(safe_avatar_id: str) -> Optional[str]:
     return None
 
 
+def _normalize_language(language: str) -> str:
+    return (language or DEFAULT_LANG).strip() or DEFAULT_LANG
+
+
+def _cleanup_temp_path(tmp_path: Optional[Path]) -> None:
+    if tmp_path is None:
+        return
+    try:
+        tmp_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+async def _prepare_request_speaker(
+    safe_avatar_id: str,
+    speaker_wav: Optional[UploadFile],
+    save_voice: bool,
+) -> tuple[Optional[str], Optional[Path], str]:
+    """Resolve speaker reference preserving priority: upload -> avatar -> default."""
+    speaker_path: Optional[str] = None
+    tmp_path: Optional[Path] = None
+    speaker_source = "none"
+
+    if speaker_wav is not None and speaker_wav.filename:
+        data = await speaker_wav.read()
+        if data and len(data) >= 512:
+            try:
+                data = _prepare_reference_wav_bytes(data)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
+            suffix = Path(speaker_wav.filename).suffix or ".wav"
+            fd, tmp_name = tempfile.mkstemp(prefix="speaker_", suffix=suffix)
+            os.close(fd)
+            tmp_path = Path(tmp_name)
+            tmp_path.write_bytes(data)
+            speaker_path = str(tmp_path)
+            speaker_source = "upload"
+
+            if save_voice:
+                out_path = _avatar_voice_path(safe_avatar_id)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_bytes(data)
+
+    if speaker_path is None:
+        avatar_ref = _avatar_voice_path(safe_avatar_id)
+        if _file_has_content(avatar_ref):
+            speaker_path = str(avatar_ref)
+            speaker_source = "avatar"
+
+    if speaker_path is None:
+        default_ref = Path(DEFAULT_SPEAKER_WAV)
+        if _file_has_content(default_ref):
+            speaker_path = str(default_ref)
+            speaker_source = "default"
+
+    return speaker_path, tmp_path, speaker_source
+
+
 def _is_cuda_related_error(exc: Exception) -> bool:
     msg = str(exc).lower()
     markers = (
@@ -648,7 +707,7 @@ def generate_wait_phrases(
     _ensure_loaded()
 
     safe = _safe_avatar_id(avatar_id)
-    language = (language or DEFAULT_LANG).strip() or DEFAULT_LANG
+    language = _normalize_language(language)
 
     speaker_path = _resolve_speaker_path(safe)
     if speaker_path is None:
@@ -731,46 +790,12 @@ async def tts(
     _ensure_loaded()
 
     safe = _safe_avatar_id(avatar_id)
-    language = (language or DEFAULT_LANG).strip() or DEFAULT_LANG
-
-    speaker_path: Optional[str] = None
-    tmp_path: Optional[Path] = None
-    speaker_source = "none"
-
-    # 1) file caricato
-    if speaker_wav is not None and speaker_wav.filename:
-        data = await speaker_wav.read()
-        if data and len(data) >= 512:
-            try:
-                data = _prepare_reference_wav_bytes(data)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc))
-            suffix = Path(speaker_wav.filename).suffix or ".wav"
-            fd, tmp_name = tempfile.mkstemp(prefix="speaker_", suffix=suffix)
-            os.close(fd)
-            tmp_path = Path(tmp_name)
-            tmp_path.write_bytes(data)
-            speaker_path = str(tmp_path)
-            speaker_source = "upload"
-
-            if save_voice:
-                out_path = _avatar_voice_path(safe)
-                out_path.parent.mkdir(parents=True, exist_ok=True)
-                out_path.write_bytes(data)
-
-    # 2) voce salvata avatar
-    if speaker_path is None:
-        avatar_ref = _avatar_voice_path(safe)
-        if _file_has_content(avatar_ref):
-            speaker_path = str(avatar_ref)
-            speaker_source = "avatar"
-
-    # 3) fallback di default
-    if speaker_path is None:
-        default_ref = Path(DEFAULT_SPEAKER_WAV)
-        if _file_has_content(default_ref):
-            speaker_path = str(default_ref)
-            speaker_source = "default"
+    language = _normalize_language(language)
+    speaker_path, tmp_path, speaker_source = await _prepare_request_speaker(
+        safe_avatar_id=safe,
+        speaker_wav=speaker_wav,
+        save_voice=save_voice,
+    )
 
     if speaker_path is None:
         raise HTTPException(
@@ -783,11 +808,7 @@ async def tts(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS synthesis error: {e}")
     finally:
-        if tmp_path is not None:
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+        _cleanup_temp_path(tmp_path)
 
     filename = f"{safe}_{int(time.time())}.wav"
     headers = {
@@ -815,43 +836,12 @@ async def tts_stream(
     _ensure_loaded()
 
     safe = _safe_avatar_id(avatar_id)
-    language = (language or DEFAULT_LANG).strip() or DEFAULT_LANG
-
-    speaker_path: Optional[str] = None
-    tmp_path: Optional[Path] = None
-    speaker_source = "none"
-
-    if speaker_wav is not None and speaker_wav.filename:
-        data = await speaker_wav.read()
-        if data and len(data) >= 512:
-            try:
-                data = _prepare_reference_wav_bytes(data)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc))
-            suffix = Path(speaker_wav.filename).suffix or ".wav"
-            fd, tmp_name = tempfile.mkstemp(prefix="speaker_", suffix=suffix)
-            os.close(fd)
-            tmp_path = Path(tmp_name)
-            tmp_path.write_bytes(data)
-            speaker_path = str(tmp_path)
-            speaker_source = "upload"
-
-            if save_voice:
-                out_path = _avatar_voice_path(safe)
-                out_path.parent.mkdir(parents=True, exist_ok=True)
-                out_path.write_bytes(data)
-
-    if speaker_path is None:
-        avatar_ref = _avatar_voice_path(safe)
-        if _file_has_content(avatar_ref):
-            speaker_path = str(avatar_ref)
-            speaker_source = "avatar"
-
-    if speaker_path is None:
-        default_ref = Path(DEFAULT_SPEAKER_WAV)
-        if _file_has_content(default_ref):
-            speaker_path = str(default_ref)
-            speaker_source = "default"
+    language = _normalize_language(language)
+    speaker_path, tmp_path, speaker_source = await _prepare_request_speaker(
+        safe_avatar_id=safe,
+        speaker_wav=speaker_wav,
+        save_voice=save_voice,
+    )
 
     if speaker_path is None:
         raise HTTPException(
@@ -867,11 +857,7 @@ async def tts_stream(
         raise HTTPException(status_code=400, detail=f"Invalid input: {e}")
 
     def _cleanup():
-        if tmp_path is not None:
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+        _cleanup_temp_path(tmp_path)
 
     def _stream():
         try:
