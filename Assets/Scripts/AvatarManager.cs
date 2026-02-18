@@ -101,8 +101,6 @@ public class AvatarManager : MonoBehaviour
     [SerializeField] private string localModel2Gender = "male";
 
     [Header("Animation")]
-    public RuntimeAnimatorController idleController;
-    public bool animatorApplyRootMotion = false;
     public AvaturnIdleLookAndBlink idleLook;
 
     [Header("Download Watchdog")]
@@ -640,8 +638,6 @@ public class AvatarManager : MonoBehaviour
         InvalidateCurrentAvatarTintCache();
         // currentDownloadMode = DownloadMode.Main; // Riga rimossa per risolvere un errore di compilazione
 
-        StartCoroutine(SetupAnimatorNextFrame(currentAvatar));
-
         if (lipSyncBinder != null)
             StartCoroutine(SetupLipSyncNextFrame(container));
         else
@@ -667,30 +663,6 @@ public class AvatarManager : MonoBehaviour
         // Aspettiamo 1 frame: su WebGL/GLTFast evitiamo casi limite mentre Unity finalizza renderer/mesh.
         yield return null;
         lipSyncBinder.Setup(avatarRoot);
-    }
-
-    private IEnumerator SetupAnimatorNextFrame(GameObject avatarGO)
-    {
-        yield return null;
-
-        if (idleController == null)
-        {
-            yield break;
-        }
-
-        var animator = avatarGO.GetComponent<Animator>();
-        if (animator == null) animator = avatarGO.AddComponent<Animator>();
-
-        animator.applyRootMotion = animatorApplyRootMotion;
-        animator.runtimeAnimatorController = idleController;
-
-        // Punto chiave: costruiamo l'Avatar umanoide a runtime.
-        animator.avatar = HumanoidAvatarBuilder.Build(avatarGO);
-
-        // Utile in WebGL o con camera lontane.
-        animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-
-        Debug.Log("[Anim] Animator pronto: Idle in play.");
     }
 
     private IEnumerator SetupIdleLookNextFrame(Transform avatarRoot)
@@ -1609,8 +1581,6 @@ public class AvatarManager : MonoBehaviour
         currentAvatarDimmed = false;
         currentAvatarDimMultiplier = 1f;
         InvalidateCurrentAvatarTintCache();
-
-        StartCoroutine(SetupAnimatorNextFrame(currentAvatar));
 
         if (lipSyncBinder != null)
         {

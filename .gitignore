@@ -63,6 +63,8 @@ SOULFRAME_AI/backend/avatar_store/
 gemini_key.txt
 *.log
 SOULFRAME_AI/PID
+/PID
+/__*.txt
 
 # OS specific
 .DS_Store
@@ -80,5 +82,21 @@ Thumbs.db
 # Ignora i file bezi
 .bezisidekick/
 
-# Ignora la tesi
-Tesi/
+# --- TESI (traccia i sorgenti, ignora solo file generati) ---
+Tesi/**/*.aux
+Tesi/**/*.log
+Tesi/**/*.out
+Tesi/**/*.toc
+Tesi/**/*.lof
+Tesi/**/*.lot
+Tesi/**/*.fls
+Tesi/**/*.fdb_latexmk
+Tesi/**/*.synctex.gz
+Tesi/**/*.bbl
+Tesi/**/*.blg
+Tesi/**/*.bcf
+Tesi/**/*.run.xml
+Tesi/**/*.nav
+Tesi/**/*.snm
+Tesi/**/*.vrb
+Tesi/**/*.xdv

@@ -1,0 +1,272 @@
+﻿﻿% !TEX encoding = UTF-8
+% !TEX program = pdflatex
+% !TEX spellcheck = it_IT
+% !BIB TS-program = biber
+
+\documentclass[a4paper,12pt]{thesis}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{newcent}
+\usepackage{graphicx}
+\usepackage{listings}
+%\usepackage{xcolor}
+\usepackage[table,svgnames]{xcolor}
+\usepackage{textcomp}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{url,amsfonts,epsfig}
+\usepackage{lmodern}
+\usepackage{vmargin}
+\usepackage{amsmath}
+\usepackage{indentfirst}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{setspace}
+\usepackage{siunitx}
+\usepackage{footnote}
+\usepackage{pgfplots}
+\usepackage{afterpage}
+\usepackage{latexsym}
+\usepackage{standalone}
+\usepackage{graphicx}
+\usepackage{csquotes}
+\usepackage[style=numeric-comp,useprefix,hyperref,backend=biber]{biblatex}
+\usepackage{float}
+\usepackage{rotating}
+\usepackage{makecell}
+\usepackage{multirow}
+\usepackage{pifont}
+\usepackage{tabstackengine}
+\pgfplotsset{width=10cm,height=14cm,compat=1.18}
+\newcommand{\xmark}{\ding{55}}
+\DeclareSortingTemplate{nonenyt}{
+  \sort{\citeorder}
+  \sort{
+    \field{presort}
+  }
+  \sort[final]{
+    \field{sortkey}
+  }
+  \sort{
+    \field{sortname}
+    \field{author}
+    \field{editor}
+    \field{translator}
+    \field{sorttitle}
+    \field{title}
+  }
+  \sort{
+    \field{sortyear}
+    \field{year}
+  }
+  \sort{
+    \field{sorttitle}
+    \field{title}
+  }
+  \sort{
+    \field{volume}
+    \literal{0}
+  }
+}
+\ExecuteBibliographyOptions{sorting=nonenyt}
+\addbibresource{bibliografia.bib}
+
+\newcommand{\Csh}{C{\lserif\#}}
+
+\usepackage{caption, subcaption}
+\renewcommand{\thesubfigure}{(\alph{subfigure})}
+\usepackage{calligra}
+\usepackage[T1]{fontenc}
+\usepackage{inconsolata}
+\definecolor{bluekeywords}{rgb}{0.13,0.13,1}
+\definecolor{greencomments}{rgb}{0,0.5,0}
+\definecolor{redstrings}{rgb}{0.9,0,0}
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{darkblue}{rgb}{0.0,0.0,0.6}
+\definecolor{lightblue}{rgb}{0.0,0.0,0.9}
+\definecolor{cyan}{rgb}{0.0,0.6,0.6}
+\definecolor{darkred}{rgb}{0.6,0.0,0.0}
+\definecolor{background}{rgb}{0.97,0.97,0.97}
+\definecolor{numb}{rgb}{0.50,0.50,0.50}
+\definecolor{punct}{rgb}{0.35,0.35,0.35}
+\definecolor{delim}{rgb}{0.20,0.20,0.20}
+
+\lstset{
+language=[Sharp]C,
+showspaces=false,
+showtabs=false,
+breaklines=true,
+showstringspaces=false,
+breakatwhitespace=true,
+escapeinside={(*@}{@*)},
+commentstyle=\color{greencomments},
+keywordstyle=\color{bluekeywords}\bfseries,
+stringstyle=\color{redstrings},
+basicstyle=\ttfamily
+}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  columns=fullflexible,
+  showstringspaces=false,
+  numbers=left,                   % where to put the line-numbers
+  numberstyle=\tiny\color{gray},  % the style that is used for the line-numbers
+  stepnumber=1,
+  numbersep=5pt,                  % how far the line-numbers are from the code
+  backgroundcolor=\color{white},      % choose the background color. You must add \usepackage{color}
+  showspaces=false,               % show spaces adding particular underscores
+  showstringspaces=false,         % underline spaces within strings
+  showtabs=false,                 % show tabs within strings adding particular underscores
+  frame=none,                   % adds a frame around the code
+  rulecolor=\color{black},        % if not set, the frame-color may be changed on line-breaks within not-black text (e.g. commens (green here))
+  tabsize=2,                      % sets default tabsize to 2 spaces
+  captionpos=b,                   % sets the caption-position to bottom
+  breaklines=true,                % sets automatic line breaking
+  breakatwhitespace=false,        % sets if automatic breaks should only happen at whitespace
+  title=\lstname,                   % show the filename of files included with \lstinputlisting;
+                                  % also try caption instead of title  
+  commentstyle=\color{gray}\upshape
+}
+
+\lstdefinelanguage{XML}
+{
+  morestring=[s][\color{mauve}]{"}{"},
+  morestring=[s][\color{black}]{>}{<},
+  morecomment=[s]{<?}{?>},
+  morecomment=[s][\color{dkgreen}]{<!--}{-->},
+  stringstyle=\color{black},
+  identifierstyle=\color{lightblue},
+  keywordstyle=\color{lightblue},
+  morekeywords={xmlns,xsi,noNamespaceSchemaLocation,type,id,x,y,source,target,version,tool,transRef,roleRef,objective,eventually}% list your attributes here
+}
+
+\lstdefinelanguage{json}{
+    basicstyle=\normalfont\ttfamily,
+    numbers=left,
+    numberstyle=\scriptsize,
+    stepnumber=1,
+    numbersep=8pt,
+    showstringspaces=false,
+    breaklines=true,
+    frame=lines,
+    backgroundcolor=\color{background},
+    literate=
+     *{0}{{{\color{numb}0}}}{1}
+      {1}{{{\color{numb}1}}}{1}
+      {2}{{{\color{numb}2}}}{1}
+      {3}{{{\color{numb}3}}}{1}
+      {4}{{{\color{numb}4}}}{1}
+      {5}{{{\color{numb}5}}}{1}
+      {6}{{{\color{numb}6}}}{1}
+      {7}{{{\color{numb}7}}}{1}
+      {8}{{{\color{numb}8}}}{1}
+      {9}{{{\color{numb}9}}}{1}
+      {:}{{{\color{punct}{:}}}}{1}
+      {,}{{{\color{punct}{,}}}}{1}
+      {\{}{{{\color{delim}{\{}}}}{1}
+      {\}}{{{\color{delim}{\}}}}}{1}
+      {[}{{{\color{delim}{[}}}}{1}
+      {]}{{{\color{delim}{]}}}}{1},
+}
+
+
+\graphicspath{{Risorse/}}
+\usepackage[hyperindex]{hyperref} %per l'indice interattivo
+\hypersetup{colorlinks=true, linkcolor=black, citecolor=black} %per 
+\setmarginsrb{35mm}{30mm}{30mm}{30mm}{5mm}{10mm}{0mm}{10mm}
+\raggedbottom
+
+\title{Sviluppo di un ambiente virtuale per ridurre il senso di solitudine della popolazione anziana}
+\author{Luca Tartaglia}
+\date{\today}
+
+\begin{document}
+\hypersetup{pageanchor=false}
+%%%% Opzione per interlinea 2
+\onehalfspacing
+
+%% FRONTESPIZIO
+{ \thispagestyle{empty}
+
+\vskip 1cm \large \centerline{\textsc{Universit\`a degli Studi di Napoli "Parthenope"}}
+
+\centerline {\textsc{Dipartimento di Scienze e Tecnologie}}
+
+\centerline {\small\textsc{Corso di laurea in Informatica}}
+
+\vskip 1.0cm
+
+\begin{center}
+\includegraphics[scale=0.45]{Risorse/logouni.png}
+\end{center}
+
+\vskip 0.5cm
+
+\large \centerline {\textsc{Elaborato finale di Laurea}}
+
+\vskip 1.0cm
+\begin{center}
+\Large
+\parbox{0.9\textwidth}{\centering Sviluppo di un ambiente virtuale per ridurre il senso di solitudine nella popolazione anziana}
+\end{center}
+\vskip 1.0 cm
+\small \centerline{Integrazione di agenti virtuali per il sostegno alla socialit\`a}
+\vskip 1 cm
+
+\large
+\begin{minipage}[t]{7cm}
+\textsc{Relatore}
+
+\textbf{Prof.ssa Paola Barra}
+\vskip 1cm
+
+\end{minipage}
+\hfill
+\begin{minipage}[t]{5cm}
+\textsc{Candidato}
+
+\textbf{Luca Tartaglia}
+\textbf{\\Matr. 0124002294}
+
+\end{minipage}
+\vskip 3cm
+\Large \centerline {Anno Accademico 2024/2025}
+\vfill \eject}
+\pagenumbering{Roman}
+\newpage
+\newpage
+
+% --- Abstract ---
+\input{Abstract}
+\clearpage
+
+% --- Indice ---
+\markboth{Index}{Index}
+\tableofcontents
+\clearpage
+
+% --- Inizio capitoli numerati ---
+\pagenumbering{arabic}
+\hypersetup{pageanchor=true}
+
+\input{Capitolo1}
+\input{Capitolo2}
+\input{Capitolo3}
+\input{Capitolo4}
+\input{Capitolo5}
+\input{Capitolo6}
+
+\clearpage
+\input{Ringraziementi}
+
+\clearpage
+\input{Bibliografia}
+
+% --- Appendici ---
+% \appendix
+% \input{Appendici} % (creare Appendici.tex quando sarò pronto)
+
+\pagestyle{plain}
+\end{document}

@@ -12350,8 +12350,6 @@ MonoBehaviour:
   localModel2FileName: model2.glb
   localModel2AvatarId: LOCAL_model2
   localModel2Gender: male
-  idleController: {fileID: 0}
-  animatorApplyRootMotion: 0
   idleLook: {fileID: 1975471351}
   previewTimeoutSeconds: 8
   mainTimeoutSeconds: 30

@@ -1,0 +1,8 @@
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+In questa tesi presento \textbf{SOULFRAME}, un sistema conversazionale con avatar 3D pensato per rendere l'interazione con l'AI più semplice, naturale e accessibile. L'obiettivo principale è costruire un'esperienza d'uso intuitiva: l'utente deve poter parlare con l'avatar senza complessità tecniche, usando un'interfaccia adattabile sia a desktop (controlli da tastiera) sia a mobile/touch (push-to-talk e navigazione semplificata).
+
+Il progetto è stato sviluppato con un'architettura modulare client-server. Sul lato frontend, \textbf{Unity WebGL} gestisce flusso UI, avatar e acquisizione audio. Sul lato backend, microservizi \textbf{FastAPI} si occupano di trascrizione vocale con \textbf{Whisper (STT)}, risposta contestuale con \textbf{LLM + RAG} (Ollama e ChromaDB), sintesi vocale con \textbf{Coqui XTTS v2 (TTS)} e gestione/caching degli asset avatar. La memoria è persistente per singolo avatar e può essere arricchita con note, documenti PDF e immagini, anche tramite OCR.
+
+Una parte importante del lavoro riguarda l'automazione operativa: sono stati introdotti script di setup e gestione servizi per installazione e deploy in modo rapido su Windows e Ubuntu, riducendo errori manuali e tempi di configurazione. Durante lo sviluppo sono state affrontate criticità di integrazione tra servizi, latenza end-to-end e compatibilità tra ambienti. I risultati ottenuti mostrano un sistema funzionante, estendibile e sufficientemente robusto per conversazioni vocali contestuali in scenari realistici.

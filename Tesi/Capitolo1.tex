@@ -1,0 +1,86 @@
+﻿\chapter{Introduzione}\label{chapintroduzione}
+
+\section{Motivazione e contesto applicativo}\label{secmotivazione-contesto}
+La realtà virtuale (VR) si distingue dagli altri media interattivi per la capacità di far sentire l'utente presente in un luogo diverso da quello fisico. Slater e Sanchez-Vives descrivono questa presenza come il risultato di due fattori principali: la \textit{place illusion}, legata alla coerenza tra movimenti e scena virtuale, e la plausibilità degli eventi, cioè quanto l'ambiente reagisce in modo credibile alle azioni dell'utente \cite{Slater2016VR}. Per questo, non basta una buona qualità visiva. Conta anche come il sistema risponde e quanto le interazioni risultano significative.
+
+In questo quadro, la VR viene usata da tempo per training, formazione e simulazioni in ambito medico e professionale, soprattutto quando serve riprodurre situazioni costose, rischiose o difficili da standardizzare. Diversi studi segnalano anche l'interesse per contesti con forte componente sociale, dove realismo e naturalezza dell'interazione influenzano direttamente l'esperienza.
+
+Il limite emerge quando l'ambiente resta statico o gli attori virtuali seguono script rigidi. In questi casi l'interazione si riduce a scelte predefinite e perde adattività. In uno studio sul training in VR, Kan, Rumpelnik e Kaufmann confrontano agenti conversazionali con agenti a audio preregistrato. I risultati mostrano che una pipeline vocale con riconoscimento del parlato e sintesi vocale aumenta in modo significativo la co-presenza percepita \cite{Kan2023ECA_Training}. Questo indica che il dialogo non è un elemento accessorio, ma una parte centrale dell'efficacia del sistema.
+
+Gli Embodied Conversational Agents (ECA), cioè agenti conversazionali con corpo virtuale e segnali multimodali, nascono proprio da questa esigenza. La revisione sistematica di Yang e coautori mostra che la maggior parte degli studi in XR si concentra sulla VR, spesso con HMD e con Unity come piattaforma principale \cite{Yang2025ECA_XR}. La stessa revisione evidenzia che molte interazioni restano \textit{task-oriented}, ma cresce l'interesse per scambi più dinamici e adattivi grazie a modelli neurali e, più recentemente, ai \textit{Large Language Models} (LLM). In SOULFRAME, questo filone viene adattato a una configurazione senza HMD, centrata sulla generazione e animazione di avatar a partire da segnali visivi e vocali dell'utente.
+
+Dal punto di vista dei canali, la voce è ormai una scelta frequente sia in input sia in output. Resta però aperta la sfida di integrare dialogo libero e contestuale con un embodiment coerente.
+
+Figura~\ref{fig:ca-evoluzione} sintetizza l'evoluzione dei Conversational Agents (CA) dalla fase iniziale di sistemi scriptati fino all'attuale ondata guidata da modelli linguistici avanzati. In questa traiettoria, l'integrazione di linguaggio naturale, adattività e autonomia rende più rilevante il tema dell'\textit{embodiment} in ambienti immersivi. In questo quadro, SOULFRAME non nasce come semplice demo grafica: punta a collegare presenza sociale e interazione credibile in un ambiente 3D familiare, con la conversazione vocale come asse centrale.
+
+\begin{figure}[t]
+\centering
+% LINK_ORIGINE: [https://www.researchgate.net/figure/The-five-identified-waves-of-CA-evolutions-as-identified-by-Schobel-et-al-8_fig1_391468212]
+\includegraphics[width=0.85\textwidth]{vr_contesto_schema.png}
+\caption{Evoluzione della maturità della ricerca sui Conversational Agents (CA), dalla ``zero hour wave'' alla ``AI wave'', con riferimento ai principali passaggi tecnologici. \protect\footnotemark}
+\label{fig:ca-evoluzione}
+\end{figure}
+\footnotetext{Fonte: adattamento da una figura pubblicata su ResearchGate, disponibile a \href{https://www.researchgate.net/figure/The-five-identified-waves-of-CA-evolutions-as-identified-by-Schobel-et-al-8_fig1_391468212}{questo link}.}
+
+SOULFRAME si inserisce in questo contesto come sistema immersivo con ECA vocale embodied. L'obiettivo è testare una pipeline completa che integra voce e un profilo avatar creato in fase iniziale tramite acquisizione visiva dell'utente, così da replicarne aspetto e stile comportamentale durante il dialogo. Un punto centrale è la memoria dell'agente: il sistema combina contesto conversazionale e recupero di conoscenza (\textit{RAG}) per generare risposte coerenti con quanto detto e acquisito durante l'interazione. L'ipotesi di fondo è semplice: in ambienti immersivi e familiari, la qualità percepita dipende anche dalla capacità dell'agente di sostenere scambi plausibili, rapidi e contestualmente informati.
+
+\section{Perimetro e requisiti di progetto}\label{secperimetro-requisiti}
+SOULFRAME è un prototipo di interazione immersiva con un ECA vocale embodied in ambiente 3D. Lo scopo è valutare fattibilità tecnica e qualità percepita dell'interazione conversazionale in scenari con componente sociale. Il progetto non vuole essere una piattaforma generale per creare mondi virtuali e non è una soluzione clinica certificata. Questi obiettivi richiedono validazioni regolatorie e studi longitudinali fuori dal perimetro di una tesi triennale.
+
+Il perimetro si concentra quindi sull'integrazione \textit{end-to-end} della pipeline vocale, visiva e dialogica dentro una scena immersiva, con coerenza tra risposta verbale e comportamenti \textit{embodied} dell'agente.
+
+Sul piano tecnologico, il sistema integrato di SOULFRAME usa la fotocamera soprattutto nella fase di configurazione iniziale dell'utente, per creare e salvare il profilo avatar; durante l'interazione ordinaria il sistema si basa principalmente su microfono, memoria di contesto e stato conversazionale. La resa della scena avviene con moduli di generazione/animazione avatar e con un motore real-time 3D. Questa scelta favorisce replicabilità, facilita sostituzioni tra componenti e sostiene un'interazione più familiare, orientata alla replica visiva e comportamentale della persona.
+
+I requisiti funzionali principali derivano dalla necessità di supportare un dialogo naturale in tempo quasi reale. L'input vocale è gestito con logica \textit{push-to-talk}: l'utente tiene premuto un tasto per parlare e rilascia per chiudere il turno. A quel punto il sistema trascrive l'audio con Speech-to-Text (STT) e genera la risposta tramite LLM supportato dalla memoria RAG. La comprensione dell'input emerge dalla combinazione tra modello linguistico, contesto conversazionale e semplici regole applicative. Il testo prodotto viene poi convertito in audio tramite Text-to-Speech (TTS) e restituito attraverso la voce dell'agente. Nella fase di onboarding, il sistema usa la fotocamera per costruire il profilo visivo dell'avatar, che viene poi riutilizzato durante la conversazione. A questa catena si aggiungono tre funzioni chiave: memoria contestuale con \textit{Retrieval-Augmented Generation} (RAG), descrizione semantica delle immagini per estrarre informazioni dall'ambiente, e acquisizione testuale da documenti tramite OCR, così che l'avatar possa usare anche contenuti visivi e documentali nella conversazione.
+
+I requisiti non funzionali riguardano soprattutto latenza, robustezza e modularità. Per mantenere plausibilità conversazionale, la catena STT--RAG/LLM--TTS deve restare reattiva, anche quando entrano in gioco recupero in memoria, analisi delle immagini e OCR. L'architettura deve anche tollerare guasti parziali senza interrompere l'esperienza immersiva. La modularità è perseguita soprattutto a livello di servizi e interfacce HTTP: i componenti backend possono essere sostituiti in modo relativamente rapido, purché restino compatibili con gli endpoint e i formati attesi dal client.
+
+Per aspetti come la latenza percepita e i criteri di accettabilità, non c'è una soglia unica valida per tutti i contesti applicativi. In questo lavoro i vincoli sono quindi definiti in modo operativo sul prototipo e verificati nei capitoli successivi.
+
+\section{Obiettivi e contributi di SOULFRAME}\label{secobiettivi-contributi}
+Gli obiettivi di SOULFRAME seguono il filone degli studi sugli ECA in XR. Gli studi mostrano una forte presenza di implementazioni VR in Unity, interazioni spesso orientate al compito e una notevole eterogeneità in input, output e metodi di valutazione. Nello stesso tempo, i canali vocali sono molto usati, soprattutto con TTS in uscita \cite{Yang2025ECA_XR}. In questo scenario, il progetto punta a costruire un prototipo che renda verificabile l'integrazione \textit{end-to-end} della pipeline vocale con un agente \textit{embodied}, documentando in modo chiaro le scelte tecniche e sperimentali.
+
+Il primo obiettivo (RQ1) riguarda la fattibilità tecnica di un'interazione vocale in tempo reale con un agente embodied in ambiente immersivo 3D. In termini operativi, bisogna dimostrare che la catena STT $\rightarrow$ RAG/LLM $\rightarrow$ TTS $\rightarrow$ output audiovisivo dell'avatar funzioni in modo continuo e stabile, includendo anche descrizione immagini e OCR documentale. La valutazione considera tempi di elaborazione per blocco, completamento dei turni senza errori bloccanti e gestione corretta delle transizioni tra ascolto, elaborazione e risposta. La fattibilità include anche la coerenza dell'embodiment, cioè un avatar che allinei voce, aspetto visivo e segnali comportamentali.
+
+Il secondo obiettivo (RQ2) riguarda la qualità percepita dell'interazione, in particolare co-presenza e naturalezza dialogica. SOULFRAME prevede almeno una valutazione qualitativa guidata, affiancata quando possibile da metriche soggettive usate negli studi VR con ECA: presenza, co-presenza, qualità dell'interazione e qualità della presentazione delle informazioni, oltre a misure di processo come durata dei compiti e performance percepita. Studi comparativi tra agenti conversazionali e audio pre-scriptato mostrano differenze osservabili, soprattutto sulla co-presenza \cite{Kan2023ECA_Training}.
+
+Il terzo obiettivo (RQ3) riguarda modularità e riproducibilità della pipeline. In pratica, il sistema deve permettere la sostituzione dei componenti principali senza riscrivere l'intera architettura e deve rendere tracciabili configurazioni, tempi e risultati delle prove. Questa sostituzione avviene mantenendo stabili i contratti API tra client e servizi. Questo obiettivo completa i primi due, perché rende il prototipo confrontabile nel tempo e riutilizzabile in test successivi. Figura~\ref{fig:obiettivi-contributi} sintetizza la corrispondenza tra i tre obiettivi e i contributi attesi del progetto.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{obiettivi_contributi.png}
+\caption{Corrispondenza tra obiettivi di ricerca e contributi del progetto SOULFRAME.}
+\label{fig:obiettivi-contributi}
+\end{figure}
+
+I contributi si distribuiscono su tre livelli. Il contributo tecnico è un'architettura modulare \textit{end-to-end} basata su microservizi (STT, RAG/LLM, TTS e servizi di memoria) con interfacce API esplicite e configurabili. Questo consente di sostituire i componenti con impatto limitato sul resto del sistema, a condizione di mantenere compatibilità dei contratti di scambio. Il contributo sperimentale è un \textit{proof-of-concept} verificabile con un set minimo di misure soggettive e osservazioni qualitative, utile a stimare comprensibilità, fluidità e credibilità dell'interazione. Il contributo metodologico è la documentazione riproducibile delle scelte progettuali, con criteri di logging, tracciamento dei tempi e selezione motivata delle misure di \textit{user experience}. Questa impostazione è coerente con i principali lavori sul \textit{dialogue management}, che distinguono approcci \textit{finite-state}, \textit{frame-based} e \textit{agent-based} e raccomandano maggiore standardizzazione nelle metriche tecniche e nella valutazione dell'esperienza utente \cite{Laranjo2018CA}.
+
+\section{Panoramica del sistema e flusso end-to-end}\label{secpanoramica-sistema}
+SOULFRAME adotta un'architettura client--server pensata per supportare dialogo vocale naturale in un ambiente immersivo 3D. Il client gestisce rendering della scena, rappresentazione dell'agente embodied tramite avatar animato e acquisizione dei segnali utente. La cattura audio non è continua: parte quando l'utente tiene premuto il comando \textit{push-to-talk} e termina al rilascio. La cattura video da fotocamera è invece usata in fase iniziale per configurare e salvare il profilo avatar. Il backend mantiene lo stato conversazionale e orchestra la pipeline linguistica e cognitiva: gestione del contesto, recupero di informazioni con \textit{RAG}, generazione con LLM e integrazione di descrizioni di immagini e testi estratti via OCR. Questa separazione permette di tenere sul client le funzioni sensibili al frame-rate e sul backend i moduli più onerosi e soggetti a evoluzione.
+
+Il flusso end-to-end parte dalla voce dell'utente e ritorna alla risposta audiovisiva dell'avatar. Dopo il rilascio del tasto \textit{push-to-talk}, l'audio viene trascritto dal modulo STT. Il testo viene poi inviato al servizio di chat del backend, che funge da orchestratore RAG/LLM. Quando la memoria dell'avatar è presente, il servizio prova a recuperare contesto rilevante con ricerca ibrida; quando non ci sono ricordi utili, la risposta viene generata senza supporto documentale aggiuntivo. Il contesto può essere arricchito con descrizioni delle immagini e con testo proveniente da documenti acquisiti via OCR. Su questa base, il LLM produce la risposta, che viene sintetizzata dal TTS. In parallelo, il client anima l'avatar usando il profilo visivo creato in onboarding e regole di comportamento coerenti con il contesto dialogico, così da mantenere allineamento tra contenuto verbale e resa visiva.
+
+La latenza totale dipende dalla somma delle latenze dei singoli moduli e dalla gestione a turni del \textit{push-to-talk}. L'obiettivo non è eliminare ogni variabilità, ma mantenere continuità tra fine enunciato e risposta dell'agente con tempi percepiti stabili. Il backend coordina gli stati operativi e gestisce interruzioni o riformulazioni dell'utente senza perdere coerenza.
+
+La modularità è un principio guida, ma nel senso operativo del progetto: i servizi sono separati, indirizzabili e configurabili, e possono essere sostituiti mantenendo coerenti endpoint e payload. In questo modo si possono confrontare varianti senza riprogettare tutto il sistema client. Figura~\ref{fig:pipeline-e2e} riassume la catena di elaborazione e la separazione di responsabilità tra client e backend.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{pipeline_e2e.png}
+\caption{Flusso end-to-end del sistema SOULFRAME: dall'input vocale dell'utente alla risposta dell'agente embodied.}
+\label{fig:pipeline-e2e}
+\end{figure}
+
+\section{Metodo di lavoro e struttura della tesi}\label{secmetodo-struttura}
+Lo sviluppo di SOULFRAME segue un approccio iterativo basato su prototipazione incrementale. La scelta serve a ridurre il rischio tecnico tipico dei sistemi che combinano vincoli di reattività in interazione a turni (\textit{push-to-talk}), elaborazione linguistica e interazione immersiva. Il lavoro procede per integrazioni successive: prima si valida ogni modulo in isolamento, poi si integra la pipeline completa e si verifica il comportamento in scenari via via più complessi. Questo metodo rende più facile individuare colli di bottiglia e problemi di sincronizzazione in fase precoce. Durante tutto il processo vengono tracciate scelte, compromessi e dipendenze per mantenere l'evoluzione del sistema leggibile e replicabile.
+
+La tesi è organizzata in sei capitoli. Il Capitolo 1 introduce problema, perimetro e obiettivi e fornisce la visione d'insieme del sistema. Il Capitolo 2 presenta fondamenti e stato dell'arte su VR, ECA vocali e approcci di memoria conversazionale come RAG, includendo OCR e descrizione immagini come fonti di contesto. Il Capitolo 3 descrive l'architettura di SOULFRAME, i macro-componenti e i criteri progettuali. Il Capitolo 4 entra nelle scelte implementative e tecnologiche, inclusa l'integrazione a microservizi tramite API, la gestione dello stato conversazionale e la resa embodied dell'agente. Il Capitolo 5 riporta test e valutazione, con verifica funzionale della pipeline e stima della qualità percepita. Il Capitolo 6 conclude il lavoro, discute limiti del prototipo e propone sviluppi futuri.
+
+Figura~\ref{fig:struttura-tesi} offre una vista sintetica della struttura e della progressione logica tra capitoli.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{struttura_tesi.png}
+\caption{Struttura della tesi e organizzazione dei capitoli.}
+\label{fig:struttura-tesi}
+\end{figure}

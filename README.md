@@ -16,6 +16,12 @@ L'idea e' semplice: scegli o crei un avatar, parli, il sistema capisce la voce, 
 
 - Setup ambiente con `SOULFRAME_SETUP/setup_soulframe_windows.bat`.
 - Avvio/stop/restart servizi con `SOULFRAME_AI/ai_services.cmd`.
+- Gestione update/deploy con `SoulframeControlCenter.bat`:
+  - `1a/1b/1c`: avvio, chiusura, riavvio servizi (`SOULFRAME_AI/ai_services.cmd 1/2/3`)
+  - switch stream Git A/B (`.git`, `.git_stream_a`, `.git_stream_b`)
+  - `git push`/`git pull` da menu
+  - ripristino commit (soft revert o hard reset con conferma)
+  - creazione pacchetto `soulframe_update` per Ubuntu
 - Workflow tipico: sviluppo rapido e test funzionali in locale.
 
 ### 2) Setup automatico su Ubuntu
@@ -101,11 +107,22 @@ Il lip sync di Unity in WebGL ha limitazioni note rispetto all'esecuzione in Pla
 - Sono stati applicati fix per mantenere la bocca piu' aperta durante la parlata.
 - Nonostante questi fix, il movimento labiale in WebGL puo' risultare meno preciso/naturale.
 
+## Tesi (LaTeX)
+
+La cartella `Tesi/` e' inclusa nel repository e contiene i sorgenti LaTeX del progetto di tesi
+(`main.tex`, capitoli, bibliografia, classe e risorse).
+
+Note di versionamento:
+
+- vengono tracciati i file sorgente (`.tex`, `.bib`, `.cls`, risorse);
+- i file temporanei/generati dalla compilazione LaTeX (`.aux`, `.log`, `.toc`, ecc.) sono ignorati dal `.gitignore`.
+
 ## Struttura repo
 
 - `Assets/`: frontend Unity (UI flow, avatar management, WebGL bridge).
 - `SOULFRAME_AI/`: servizi AI (Whisper, RAG, TTS, Avatar Asset Server).
 - `SOULFRAME_SETUP/`: script setup e amministrazione Windows/Linux.
+- `Tesi/`: sorgenti LaTeX della tesi e materiali correlati.
 
 ## Documentazione tecnica
 
