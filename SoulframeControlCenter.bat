@@ -27,18 +27,18 @@ cls
 call :DetectActiveSlot
 call :RenderMenu
 set "MENU_CHOICE="
-set /p "MENU_CHOICE=Seleziona opzione [1a/1b/1c/2/3/4/5/6/7/0]: "
+set /p "MENU_CHOICE=Seleziona opzione [s/c/r/1/2/3/4/5/6/0]: "
 
 if "%MENU_CHOICE%"=="0" goto END
-if /I "%MENU_CHOICE%"=="1a" goto MENU_SERVER_START
-if /I "%MENU_CHOICE%"=="1b" goto MENU_SERVER_STOP
-if /I "%MENU_CHOICE%"=="1c" goto MENU_SERVER_RESTART
-if "%MENU_CHOICE%"=="7" goto MENU_REVERT
-if "%MENU_CHOICE%"=="6" goto MENU_BACKUP
-if "%MENU_CHOICE%"=="5" goto MENU_PULL
-if "%MENU_CHOICE%"=="4" goto MENU_PUSH
-if "%MENU_CHOICE%"=="3" goto MENU_SWITCH_B
-if "%MENU_CHOICE%"=="2" goto MENU_SWITCH_A
+if /I "%MENU_CHOICE%"=="s" goto MENU_SERVER_START
+if /I "%MENU_CHOICE%"=="c" goto MENU_SERVER_STOP
+if /I "%MENU_CHOICE%"=="r" goto MENU_SERVER_RESTART
+if "%MENU_CHOICE%"=="6" goto MENU_REVERT
+if "%MENU_CHOICE%"=="5" goto MENU_BACKUP
+if "%MENU_CHOICE%"=="4" goto MENU_PULL
+if "%MENU_CHOICE%"=="3" goto MENU_PUSH
+if "%MENU_CHOICE%"=="2" goto MENU_SWITCH_B
+if "%MENU_CHOICE%"=="1" goto MENU_SWITCH_A
 echo.
 echo [WARN] Selezione non valida: "%MENU_CHOICE%"
 call :PauseScreen
@@ -145,15 +145,18 @@ echo ------------------------------------------------------------
 echo  Stream attivo: %STATUS_LABEL%
 echo  Slot A: %A_STATUS%   ^|   Slot B: %B_STATUS%
 echo ------------------------------------------------------------
-echo  [1a] Avvia server AI/WebGL
-echo  [1b] Chiudi server AI/WebGL
-echo  [1c] Riavvia server AI/WebGL
-echo  [2]  Carica stream A (STANDARD)
-echo  [3]  Carica stream B (DEV)
-echo  [4]  Git push (add + commit + push)
-echo  [5]  Git pull
-echo  [6]  Backup deploy Ubuntu
-echo  [7]  Ripristino commit (soft/hard)
+echo  SERVER AI/WEBGL
+echo   [s] Avvia server
+echo   [c] Chiudi server
+echo   [r] Riavvia server
+echo ------------------------------------------------------------
+echo  GIT E DEPLOY
+echo  [1]  Carica stream A (STANDARD)
+echo  [2]  Carica stream B (DEV)
+echo  [3]  Git push (add + commit + push)
+echo  [4]  Git pull
+echo  [5]  Backup deploy Ubuntu
+echo  [6]  Ripristino commit (soft/hard)
 echo  [0] Esci
 echo ------------------------------------------------------------
 exit /b 0

@@ -17,7 +17,7 @@ L'idea e' semplice: scegli o crei un avatar, parli, il sistema capisce la voce, 
 - Setup ambiente con `SOULFRAME_SETUP/setup_soulframe_windows.bat`.
 - Avvio/stop/restart servizi con `SOULFRAME_AI/ai_services.cmd`.
 - Gestione update/deploy con `SoulframeControlCenter.bat`:
-  - `1a/1b/1c`: avvio, chiusura, riavvio servizi (`SOULFRAME_AI/ai_services.cmd 1/2/3`)
+  - `s/c/r`: avvio, chiusura, riavvio servizi (`SOULFRAME_AI/ai_services.cmd 1/2/3`)
   - switch stream Git A/B (`.git`, `.git_stream_a`, `.git_stream_b`)
   - `git push`/`git pull` da menu
   - ripristino commit (soft revert o hard reset con conferma)

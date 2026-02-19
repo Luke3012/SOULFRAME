@@ -1,4 +1,4 @@
-﻿\chapter{Architettura e Tecnologie Utilizzate}
+\chapter{Architettura e Tecnologie Utilizzate}
 \label{chap:architettura}
 
 \section{Requisiti del sistema}
@@ -7,114 +7,34 @@
 Contenuto in preparazione.
 \subsection{Requisiti non funzionali}
 Contenuto in preparazione.
+% TODO: riportare 5 requisiti funzionali concreti (es. creazione avatar, setup voce, ingest memoria, conversazione push-to-talk, playback TTS) e 3 requisiti non funzionali misurabili.
 
-\section{Architettura generale di SOULFRAME}
-\label{sec:architettura-generale}
-\subsection{Vista d'insieme componenti frontend/backend}
+\section{Architettura di riferimento di SOULFRAME}
+\label{sec:architettura-riferimento}
+\subsection{Vista d'insieme dei componenti frontend/backend}
 Contenuto in preparazione.
 \subsection{\texorpdfstring{Flusso end-to-end audio $\rightarrow$ testo $\rightarrow$ risposta $\rightarrow$ audio}{Flusso end-to-end audio -> testo -> risposta -> audio}}
 Contenuto in preparazione.
-\subsection{Modalità locale e modalità produzione}
+\subsection{Separazione tra modalità locale e modalità produzione}
 Contenuto in preparazione.
+% TODO: aggiungere un paragrafo sintetico sulle differenze operative tra locale e produzione (URL endpoint, Caddy, systemd, percorsi dati).
 
-\section{Frontend Unity WebGL}
-\label{sec:frontend}
-\subsection{Gestione stati UI}
+\section{Componenti implementati}
+\label{sec:componenti-implementati}
+\subsection{Frontend Unity WebGL}
 Contenuto in preparazione.
-\subsection{Gestione avatar}
+\subsection{Backend AI a micro-servizi (Whisper, RAG, TTS, Avatar Asset)}
 Contenuto in preparazione.
-\subsection{Acquisizione audio lato client}
+\subsection{Persistenza e gestione dati per avatar}
 Contenuto in preparazione.
-\subsection{Adattabilità desktop e mobile/touch}
-Contenuto in preparazione.
+% TODO: inserire una tabella "componente -> file principali -> endpoint/porte -> responsabilità".
 
-\section{Backend AI a micro-servizi (FastAPI)}
-\label{sec:backend}
-\subsection{Servizio Whisper}
+\section{Setup e deploy operativo}
+\label{sec:setup-deploy}
+\subsection{Ambiente locale Windows}
 Contenuto in preparazione.
-\subsection{Servizio RAG (Ollama + ChromaDB)}
+\subsection{Ambiente server Ubuntu}
 Contenuto in preparazione.
-\subsection{Servizio Coqui TTS}
+\subsection{Servizi di supporto (systemd, Caddy, script amministrativi)}
 Contenuto in preparazione.
-\subsection{Avatar Asset Server}
-Contenuto in preparazione.
-\subsection{Porte, contract API e confini tra servizi}
-Contenuto in preparazione.
-
-\section{Modelli e librerie scelte}
-\label{sec:modelli}
-\subsection{Whisper}
-Contenuto in preparazione.
-\subsection{LLM (es. Llama via Ollama)}
-Contenuto in preparazione.
-\subsection{Embedding model}
-Contenuto in preparazione.
-\subsection{Vector store}
-Contenuto in preparazione.
-\subsection{Confronto tra modelli TTS considerati}
-Contenuto in preparazione.
-\subsection{XTTS v2}
-Contenuto in preparazione.
-\subsection{Motivazioni della scelta finale (XTTS v2)}
-Contenuto in preparazione.
-
-\section{Orchestrazione servizi e deploy}
-\label{sec:orchestrazione-deploy}
-\subsection{Setup locale Windows}
-Contenuto in preparazione.
-\subsubsection{Ruolo di setup\_soulframe\_windows.bat}
-Contenuto in preparazione.
-\subsubsection{Ruolo di ai\_services.cmd e gestione processi}
-Contenuto in preparazione.
-
-\subsection{Setup server Ubuntu}
-Contenuto in preparazione.
-\subsubsection{Fase di bootstrap e fase di provisioning}
-Contenuto in preparazione.
-\subsubsection{Layout filesystem: /opt, /etc, /usr/local/bin}
-Contenuto in preparazione.
-\subsubsection{Virtual environment e dipendenze Python}
-Contenuto in preparazione.
-
-\subsection{Systemd nel progetto}
-Contenuto in preparazione.
-\subsubsection{Unit file dei micro-servizi e mapping porte}
-Contenuto in preparazione.
-\subsubsection{soulframe.target e wrapper soulframe-ollama.service}
-Contenuto in preparazione.
-\subsubsection{Policy di restart, boot automatico e journald}
-Contenuto in preparazione.
-
-\subsection{Caddy come reverse proxy e static server}
-Contenuto in preparazione.
-\subsubsection{Serving della build WebGL}
-Contenuto in preparazione.
-\subsubsection{Routing /api/* verso servizi locali}
-Contenuto in preparazione.
-\subsubsection{Validazione configurazione e gestione log}
-Contenuto in preparazione.
-
-\subsection{Auto-shutdown per inattività}
-Contenuto in preparazione.
-\subsubsection{Timer soulframe-idle-shutdown.timer}
-Contenuto in preparazione.
-\subsubsection{Logica di inattività, SSH tracking e DRY\_RUN}
-Contenuto in preparazione.
-
-\subsection{Helper operativi}
-Contenuto in preparazione.
-\subsubsection{sfctl}
-Contenuto in preparazione.
-\subsubsection{sfadmin}
-Contenuto in preparazione.
-\subsubsection{sfurl}
-Contenuto in preparazione.
-
-\subsection{Update, backup e idempotenza}
-Contenuto in preparazione.
-\subsubsection{Workflow aggiornamento Build e backend}
-Contenuto in preparazione.
-\subsubsection{Backup e pulizia sicura della update dir}
-Contenuto in preparazione.
-\subsubsection{Estensione del sistema con nuovi micro-servizi}
-Contenuto in preparazione.
+% TODO: documentare la procedura realmente eseguita (start, stop, update, rollback), con criticità incontrate e verifiche effettuate.

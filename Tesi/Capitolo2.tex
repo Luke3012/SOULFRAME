@@ -1,81 +1,30 @@
-﻿\chapter{Fondamenti e Stato dell'Arte}
+\chapter{Fondamenti e Stato dell'Arte}
 \label{chap:stato-arte}
 
-\section{Speech-to-Text (STT)}
-\label{sec:stt}
-\subsection{Pipeline ASR: acquisizione, preprocessing, decoding}
+\section{Agenti conversazionali embodied in XR}
+\label{sec:eca-xr}
+\subsection{Presenza sociale, co-presenza e ruolo della voce}
 Contenuto in preparazione.
-\subsection{Metriche e limiti (es. WER, rumore, accenti)}
+\subsection{Limiti aperti nei sistemi conversazionali immersivi}
 Contenuto in preparazione.
+% TODO: riprendere 2-3 studi già citati nel Capitolo 1 e sintetizzare le metriche usate (presenza, co-presenza, naturalezza).
 
-\section{Modelli conversazionali (LLM)}
-\label{sec:llm}
-\subsection{Funzionamento generale e gestione del contesto}
+\section{Pipeline AI adottata in SOULFRAME}
+\label{sec:pipeline-ai}
+\subsection{Speech-to-Text con Whisper}
 Contenuto in preparazione.
-\subsection{Prompting, parametri, allucinazioni}
+\subsection{Memoria conversazionale con RAG (LLM + embeddings + retrieval)}
 Contenuto in preparazione.
+\subsection{Text-to-Speech con Coqui XTTS v2}
+Contenuto in preparazione.
+% TODO: aggiungere una tabella breve (modulo, libreria/modello, motivazione della scelta, limite noto).
 
-\section{Embedding e Retrieval}
-\label{sec:embedding-retrieval}
-\subsection{Rappresentazione vettoriale del testo}
+\section{Integrazione client-server del sistema}
+\label{sec:integrazione-client-server}
+\subsection{Frontend Unity WebGL e principali vincoli di piattaforma}
 Contenuto in preparazione.
-\subsection{Similarity search e top-k retrieval}
+\subsection{Backend FastAPI a micro-servizi}
 Contenuto in preparazione.
-
-\section{Retrieval-Augmented Generation (RAG)}
-\label{sec:rag}
-\subsection{Ingestion, chunking, indexing}
+\subsection{Comunicazione HTTP, CORS e proxy applicativo}
 Contenuto in preparazione.
-\subsection{Grounding della risposta e riduzione allucinazioni}
-Contenuto in preparazione.
-\subsection{Limiti e trade-off}
-Contenuto in preparazione.
-
-\section{Text-to-Speech (TTS) e voice cloning}
-\label{sec:tts}
-\subsection{Pipeline di sintesi}
-Contenuto in preparazione.
-\subsection{Qualità percepita e latenza}
-Contenuto in preparazione.
-\subsection{Panoramica dei modelli TTS moderni}
-Contenuto in preparazione.
-\subsection{Criteri di valutazione dei modelli TTS}
-Contenuto in preparazione.
-
-\section{ASGI, FastAPI e server applicativi Python}
-\label{sec:asgi-fastapi-uvicorn}
-\subsection{Dallo standard WSGI ad ASGI}
-Contenuto in preparazione.
-\subsection{Ruolo di Uvicorn nella catena richiesta-risposta}
-Contenuto in preparazione.
-\subsection{Perché FastAPI richiede un server ASGI}
-Contenuto in preparazione.
-\subsection{Confronto ad alto livello tra Uvicorn, Gunicorn e Waitress}
-Contenuto in preparazione.
-
-\section{Architetture di pubblicazione API}
-\label{sec:pubblicazione-api}
-\subsection{Binding su loopback e isolamento dei micro-servizi}
-Contenuto in preparazione.
-\subsection{Reverse proxy, terminazione TLS e routing per path}
-Contenuto in preparazione.
-\subsection{Separazione tra frontend statico e backend dinamico}
-Contenuto in preparazione.
-
-\section{CORS e sicurezza nel browser}
-\label{sec:cors-browser-security}
-\subsection{Same-Origin Policy e richieste cross-origin}
-Contenuto in preparazione.
-\subsection{Preflight OPTIONS: quando parte e cosa verifica}
-Contenuto in preparazione.
-\subsection{Significato operativo di allow\_origins e allow\_credentials}
-Contenuto in preparazione.
-\subsection{Differenza tra CORS e CSRF}
-Contenuto in preparazione.
-
-\section{Sistemi vocali conversazionali end-to-end}
-\label{sec:end-to-end}
-\subsection{Architetture tipiche client-server}
-Contenuto in preparazione.
-\subsection{Gap che il progetto affronta}
-Contenuto in preparazione.
+% TODO: descrivere un flusso end-to-end reale (audio utente -> /transcribe -> /chat o /recall -> /tts_stream) e indicare il comportamento in caso di servizio non disponibile.
