@@ -15,7 +15,9 @@
 \usepackage{textcomp}
 \usepackage{booktabs}
 \usepackage{longtable}
+\usepackage{tabularx}
 \usepackage{url,amsfonts,epsfig}
+\usepackage{xurl}
 \usepackage{lmodern}
 \usepackage{vmargin}
 \usepackage{amsmath}
@@ -71,6 +73,12 @@
 }
 \ExecuteBibliographyOptions{sorting=nonenyt}
 \addbibresource{bibliografia.bib}
+\AtBeginBibliography{\sloppy}
+\setcounter{biburlnumpenalty}{9000}
+\setcounter{biburlucpenalty}{9000}
+\setcounter{biburllcpenalty}{9000}
+\Urlmuskip=0mu plus 1mu\relax
+\setlength{\emergencystretch}{2em}
 
 \newcommand{\Csh}{C{\lserif\#}}
 

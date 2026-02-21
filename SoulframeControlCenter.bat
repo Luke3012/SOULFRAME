@@ -27,12 +27,13 @@ cls
 call :DetectActiveSlot
 call :RenderMenu
 set "MENU_CHOICE="
-set /p "MENU_CHOICE=Seleziona opzione [s/c/r/1/2/3/4/5/6/0]: "
+set /p "MENU_CHOICE=Seleziona opzione [s/c/r/1/2/3/4/5/6/69/0]: "
 
 if "%MENU_CHOICE%"=="0" goto END
 if /I "%MENU_CHOICE%"=="s" goto MENU_SERVER_START
 if /I "%MENU_CHOICE%"=="c" goto MENU_SERVER_STOP
 if /I "%MENU_CHOICE%"=="r" goto MENU_SERVER_RESTART
+if "%MENU_CHOICE%"=="69" goto MENU_WRITING_SECRET
 if "%MENU_CHOICE%"=="6" goto MENU_REVERT
 if "%MENU_CHOICE%"=="5" goto MENU_BACKUP
 if "%MENU_CHOICE%"=="4" goto MENU_PULL
@@ -61,6 +62,16 @@ goto MAIN_MENU
 call :GitRevertMenu
 call :PauseScreen
 goto MAIN_MENU
+
+:MENU_WRITING_SECRET
+call :ExportWritingTxt
+if errorlevel 1 (
+    call :PauseScreen
+    goto MAIN_MENU
+)
+call :PauseScreen
+if exist "%USERPROFILE%\Desktop\Writing\" start "" explorer "%USERPROFILE%\Desktop\Writing"
+goto END
 
 :MENU_BACKUP
 set "EXIT_AFTER_BACKUP=0"
@@ -157,6 +168,11 @@ echo  [3]  Git push (add + commit + push)
 echo  [4]  Git pull
 echo  [5]  Backup deploy Ubuntu
 echo  [6]  Ripristino commit (soft/hard)
+echo ------------------------------------------------------------
+echo  WRITING
+echo  [69] Writing Export (TXT)
+echo ------------------------------------------------------------
+echo  SISTEMA
 echo  [0] Esci
 echo ------------------------------------------------------------
 exit /b 0
@@ -542,6 +558,94 @@ if errorlevel 1 (
     echo [ERRORE] Copia fallita: "%~1"
     exit /b 1
 )
+exit /b 0
+
+:ExportWritingTxt
+echo.
+echo ------------------------------------------------------------
+echo  EXPORT WRITING TXT
+echo ------------------------------------------------------------
+set "WRITING_DIR=%USERPROFILE%\Desktop\Writing"
+set "TESI_DIR=Tesi"
+set "BIB_PATH=%TESI_DIR%\bibliografia.bib"
+set "MERGED_PATH=%WRITING_DIR%\Tesi.txt"
+set /a EXPORTED_COUNT=0
+set /a MERGED_SECTIONS=0
+
+if not exist "%TESI_DIR%\" (
+    echo [ERRORE] Cartella "%TESI_DIR%" non trovata.
+    exit /b 1
+)
+
+if not exist "%WRITING_DIR%" mkdir "%WRITING_DIR%"
+if errorlevel 1 (
+    echo [ERRORE] Impossibile creare "%WRITING_DIR%".
+    exit /b 1
+)
+
+for %%F in ("%TESI_DIR%\*.tex") do (
+    if exist "%%~fF" (
+        copy /Y "%%~fF" "%WRITING_DIR%\%%~nF.txt" >nul
+        if errorlevel 1 (
+            echo [ERRORE] Copia fallita: %%~fF
+            exit /b 1
+        )
+        set /a EXPORTED_COUNT+=1
+    )
+)
+
+if not exist "%BIB_PATH%" (
+    echo [ERRORE] File non trovato: "%BIB_PATH%"
+    exit /b 1
+)
+
+copy /Y "%BIB_PATH%" "%WRITING_DIR%\bibliografia.txt" >nul
+if errorlevel 1 (
+    echo [ERRORE] Copia fallita: "%BIB_PATH%"
+    exit /b 1
+)
+set /a EXPORTED_COUNT+=1
+
+break > "%MERGED_PATH%"
+if errorlevel 1 (
+    echo [ERRORE] Impossibile creare "%MERGED_PATH%".
+    exit /b 1
+)
+
+for %%N in (Abstract Capitolo1 Capitolo2 Capitolo3 Capitolo4 Capitolo5 Capitolo6 Bibliografia Ringraziementi) do (
+    call :AppendFileToMerged "%TESI_DIR%\%%N.tex" "%%N.tex"
+    if errorlevel 1 exit /b 1
+)
+
+for %%F in ("%TESI_DIR%\*.tex") do (
+    if /I not "%%~nxF"=="main.tex" if /I not "%%~nxF"=="Abstract.tex" if /I not "%%~nxF"=="Capitolo1.tex" if /I not "%%~nxF"=="Capitolo2.tex" if /I not "%%~nxF"=="Capitolo3.tex" if /I not "%%~nxF"=="Capitolo4.tex" if /I not "%%~nxF"=="Capitolo5.tex" if /I not "%%~nxF"=="Capitolo6.tex" if /I not "%%~nxF"=="Bibliografia.tex" if /I not "%%~nxF"=="Ringraziementi.tex" (
+        call :AppendFileToMerged "%%~fF" "%%~nxF"
+        if errorlevel 1 exit /b 1
+    )
+)
+
+call :AppendFileToMerged "%BIB_PATH%" "bibliografia.bib"
+if errorlevel 1 exit /b 1
+
+if %EXPORTED_COUNT% LEQ 1 (
+    echo [WARN] Nessun file .tex trovato in "%TESI_DIR%".
+)
+echo [OK] Esportazione completata in "%WRITING_DIR%".
+echo [OK] File TXT creati/aggiornati: %EXPORTED_COUNT%
+echo [OK] File unico creato: "%MERGED_PATH%" (sezioni: %MERGED_SECTIONS%, escluso main.txt)
+exit /b 0
+
+:AppendFileToMerged
+if not exist "%~1" exit /b 0
+>> "%MERGED_PATH%" echo --- File %~2 ---
+type "%~1" >> "%MERGED_PATH%"
+if errorlevel 1 (
+    echo [ERRORE] Lettura fallita: "%~1"
+    exit /b 1
+)
+>> "%MERGED_PATH%" echo.
+>> "%MERGED_PATH%" echo.
+set /a MERGED_SECTIONS+=1
 exit /b 0
 
 :PauseScreen
