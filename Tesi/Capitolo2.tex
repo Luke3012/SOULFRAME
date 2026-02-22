@@ -14,8 +14,6 @@ La voce è un canale rilevante per la presenza sociale perché rende immediatame
 
 \begin{figure}[t]
 \centering
-% LINK_ORIGINE: https://www.frontiersin.org/journals/robotics-and-ai/articles/10.3389/frobt.2018.00114/full + https://www.frontiersin.org/files/Articles/409295/xml-images/frobt-05-00114-g0003.webp
-% LICENZA/USO: Creative Commons Attribution (CC BY)
 \includegraphics[width=0.85\textwidth]{social_presence_audio_quality.png}
 \caption{Fattori immersivi associati alla presenza sociale: la qualità audio compare tra le variabili considerate nella letteratura. \protect\footnotemark}
 \label{fig:social-presence-audio}
@@ -27,17 +25,17 @@ La presenza sociale e la co-presenza dipendono dall'allineamento tra canali comu
 \subsection{Limiti aperti nei sistemi conversazionali immersivi}
 L'integrazione del dialogo in ambienti 3D introduce criticità che emergono meno nei sistemi testuali tradizionali. La principale è la latenza end-to-end tra acquisizione audio, trascrizione, generazione e sintesi: ritardi percepibili riducono la naturalezza percepita anche quando il contenuto della risposta è corretto.
 
-Un secondo limite riguarda la continuità tra turni: senza una memoria affidabile il sistema fatica a mantenere riferimenti e preferenze espresse dall'utente. Un ulteriore nodo è l'integrazione multimodale, che richiede coerenza tra risposta linguistica, tempi e segnali non verbali. Infine, la valutazione resta complessa perché combina metriche soggettive (presenza, co-presenza, naturalezza) e metriche tecniche (latenza, errori di trascrizione), con protocolli non sempre uniformi.
+La continuità tra turni è un secondo limite: senza una memoria affidabile il sistema fatica a mantenere riferimenti e preferenze espresse dall'utente. Anche l'integrazione multimodale resta critica, perché richiede coerenza tra risposta linguistica, tempi e segnali non verbali. La valutazione, infine, è complessa: combina metriche soggettive (presenza, co-presenza, naturalezza) e metriche tecniche (latenza, errori di trascrizione), con protocolli non sempre uniformi.
 
 In letteratura, architetture modulari open-source per ECA vocali in VR mostrano che la separazione in servizi STT e TTS semplifica l'integrazione ma rende evidenti i colli di bottiglia temporali, richiedendo strategie come output in streaming.\cite{Yin2023VoiceVR} SOULFRAME adotta una pipeline a tre stadi, memoria persistente per avatar e frasi di attesa per ridurre l'impatto dei tempi morti senza dipendenze cloud.
 
 \section{Pipeline AI adottata in SOULFRAME}
 \label{sec:pipeline-ai}
-SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento del parlato, generazione contestuale e sintesi vocale. Questa scomposizione consente di isolare i vincoli della conversazione a turni, in particolare la latenza, e di aggiornare i singoli moduli senza modificare l'intera architettura. Figura~\ref{fig:pipeline-ai-cap2} mostra il flusso dei dati dal segnale audio in ingresso al testo trascritto, fino al testo di risposta e all'audio sintetizzato.
+SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento del parlato, generazione contestuale e sintesi vocale. La scomposizione in tre stadi isola i vincoli della conversazione a turni, in particolare la latenza, e permette di aggiornare i singoli moduli senza modificare l'intera architettura. Figura~\ref{fig:pipeline-ai-cap2} mostra il flusso dei dati dal segnale audio in ingresso al testo trascritto, fino al testo di risposta e all'audio sintetizzato.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.85\textwidth]{pipeline_ai.png}
+\includegraphics[width=1.00\textwidth]{pipeline_ai.png}
 \caption{Schema della pipeline conversazionale (STT $\rightarrow$ RAG/LLM $\rightarrow$ TTS) adottata in SOULFRAME.}
 \label{fig:pipeline-ai-cap2}
 \end{figure}
@@ -45,7 +43,19 @@ SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento d
 \subsection{Speech-to-Text con Whisper}
 Il primo stadio della pipeline è il riconoscimento automatico del parlato. Nel prototipo, l'audio viene acquisito in push-to-talk dal client WebGL e inviato a un micro-servizio dedicato che restituisce la trascrizione da inoltrare al modulo di memoria e generazione. L'esecuzione locale riduce dipendenze di rete e supporta requisiti di privacy.
 
-SOULFRAME utilizza Whisper, modello STT basato su architettura Transformer e addestrato su larga scala con supervisione debole. L'addestramento su circa 680.000 ore e l'impostazione multilingue (99 lingue) supportano buone prestazioni zero-shot e robustezza a variabilità di parlanti e condizioni acustiche.\cite{Radford2023Whisper} Nel prototipo è adottata la versione \texttt{medium} come compromesso tra qualità della trascrizione e costo computazionale.
+SOULFRAME utilizza Whisper, modello STT basato su architettura Transformer e addestrato su larga scala con supervisione debole. L'addestramento su circa 680.000 ore e l'impostazione multilingue (99 lingue) supportano buone prestazioni zero-shot e robustezza a variabilità di parlanti e condizioni acustiche.\cite{Radford2023Whisper} Nel prototipo è adottata la versione \texttt{medium} come compromesso tra qualità della trascrizione e costo computazionale. La struttura del modello è richiamata in Figura~\ref{fig:whisper-arch-cap2}.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{whisper_arch.png}
+\caption{Architettura del modello Whisper: encoder Transformer con
+log-mel spectrogram in input e decoder per la trascrizione
+multilingue zero-shot.\protect\footnotemark}
+\label{fig:whisper-arch-cap2}
+\end{figure}
+\footnotetext{Fonte: Radford et al., \emph{Robust Speech Recognition via
+Large-Scale Weak Supervision}, ICML 2023, Fig.~1,
+\url{https://arxiv.org/abs/2212.04356}.}
 
 \subsection{Memoria conversazionale con RAG (LLM + embeddings + retrieval)}
 Il secondo stadio introduce una memoria conversazionale che combina generazione e recupero di contesto.
@@ -56,9 +66,7 @@ L'approccio RAG integra memoria parametrica del modello e memoria non parametric
 
 \begin{figure}[t]
 \centering
-% LINK_ORIGINE: https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2025.1697169/full + https://www.frontiersin.org/files/Articles/1697169/xml-images/frai-08-1697169-g001.webp
-% LICENZA/USO: Creative Commons Attribution (CC BY)
-\includegraphics[width=0.85\textwidth]{rag_frontiers_architecture.png}
+\includegraphics[width=0.70\textwidth]{rag_frontiers_architecture.png}
 \caption{Schema concettuale di Retrieval-Augmented Generation (RAG): recupero di contesto e generazione della risposta. \protect\footnotemark}
 \label{fig:rag-frontiers}
 \end{figure}
@@ -69,37 +77,21 @@ Nel prototipo SOULFRAME la memoria è persistente tra sessioni e separata per av
 \subsection{Text-to-Speech con Coqui XTTS v2}
 Il terzo stadio converte il testo in audio e chiude il ciclo conversazionale. In un ECA embodied, la sintesi vocale influisce sulla percezione di continuità e coerenza dell'interlocutore.
 
-SOULFRAME adotta Coqui XTTS v2 per supporto multilingue e voice cloning tramite campione di riferimento, senza addestrare un modello vocale dedicato per ogni utente.\cite{Casanova2024XTTS} Nel prototipo, il campione è validato rispetto al testo atteso e associato al profilo avatar; il servizio supporta sintesi in streaming, warmup e frasi di attesa per mitigare la latenza percepita.
-
-\section{Integrazione client-server del sistema}
-\label{sec:integrazione-client-server}
-L'architettura di SOULFRAME separa il client, responsabile di rendering e interazione, dal backend, responsabile dell'inferenza AI. Questa scelta riduce il carico sul runtime WebGL e permette di gestire i moduli AI come servizi indipendenti. Figura~\ref{fig:architettura-cs-cap2} mostra il ruolo del reverse proxy come punto di accesso alle API e l'instradamento verso i micro-servizi dedicati.
+SOULFRAME adotta Coqui XTTS v2 per supporto multilingue e voice cloning tramite campione di riferimento, senza addestrare un modello vocale dedicato per ogni utente.\cite{Casanova2024XTTS} Nel prototipo, il campione è validato rispetto al testo atteso e associato al profilo avatar; il servizio supporta sintesi in streaming, warmup e frasi di attesa per mitigare la latenza percepita. Un riferimento architetturale del modello è riportato in Figura~\ref{fig:xtts-arch-cap2}.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.85\textwidth]{architettura_cs.png}
-\caption{Architettura logica client-server: il frontend Unity WebGL comunica con i servizi applicativi tramite reverse proxy.}
-\label{fig:architettura-cs-cap2}
+\includegraphics[width=0.65\textwidth]{xtts_arch.png}
+\caption{Panoramica dell'architettura XTTS: Conditioning Encoder,
+encoder GPT-2 con Perceiver Resampler e decoder HiFi-GAN per
+sintesi multilingue zero-shot con voice cloning.\protect\footnotemark}
+\label{fig:xtts-arch-cap2}
 \end{figure}
+\footnotetext{Fonte: Casanova et al., \emph{XTTS: a Massively Multilingual
+Zero-Shot Text-to-Speech Model}, Interspeech 2024, Fig.~1,
+\url{https://arxiv.org/abs/2406.04904}.}
 
-\subsection{Frontend Unity WebGL e principali vincoli di piattaforma}
-Il frontend è una build Unity WebGL eseguita nel browser. Questa scelta favorisce l'accessibilità senza installazione locale, ma introduce vincoli di piattaforma legati a WebAssembly e al main thread del browser.\footnote{Doc ufficiale: Unity WebGL Technical Limitations, \url{https://docs.unity3d.com/6000.2/Documentation/Manual/webgl-technical-overview.html}.} In SOULFRAME, il client gestisce interfaccia e turni conversazionali, mentre STT, RAG/LLM e TTS sono delegati ai servizi backend.
+\section{Posizionamento di SOULFRAME rispetto allo stato dell'arte}
+I limiti aperti richiamati nella Sezione~\ref{sec:eca-xr} riguardano soprattutto latenza end-to-end, continuità tra turni, integrazione multimodale e valutazione sperimentale. In SOULFRAME ho scelto una pipeline locale a tre stadi per ridurre dipendenze cloud e mantenere più prevedibile il ciclo audio$\rightarrow$testo$\rightarrow$risposta$\rightarrow$audio. La continuità è sostenuta da una memoria persistente e isolata per avatar, che conserva contesto e preferenze senza interferenze tra profili distinti. Sul piano del retrieval, la combinazione ibrida di segnali semantici e lessicali rende più robusta la risposta anche con query formulate in modo variabile. Per contenere la latenza percepita durante il turno conversazionale, il sistema usa sintesi in streaming e strategie di attesa che riducono i silenzi udibili. La modularità architetturale consente di sostituire singoli moduli senza modificare il client, favorendo iterazione tecnica e confrontabilità dei risultati.
 
-La modalità push-to-talk riduce sovrapposizioni nei turni e semplifica la gestione dei permessi audio in ambiente web. Il client integra inoltre indicatori di stato e schermate di caricamento per rendere esplicite le fasi di inizializzazione.
-
-\subsection{Backend FastAPI a micro-servizi}
-Il backend è implementato in Python e organizzato in micro-servizi FastAPI, ciascuno dedicato a un sottocompito della pipeline. Questa separazione facilita isolamento delle dipendenze, gestione delle risorse e diagnosi dei guasti.
-
-In sviluppo i servizi sono avviati con \texttt{uvicorn}; in esercizio possono essere gestiti in modo indipendente con log separati. FastAPI fornisce interfacce HTTP coerenti e documentazione OpenAPI utile per il collaudo degli endpoint.
-
-\subsection{Comunicazione HTTP, CORS e proxy applicativo}
-La comunicazione tra client e backend avviene tramite richieste HTTP con payload testuali e audio. In ambiente browser, la Same-Origin Policy impone vincoli di origine; quando frontend e servizi risiedono su host o porte diverse, è necessaria una configurazione esplicita del CORS tramite FastAPI.\footnote{Doc ufficiale: FastAPI CORS, \url{https://fastapi.tiangolo.com/tutorial/cors/}.} Figura~\ref{fig:sequenza-http-cap2} mostra una richiesta tipica instradata dal reverse proxy verso un micro-servizio e il ritorno dello stream audio.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.85\textwidth]{sequenza_http.png}
-\caption{Flusso HTTP semplificato tramite reverse proxy: dal client Unity WebGL al micro-servizio e ritorno dello stream audio.}
-\label{fig:sequenza-http-cap2}
-\end{figure}
-
-In SOULFRAME, il reverse proxy termina TLS e riscrive i path applicativi (\texttt{/api/*}) verso i servizi interni. Il client comunica quindi con un unico origin HTTPS, mentre le porte dei micro-servizi restano non esposte; questa configurazione riduce problemi di integrazione lato browser e migliora la stabilità della catena di chiamata.
+Il posizionamento non riguarda solo la pipeline: in SOULFRAME l'avatar non è un semplice asset grafico, ma un profilo che combina aspetto, voce e memoria, così da mantenere coerenza tra sessioni e rendere più plausibile la presenza dell'interlocutore. Ho preferito vincolare l'accesso alla conversazione operativa alla disponibilità di un profilo minimo (voce e memoria) per evitare un'esperienza \textit{stateless} in cui ogni turno riparte da zero e l'utente non percepisce progressione. La memoria non è limitata a note manuali: l'ingestione di documenti e immagini consente di trasformare materiali esterni in contesto riutilizzabile, ampliando il perimetro oltre il dialogo puro e rendendo più naturale riferirsi a contenuti che l'utente ha esplicitamente fornito. Sul piano dell'accessibilità, l'esecuzione via browser riduce la barriera di ingresso rispetto a configurazioni VR tradizionali, ma impone vincoli tecnici---acquisizione microfono, gestione dell'audio e latenza---che rendono centrali scelte come streaming, warmup e segnali di attesa. Le implicazioni architetturali di queste decisioni, insieme ai componenti che le realizzano, vengono discusse nel Capitolo~\ref{chap:architettura}, mentre il Capitolo~\ref{chap:implementazione} entra nei dettagli implementativi e nei compromessi emersi durante lo sviluppo.

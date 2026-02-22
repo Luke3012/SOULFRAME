@@ -11,6 +11,9 @@ Contenuto in preparazione.
 Contenuto in preparazione.
 \subsection{Acquisizione audio e input desktop/touch}
 Contenuto in preparazione.
+\subsection{Validazione del campione vocale}
+Contenuto in preparazione.
+% TODO: descrivere in dettaglio normalizzazione del testo, similarità di sequenza (Levenshtein), overlap lessicale, pesi 0.6/0.4, soglia 0.7 e motivazione pratica.
 \subsection{MainMode conversazionale}
 Contenuto in preparazione.
 % TODO: citare solo i metodi principali di UIFlowController, AvatarManager e AudioRecorder, indicando inizio e fine delle fasi del flusso utente.
@@ -18,13 +21,31 @@ Contenuto in preparazione.
 \section{Implementazione backend}
 \label{sec:impl-backend}
 \subsection{Servizio STT}
-Contenuto in preparazione.
+Il servizio STT è implementato in \texttt{whisper\_server.py} e viene esposto tramite FastAPI su porta dedicata. All'avvio, il modello viene caricato una sola volta con \texttt{whisper.load\_model}, guidato dalla variabile d'ambiente \texttt{WHISPER\_MODEL} (default: \texttt{small}), così da evitare costi di inizializzazione a ogni richiesta.
+
+L'endpoint principale è \texttt{POST /transcribe}: riceve un \texttt{UploadFile} audio e il parametro \texttt{language}, salva temporaneamente il payload su disco (con file temporaneo), invoca \texttt{model.transcribe} e restituisce una risposta minimale nel campo \texttt{text}. La gestione dei file temporanei è protetta da cleanup esplicito in blocco \texttt{finally}, per evitare accumulo di artefatti in caso di errori o richieste interrotte.
 \subsection{Servizio RAG e memoria per avatar}
-Contenuto in preparazione.
+Il servizio RAG è implementato in \texttt{rag\_server.py} e centralizza orchestrazione conversazionale, memoria per-avatar e ingestione contenuti. La configurazione runtime è demandata a variabili d'ambiente (\texttt{OLLAMA\_HOST}, \texttt{CHAT\_MODEL}, \texttt{EMBED\_MODEL}, \texttt{RAG\_DIR}), così da separare codice e profilo di deploy.
+
+Nel percorso \texttt{POST /chat}, il server usa \texttt{avatar\_id} per risolvere lo store dell'avatar, calcola embedding query via Ollama (\texttt{/api/embed}), esegue retrieval, compone il prompt e invoca la generazione (\texttt{/api/chat}). La persistenza è isolata per avatar in sottodirectory dedicate sotto \texttt{rag\_store/}; la collezione viene istanziata con \texttt{get\_or\_create\_collection(name="memory")}.
+
+La memoria applicativa include \texttt{/remember} per note testuali, \texttt{/recall} per diagnostica e \texttt{/avatar\_stats} per segnali operativi (\texttt{count}, \texttt{has\_memory}). Il retrieval è ibrido: similarità vettoriale su ChromaDB + ranking lessicale BM25, con combinazione pesata tramite \texttt{bm25\_weight}.
+
+L'ingestione file (\texttt{/ingest\_file}) applica una pipeline per estensione: PDF con estrazione testo/OCR (PyMuPDF + OCR), immagini con OCR (\texttt{pytesseract}), file testuali come plain text. Il contenuto viene segmentato con parametri \texttt{RAG\_CHUNK\_CHARS} e \texttt{RAG\_CHUNK\_OVERLAP}, deduplicato a livello chunk e indicizzato tramite embedding in batch. L'endpoint \texttt{/describe\_image} abilita descrizione multimodale (Gemini, se configurato) con eventuale salvataggio in memoria.
 \subsection{Servizio TTS e streaming audio}
-Contenuto in preparazione.
+{\setlength{\emergencystretch}{3em}\sloppy
+Il servizio TTS è implementato in \path{coqui_tts_server.py} e usa Coqui XTTS v2 con profilo configurabile da ambiente (\texttt{COQUI\_TTS\_MODEL}, \texttt{COQUI\_LANG}, \texttt{COQUI\_AVATAR\_VOICES\_DIR}). La voce per-avatar viene registrata con \path{POST /set_avatar_voice}, che salva il riferimento in \path{voices/avatars/<avatar_id>/reference.wav}; \path{GET/DELETE /avatar_voice} supportano verifica e reset.
+\par}
+
+Per la sintesi, il servizio espone sia output streaming (\texttt{/tts}, \texttt{/tts\_stream}) sia formato JSON/base64 (\texttt{/tts\_json}) per client che non gestiscono stream audio. Le frasi di attesa sono gestite con \texttt{/generate\_wait\_phrases} e \texttt{/wait\_phrase}, con persistenza per-avatar e possibilità di rigenerazione lazy se manca una clip.
+
+Il bootstrap include parametri di warmup (\path{COQUI_WARMUP_ON_STARTUP}, \path{COQUI_WARMUP_TEXT}) per ridurre il costo della prima richiesta reale.
 \subsection{Servizio asset avatar}
-Contenuto in preparazione.
+Il servizio asset è implementato in \texttt{avatar\_asset\_server.py} e fornisce lista, import e serving dei modelli \texttt{.glb}. \texttt{/avatars/list} unifica modelli locali di fallback (\texttt{LOCAL\_MODELS}) e avatar importati, esponendo per questi ultimi un \texttt{cached\_glb\_url} coerente con il contesto di deploy.
+
+L'import (\texttt{/avatars/import}) valida l'URL sorgente, calcola hash SHA-256 (\texttt{url\_hash}) e applica deduplicazione: se un record equivalente è già presente e risolvibile su disco, il servizio evita il redownload. In caso di nuovo import, il file viene salvato in \texttt{avatar\_store/models/} e i metadati sono aggiornati in \texttt{avatar\_store/avatars.json}.
+
+La persistenza è resa robusta da scritture atomiche su metadati (file temporaneo + replace), download con file \texttt{.part}, e logica di self-healing del path (\path{resolve_avatar_file_path}) per ricostruire collegamenti validi dopo migrazioni o metadati obsoleti. L'asset finale è servito tramite \path{GET /avatars/{avatar_id}/model.glb}; \path{DELETE /avatars/{avatar_id}} gestisce la rimozione controllata.
 % TODO: inserire una tabella con gli endpoint effettivamente chiamati dal client (/transcribe, /chat, /tts_stream, /avatars/list, /ingest_file), con input/output minimo atteso.
 
 \section{Integrazione end-to-end}
