@@ -4,48 +4,205 @@
 \section{Impostazione della valutazione}
 \label{sec:metodologia}
 \subsection{Scenari di prova e setup sperimentale}
-Contenuto in preparazione.
+Le osservazioni sono state raccolte senza anticipare i risultati quantitativi: per un agente embodied vocale contano soprattutto regolarità del turno conversazionale e coerenza tra stato interno e feedback dell'interfaccia. Il quadro architetturale di riferimento è descritto nel Capitolo~\ref{chap:architettura}, mentre i dettagli implementativi della pipeline e del routing locale/server sono nel Capitolo~\ref{chap:implementazione} (\autoref{subsec:orchestrazione}, \autoref{subsec:normalizzazione-endpoint}).
+
+Le prove sono state svolte in due ambienti funzionalmente equivalenti. In locale, il client Unity in \texttt{MainMode} comunica con i micro-servizi su loopback (\texttt{127.0.0.1:8001--8004}). Su server (Ubuntu), la stessa pipeline è esposta dietro reverse proxy con path \texttt{/api/*}. La normalizzazione degli endpoint lato client mantiene invariata la logica applicativa e limita le differenze alla configurazione di rete.
+
+L'ambiente locale Windows è un laptop con CPU \texttt{AMD Ryzen AI 9 HX 370} e dGPU \texttt{NVIDIA RTX 5070 Ti Mobile} con 12 GB di VRAM. L'ambiente server Ubuntu testato è su Google Cloud, con GPU \texttt{NVIDIA L4} (VRAM tipica 24 GB), disco persistente da 60 GB, IPv4 statico e dominio dedicato ai test. In questa configurazione, lo STT usa Whisper \texttt{small} come default in locale Windows e Whisper \texttt{medium} nel setup Ubuntu testato, coerentemente con la diversa disponibilità di VRAM.
+
+Il flusso osservato segue il percorso operativo del prototipo: \texttt{POST /transcribe} per la trascrizione, \texttt{POST /chat} per retrieval e generazione, \texttt{POST /tts\_stream} per la risposta vocale in streaming. Il confronto locale/server è stato condotto su sessioni omogenee per avatar, lingua e stato memoria (presente/assente), così da limitare variabili confondenti.
+
+I punti di misura sono stati fissati in modo uniforme (fine registrazione, completamento STT, completamento RAG, primo audio TTS, inizio playback). In questa versione le misure derivano da osservazione controllata e diagnostica di esecuzione (stato UI, esiti HTTP, log dei servizi), non da una pipeline di telemetria con persistenza automatica per turno. I risultati tecnici vanno quindi letti come evidenza sperimentale su campione ridotto di sessioni/turni: sono utili per confrontare configurazioni, ma non costituiscono ancora un benchmark statistico definitivo.
+
+Gli scenari conversazionali coprono sia il percorso nominale sia i casi più sensibili alla latenza percepita: domanda aperta, interrogazione di memoria per-avatar, sequenze brevi e ravvicinate di turni, sessioni prolungate. Prima di ogni sessione è stata verificata la disponibilità dei servizi tramite endpoint \texttt{/health}, per ridurre fallimenti legati a boot incompleto o configurazioni incoerenti con lo scenario.
+
 \subsection{Metriche tecniche adottate}
-Contenuto in preparazione.
+Le metriche selezionate sono coerenti con i requisiti non funzionali discussi in \autoref{sec:requisiti} e con le politiche di resilienza applicate nel client e nei servizi (\autoref{subsec:error-retry-fallback}).
+La valutazione tecnica misura reattività della pipeline vocale e tenuta del turno conversazionale. Sono usate tre definizioni operative: tempo al primo audio della fase TTS (tempo tra invio della richiesta \texttt{/tts\_stream} e primo chunk audio riproducibile), latenza end-to-end del turno (tempo tra rilascio del push-to-talk e primo audio riprodotto) e \emph{cold-start/time-to-ready} (tempo tra avvio dello stack servizi e stato ``pronto all'interazione'').
+
+Nella versione corrente risultano misurati in modo osservativo il tempo al primo audio della fase TTS, i tempi STT e il cold-start. Il tempo per-fase di RAG/LLM e la latenza end-to-end non sono invece misurati sistematicamente e sono riportati come n.d. Le latenze per fase servono ad attribuire il costo ai singoli stadi, mentre la latenza end-to-end descrive la latenza percepita di turno.
+
+Per la robustezza operativa si osservano richieste fallite, timeout lato client e necessità di ripetere il turno. In coerenza con la configurazione corrente del client (\texttt{requestTimeoutSeconds=15}, \texttt{retryCount=1}), questa misura indica quanto spesso la pipeline si interrompe o degrada durante l'uso continuativo.
+
+Per la qualità STT si adotta la Word Error Rate (WER), confrontando trascrizione Whisper e riferimento pronunciato. Le osservazioni considerano il profilo \texttt{small} in locale Windows e \texttt{medium} nel setup Ubuntu testato. Per la qualità RAG si distinguono retrieval quality e generation quality, analizzando pertinenza del contesto recuperato e fedeltà della risposta rispetto ai contenuti effettivamente usati (campo \texttt{rag\_used}). L'impostazione segue la letteratura recente su valutazione RAG e mitigazione delle allucinazioni \cite{gao2024ragsurvey}, oltre alla valutazione consolidata dei sistemi ASR \cite{Radford2023Whisper}.
+
 \subsection{Metriche di esperienza utente}
-Contenuto in preparazione.
-% TODO facoltativo: se si attiva lo studio utenti, definire protocollo, numero partecipanti, età media, durata sessione e criteri di inclusione/esclusione.
+A livello teorico, la scelta degli indicatori richiama il quadro di letteratura su ECA/Voice UX presentato nel Capitolo~\ref{chap:stato-arte}, in particolare \autoref{sec:eca-xr} e \autoref{sec:pipeline-ai}.
+La valutazione UX integra osservazioni qualitative e una cornice standard di usabilità. In SOULFRAME la Voice UX dipende da tre fattori principali: chiarezza del turn-taking, comprensibilità del parlato sintetizzato e leggibilità dello stato conversazionale in interfaccia.
+
+Le osservazioni qualitative sono organizzate su indicatori espliciti: frequenza di ripetizioni/riformulazioni, numero di turni di riparazione, tolleranza all'attesa, stabilità del ritmo conversazionale, coerenza percepita tra voce e avatar. Per il sottosistema visivo si osservano anche chiarezza degli stati (listening/processing/speaking), comfort visivo (flicker, intensità bloom, movimenti camera) e coerenza stilistica complessiva.
+
+Il target di valutazione resta ampio e non è ristretto a una singola fascia anagrafica. In questa fase, gli accorgimenti di accessibilità (icone dinamiche, feedback testuali e segnali visivi persistenti) sono trattati come requisiti trasversali di leggibilità dell'interazione, non come adattamenti per un unico profilo utente.
 
 \section{Risultati tecnici del prototipo}
 \label{sec:quantitativi}
 \subsection{Prestazioni della pipeline STT-RAG-TTS}
-Contenuto in preparazione.
+I risultati tecnici mostrano che la pipeline STT--RAG--TTS resta utilizzabile in entrambi gli ambienti testati. I valori riportati sono ordini di grandezza osservati su un campione ridotto di sessioni/turni esplorativi controllati, non misure da campagna benchmark automatizzata. Le scelte implementative di riferimento sono nel Capitolo~\ref{chap:implementazione}, soprattutto per i moduli RAG e TTS (\autoref{subsec:rag-memory}, \autoref{subsec:tts-streaming}).
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{l>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\hline
+\textbf{Fase} & \textbf{Locale (Windows)} & \textbf{Server (Ubuntu)} \\
+\hline
+STT (Whisper: \texttt{small}/\texttt{medium}) & nell'ordine di 1--3 s & nell'ordine di 1--4 s \\
+RAG+LLM (Ollama) & non misurato sistematicamente (n.d.) & non misurato sistematicamente (n.d.) \\
+TTS streaming (tempo al primo audio) & circa 5 s (tempo al primo audio) & circa 7--8 s (tempo al primo audio) \\
+End-to-end (rilascio PTT $\rightarrow$ primo audio) & non misurato sistematicamente (n.d.) & non misurato sistematicamente (n.d.) \\
+\hline
+\end{tabularx}
+\normalsize
+\caption{Confronto indicativo dei tempi per fase della pipeline tra ambiente locale e server. La riga TTS riporta il tempo al primo audio; la latenza end-to-end è n.d.}
+\label{tab:tempi-fase}
+\end{table}
+
+La fase STT è risultata sensibile soprattutto alla durata dell'audio in ingresso, con intervalli osservati di 1--3 s in locale Windows e 1--4 s nel setup Ubuntu testato. Per la fase RAG/LLM non è disponibile una misura per-fase sistematica: in questa versione manca una telemetria persistente per turno che separi in modo robusto retrieval e generazione.
+
+Nel campione osservato, il collo di bottiglia percepito è la fase TTS in termini di tempo al primo audio: circa 5 s in locale e circa 7--8 s su server. La latenza end-to-end completa non è stata misurata sistematicamente; di conseguenza, in questo capitolo viene trattata come n.d. sul piano quantitativo.
+
 \subsection{Latenza end-to-end e stabilità dei servizi}
-Contenuto in preparazione.
+Cold-start e turni successivi mostrano andamenti diversi: il primo indica il tempo necessario a rendere lo stack pronto, il secondo descrive il comportamento steady-state durante la conversazione. Le criticità e le mitigazioni emerse restano allineate a quanto descritto in \autoref{subsec:latenza-timeout} e \autoref{subsec:error-retry-fallback}.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{l>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
+\hline
+\textbf{Voce} & \textbf{Locale (Windows)} & \textbf{Server (Ubuntu)} \\
+\hline
+Warmup/setup iniziale (stack pronto) & circa 30 s & circa 80 s \\
+\hline
+\end{tabularx}
+\normalsize
+\caption{Tempo di inizializzazione (cold-start) osservato per rendere i servizi pronti all'interazione.}
+\label{tab:cold-start-ready}
+\end{table}
+
+I valori in Tabella~\ref{tab:cold-start-ready} non coincidono con la latenza di un singolo turno: descrivono solo la fase iniziale di warmup/setup. Nei turni successivi, il fattore più visibile per l'utente resta il tempo al primo audio TTS (circa 5 s in locale e circa 7--8 s su server), mentre la latenza end-to-end non è stata misurata sistematicamente.
+
+Per la validità dei risultati, la stima sistematica della latenza end-to-end e della fase RAG/LLM richiede una telemetria turn-based persistente (ID turno e timestamp sincronizzati tra client e servizi). Nello stato attuale, i log disponibili consentono un confronto osservativo tra ambienti ma non una decomposizione quantitativa completa per ogni turno.
+
+Per la stabilità, le modalità di guasto (failure mode) più ricorrenti nel campione osservato sono timeout client-side su turni complessi e degradazione prestazionale in condizioni di risorse limitate. Nelle sessioni esaminate non sono emersi blocchi strutturali della macchina a stati del client. Nel deploy server, però, i tempi oscillano di più quando si sommano overhead di rete/proxy e carico inferenziale.
+
 \subsection{Osservazioni tra ambiente locale e server}
-Contenuto in preparazione.
-% TODO: inserire una tabella unica con min/medio/max per fase, per confrontare in modo diretto ambiente locale e server.
+Il confronto locale/server mostra che il contratto applicativo resta invariato. Cambia invece il comportamento operativo: in locale il networking è più prevedibile, mentre su server emergono più spesso jitter, dipendenze infrastrutturali e variabilità delle risorse. Questo quadro conferma l'impostazione del Capitolo~\ref{chap:architettura} e quanto discusso in \autoref{subsec:normalizzazione-endpoint}, \autoref{subsec:differenze-windows-ubuntu}.
+
+In ambiente locale i tempi riflettono quasi solo il costo di inferenza dei moduli STT, RAG/LLM e TTS. In ambiente server si aggiungono overhead di instradamento ed effetti di contesa sulle risorse, con impatto più evidente sulla coda dei tempi (turni lenti) rispetto ai casi medi.
+
+La stessa build Unity mantiene coerenza funzionale nei due contesti grazie alla normalizzazione degli endpoint. Nel deploy pubblico serve però più attenzione alla robustezza operativa (health-check, readiness reale dei servizi e controllo dei colli di bottiglia inferenziali). Questa distinzione aiuta a leggere i risultati: locale come riferimento tecnico di base, server come riferimento realistico d'uso.
 
 \section{Risultati qualitativi e casi d'uso}
 \label{sec:qualitativi}
 \subsection{Qualità percepita dell'interazione}
-Contenuto in preparazione.
-\subsection{Usabilità interfaccia desktop e touch}
-Contenuto in preparazione.
-\subsection{Analisi di casi e failure cases}
-Contenuto in preparazione.
-% TODO: selezionare 2-3 casi rappresentativi (positivo, intermedio, critico) e motivarne la scelta.
+La qualità percepita dell'interazione vocale in SOULFRAME dipende dall'equilibrio tra naturalezza, reattività e continuità del turno. La letteratura sulla \emph{Voice User Experience} (Voice UX) mostra che queste dimensioni vengono valutate con strumenti eterogenei e non sempre comparabili; per questo il capitolo adotta un taglio osservativo. Il testo descrive il comportamento del prototipo in condizioni d'uso realistiche e discute quali scelte progettuali riducono le frizioni della conversazione vocale.\cite{seaborn2021voiceux} I dettagli implementativi sono nel Capitolo~\ref{chap:implementazione} (\autoref{subsec:mainmode}, \autoref{subsec:tts-streaming}, \autoref{subsec:ps2-postprocessing}).
 
-\section{Valutazione utenti (estensione facoltativa)}
-\label{sec:utenti-facoltativa}
-\subsection{Risultati SUS}
-Contenuto in preparazione.
-\subsection{Risultati NPS}
-Contenuto in preparazione.
-\subsection{Confronti tra gruppi}
-Contenuto in preparazione.
-% TODO facoltativo: mantenere questa sezione solo con campione sufficiente e bilanciato; in caso contrario, esplicitare il limite metodologico.
+Per la voce sintetizzata, l'impiego di Coqui XTTS v2 con \emph{voice cloning} rafforza subito la percezione di identità dell'avatar. Il servizio applica un preprocessing del testo (funzione \texttt{\_clean\_tts\_text}) per rimuovere simboli e punteggiatura che rischierebbero di essere vocalizzati in modo innaturale, mantenendo i segni utili a guidare pause e intonazione. La sintesi usa parametri di campionamento e penalità di ripetizione (ad esempio \texttt{temperature}, \texttt{top\_k}, \texttt{top\_p}, \texttt{repetition\_penalty}) tarati per privilegiare stabilità e scorrevolezza rispetto a variazioni eccessive, senza introdurre metriche numeriche di tipo MOS che richiederebbero valutazioni controllate. In questa sezione l'osservazione resta qualitativa; la discussione completa sui limiti di somiglianza percepita è riportata in \autoref{sec:limiti}.
+
+Quando la memoria è attiva, la coerenza delle risposte si nota soprattutto nella capacità dell'avatar di ``parlare come la persona''. Il servizio RAG distingue contenuti fattuali e tracce di stile, individua note di tipo \texttt{persona\_style} e costruisce un riepilogo compatto di \emph{persona cues} da affiancare al contesto recuperato. Il prompt di sistema impone inoltre risposte in prima persona, come se l'avatar fosse l'interlocutore reale, evitando etichette meta e indicazioni sceniche. Una regola di \emph{grounding} limita l'introduzione di dettagli non presenti nella memoria e incoraggia risposte del tipo ``Non ricordo'' quando mancano elementi sufficienti. Questo vincolo incide in modo chiaro sulla qualità percepita: anche senza questionario formale, l'utente tende a considerare più credibile un agente che ammette l'incertezza rispetto a uno che riempie i vuoti con contenuti plausibili ma infondati. Ho mantenuto questa scelta perché, in un contesto embodied, l'errore semantico viene percepito come incoerenza di identità e non come semplice imprecisione testuale.
+
+La fluidità del turno conversazionale dipende anche da come il sistema gestisce i tempi morti tra fine input e inizio output vocale. In \texttt{MainMode} il client aggiorna lo stato con messaggi come ``Sto pensando...'' durante la richiesta a \texttt{/chat} e ``Sto parlando...'' prima dell'avvio della sintesi. In parallelo, la risposta viene generata in streaming tramite \texttt{/tts\_stream}, così da iniziare la riproduzione appena arrivano i primi chunk audio. Per ridurre il silenzio percepito nella finestra iniziale, il client riproduce una \emph{wait phrase} breve, selezionata da un insieme predefinito di chiavi (ad esempio ``hm'', ``beh'', ``aspetta'', ``si'', ``un\_secondo'') e scaricata on-demand dall'endpoint \texttt{/wait\_phrase}, con generazione automatica se il contenuto non è ancora disponibile. Anche un micro-segnale immediato può bastare a far leggere l'attesa come elaborazione in corso e non come blocco. La stessa logica supporta l'interruzione: quando l'utente riprende la parola, il client può abortire richieste e playback in corso, evitando sovrapposizioni tra audio tardivo e nuovo turno. La diagnostica resta disponibile tramite \texttt{DebugText} nella \texttt{Status Bar} (disattivabile con tasto \texttt{INS} su desktop o con triplo tap della barra in modalità touch), così da separare feedback operativo per l'utente e dettagli tecnici per debug.
+
+Il sottosistema visivo lavora soprattutto su atmosfera e continuità percettiva, non come canale diagnostico principale. Lo stato del turno viene comunicato prima da testo di stato, transcript/reply e \texttt{UIHintBar}; rings e testo azzurro lampeggiante (desktop) rafforzano leggibilità e identità visiva senza sostituire i segnali funzionali. Questi elementi sostengono coinvolgimento e riconoscibilità dell'agente, mentre la parte strettamente operativa resta affidata ai feedback testuali.\cite{li2021pueva}
+
+Figura~\ref{fig:mainmode-desktop} documenta un esempio di interazione in \texttt{MainMode} su desktop: la schermata mostra insieme trascrizione dell'utente, risposta dell'avatar, testo di stato e grammatica dei comandi nella hint bar. L'immagine permette di discutere leggibilità dello stato e coerenza del mood senza ripetere dettagli implementativi già trattati nei capitoli precedenti.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{mainmode_desktop_eval.png}
+\caption{Interfaccia desktop in modalità MainMode con transcript, risposta dell'avatar e stato conversazionale in forma testuale.}
+\label{fig:mainmode-desktop}
+\end{figure}
+
+\subsection{Usabilità interfaccia desktop e touch}
+L'usabilità dell'interfaccia in SOULFRAME è stata osservata confrontando due varianti che condividono lo stesso flusso logico, ma propongono affordance diverse in base al dispositivo. In entrambe le modalità, il comportamento dell'applicazione è governato dagli stessi stati (\texttt{Boot}, \texttt{MainMenu}, \texttt{AvatarLibrary}, \texttt{SetupVoice}, \texttt{SetupMemory}, \texttt{MainMode}) e attiva la stessa pipeline backend per Speech-to-Text, Retrieval-Augmented Generation e Text-to-Speech. La differenza percepita nasce dalla superficie di interazione: desktop privilegia tastiera e mouse con suggerimenti contestuali tramite hint bar, mentre touch introduce controlli diretti (Push-to-Talk) e gesti (swipe) per ridurre l'ambiguità operativa su schermo. In implementazione, questa scelta passa da una rilevazione esplicita del profilo d'uso (\texttt{ShouldEnableTouchUi()}) e da un sistema di override che sostituisce pannelli e riferimenti a testi e bottoni senza modificare la macchina a stati. Così si mantiene coerenza funzionale e si riducono regressioni; i dettagli tecnici sono in \autoref{subsec:ui-states} e \autoref{subsec:mainmode}.
+
+Nella variante desktop l'azione principale è point-and-click, con supporto costante della hint bar per comandi e shortcut. Questa impostazione si presta a un uso prolungato perché sfrutta abitudini già consolidate: l'utente individua rapidamente il focus (avatar e area testuale), mantiene controllo fine con il mouse e accelera azioni ricorrenti con la tastiera, soprattutto nei passaggi di setup. La gestione dell'attenzione basata su inattività del mouse (\texttt{mainModeMouseIdleSeconds}) riduce rumore visivo quando l'utente non interagisce, preservando la leggibilità dei contenuti principali. Per l'utente questo modello riduce il carico cognitivo: esplicita le azioni disponibili con suggerimenti persistenti e separa chiaramente canale di input (controlli e hint) e canale di output (risposta e feedback di stato).
+
+\begin{wrapfigure}{l}{0.40\textwidth}
+\vspace{-6pt}
+\centering
+\includegraphics[width=0.98\linewidth]{mainmode_touch_eval.png}
+\caption{Interfaccia touch in modalità MainMode: Push-to-Talk, swipe tra transcript e reply e adattamenti per l'usabilità su schermo touch.}
+\label{fig:mainmode-touch}
+\vspace{-8pt}
+\end{wrapfigure}
+
+{\raggedright
+La variante touch riorienta invece l'interazione attorno a un gesto centrale facile da memorizzare: il Push-to-Talk in \texttt{MainMode}. Il bottone dedicato (\texttt{btnTouchPttMainMode}) espone direttamente lo stato idle/active e riduce la necessità di ricordare scorciatoie o interpretare indicazioni testuali, condizione importante su schermi piccoli e in contesti d'uso intermittenti. La separazione tra transcript e reply è gestita tramite swipe, con soglia minima (\texttt{touchMainModeSwipeMinDistance=70}). La transizione rapida (\texttt{touchMainModeTextSwitchDuration=\allowbreak 0.18s}) rende il cambio di vista percepibile ma non invasivo. Questo riduce il carico cognitivo: evita di comprimere troppo testo e controlli nello stesso viewport e lascia all'utente la scelta di portare in primo piano l'informazione più utile in quel momento (ciò che ha detto o ciò che ha ricevuto come risposta). Quando è presente input testuale, il dimming dell'avatar (\texttt{touchChatAvatarDimMultiplier=0.55}) riduce la competizione tra volto e area di scrittura, spostando l'attenzione verso il contenuto operativo senza eliminare del tutto la percezione di presenza.
+\par}
+
+Le scelte di posizionamento di avatar e aree testuali costruiscono una gerarchia visiva pensata per mantenere stabile il focus. In entrambe le varianti, il volto dell'avatar resta un anchor percettivo: dà continuità tra i turni e sostiene l'impressione di interlocutore, mentre l'area della risposta deve restare leggibile e subito associabile alla produzione vocale. Su desktop, lo spazio disponibile permette di mostrare insieme transcript, reply e hint operativi senza perdere leggibilità. Su touch, la stessa simultaneità rischia di saturare lo schermo e aumentare lo scanning visivo; per questo swipe e layout adattato risultano più efficaci. Anche l'adattamento del CanvasScaler (\texttt{ConfigureTouchCanvasScalerForCurrentProfile()}) agisce su reference resolution e scale factor per preservare leggibilità su densità di pixel diverse.
+
+Desktop e touch mostrano trade-off netti: desktop favorisce rapidità e trasparenza grazie a spazio informativo e hint persistenti; touch privilegia immediatezza del gesto, ma con minore densità simultanea di informazioni. La Figura~\ref{fig:mainmode-touch} rende visibile questo equilibrio: tap per Push-to-Talk e swipe semplificano l'azione principale, mentre il dimming dell'avatar durante l'input testuale riduce la competizione visiva.
+
+
+\subsection{Analisi di casi e failure cases}
+I meccanismi tecnici richiamati nei tre casi sono analizzati in dettaglio nel Capitolo~\ref{chap:implementazione}, in particolare \autoref{subsec:rag-memory}, \autoref{subsec:tts-streaming} e \autoref{subsec:error-retry-fallback}.
+Durante la valutazione esplorativa sono emersi casi rappresentativi utili a capire dove la pipeline resta robusta e dove, invece, la combinazione tra rete, risorse di inferenza e qualità del contesto recuperato produce degradazioni percepibili. Sono stati selezionati tre casi (positivo, intermedio, critico) perché coprono funzionamento nominale, degradazione progressiva e failure esplicito della pipeline. I casi descritti di seguito non riportano trascrizioni o dialoghi letterali, ma sintetizzano input, comportamento e cause tecniche osservate, collegandoli ai meccanismi di fallback e ai vincoli di timeout e retry presenti nel sistema.
+
+Il primo caso, positivo, riguarda una domanda che richiede l'uso della memoria per-avatar e in cui il contesto recuperato è pertinente e non ambiguo. Lo scenario tipico è una richiesta su un'informazione già ingestita (ad esempio note biografiche, preferenze o episodi), formulata in modo abbastanza specifico da attivare retrieval mirato. In questa condizione \texttt{rag\_server.py} esegue la ricerca ibrida e costruisce un prompt con un numero limitato di chunk (\texttt{RAG\_PERSONA\_TOP\_K}) che, dopo deduplicazione, risultano coerenti tra loro. L'output generato dall'LLM appare allineato sia ai fatti riportati nella memoria sia allo stile dell'avatar: la componente di persona-style viene riconosciuta tramite detection dedicata e tradotta in cue che orientano tono e scelte lessicali. L'effetto percepito è una risposta che suona naturale e viene attribuita all'identità dell'avatar, senza oscillazioni meta o riferimenti a ruoli di sistema. Contribuisce anche la sanitizzazione finale della risposta (\texttt{\_sanitize\_chat\_answer}), che rimuove prefissi di parlante e stage directions evitando che il TTS vocalizzi annotazioni non destinate all'utente. La pipeline visiva aiuta la leggibilità del turno: rings e post-processing segnalano chiaramente la transizione listening$\rightarrow$processing$\rightarrow$speaking, mentre lo streaming TTS riduce l'intervallo di silenzio tra fine utterance e inizio playback.
+
+Il secondo caso, intermedio, emerge quando l'informazione richiesta è pertinente alla memoria ma il retrieval produce un contesto rumoroso o parzialmente ridondante. La causa più frequente è una domanda formulata in modo ampio, che attiva chunk con similarità comparabile e contenuti solo debolmente correlati tra loro. In queste condizioni la deduplicazione basata su soglia (\texttt{similarity}>0.92) riduce parte della ridondanza, ma può lasciare frammenti semanticamente sovrapposti o, al contrario, eliminare pezzi utili quando la similarità geometrica non riflette l'importanza informativa. Il comportamento osservato è una risposta generalmente corretta nel tema, ma con dettagli incompleti, generalizzazioni o piccole incoerenze di stile tra frasi successive, soprattutto quando nel contesto coesistono note fattuali e note di persona-style non perfettamente separate. Questo caso mostra che la qualità del risultato dipende più dalla qualità del set di chunk selezionati che dal solo vincolo di grounded mode: anche rispettando il principio di non introdurre affermazioni esterne, un contesto impreciso può guidare verso una risposta che appare ``sfocata''. In questi casi è rilevante la possibilità operativa di ripulire la memoria per-avatar tramite \texttt{/clear\_avatar}, quando l'ingestion precedente ha introdotto frammenti incoerenti o duplicati che degradano sistematicamente il retrieval. Dal lato UX, i feedback visivi continuano a segnalare correttamente lo stato della pipeline, ma non comunicano la qualità interna del contesto; l'utente percepisce quindi l'esito come risposta ``meno centrata'' pur in presenza di un ciclo conversazionale fluido.
+
+Il terzo caso, critico, riguarda modalità di guasto legate a timeout e recupero incompleto, con impatto diretto sulla continuità dell'interazione. Lo scenario più semplice è un fallimento in STT: \texttt{whisper\_server.py} non implementa retry interno e, se \texttt{/transcribe} non risponde in tempo o fallisce per errori temporanei, l'onere ricade sul client Unity. Con \texttt{requestTimeoutSeconds=15} e \texttt{retryCount=1}, un singolo ritentativo può risultare insufficiente in condizioni di carico elevato o audio più lungo del previsto; il comportamento osservato è quindi una transizione verso stato di errore o un ritorno in listening senza trascrizione valida. In modo analogo, la fase TTS può degradare quando si verifica un errore GPU: \texttt{coqui\_tts\_server.py} tenta un fallback CUDA$\rightarrow$CPU (\texttt{\_switch\_to\_cpu\_fallback}), ma se l'errore avviene durante lo streaming o se la generazione non produce chunk validi, il server può emettere un silenzio di sicurezza. Questa scelta evita connessioni aperte senza output, ma genera un'esperienza ambigua se non è accompagnata da un messaggio UI chiaro: l'utente vede rings e stato speaking, ma non sente audio, oppure sente un frammento seguito da interruzione. Il client prova a mitigare l'attesa con wait phrases; in un failure prolungato, però, l'effetto si inverte e il riempitivo può diventare ripetitivo, segnalando che il turno non si chiude. In questi casi il comportamento dei feedback visivi diventa cruciale: una variazione coerente dei rings e dell'intensità del bloom può segnalare che il sistema sta tentando un recupero (retry o fallback), ma se non differenzia abbastanza processing normale e processing in errore, l'utente non distingue tra lentezza e guasto.
+
+Figura~\ref{fig:failure-sequence} propone un diagramma di sequenza che sintetizza un failure case centrato su timeout in STT, ritentativo lato client ed eventuale uscita verso messaggio di errore o ritorno a listening. Il diagramma rende esplicite le dipendenze tra timeout, retry e feedback percettivo (stato UI e rings), chiarendo dove un recupero tecnico può non tradursi in un recupero dell'esperienza.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=1.0\textwidth]{failure_sequence.png}
+\caption{Diagramma di sequenza di un failure case con timeout, retry e feedback visivo.}
+\label{fig:failure-sequence}
+\end{figure}
+
+% \section{Valutazione utenti (estensione facoltativa)}
+% \label{sec:utenti-facoltativa}
+% \subsection{Indicatori standardizzati}
+% Contenuto in preparazione.
+% \subsection{Indicatori di propensione}
+% Contenuto in preparazione.
+% \subsection{Confronti tra gruppi}
+% Contenuto in preparazione.
 
 \section{Discussione dei risultati}
 \label{sec:discussione}
 \subsection{Punti di forza}
-Contenuto in preparazione.
+La modularità resta un punto di forza: i servizi Speech-to-Text (STT), Retrieval-Augmented Generation (RAG) e Text-to-Speech (TTS) sono separati, raggiungibili tramite endpoint dedicati e verificabili con controlli di stato (\texttt{/health}). Questa scomposizione semplifica diagnosi e manutenzione perché mantiene localizzabili i colli di bottiglia per componente. La stessa struttura rende coerente il passaggio tra ambiente locale e server: l'orchestrazione del client non cambia, cambia la configurazione degli endpoint.
+
+Sul piano dell'esperienza, lo streaming TTS anticipa l'avvio dell'audio ai primi chunk PCM, senza attendere la sintesi completa. Nei turni osservati, con tempo al primo audio intorno a 5 s in locale e 7--8 s su server, questo passaggio rende l'attesa più leggibile. Le wait phrases non accorciano il tempo di inferenza, ma trasformano il silenzio in un segnale conversazionale interpretabile come presa di turno.
+
+La qualità del recupero beneficia della ricerca ibrida (segnali lessicali BM25 + similarità vettoriale), che migliora la pertinenza in presenza di nomi propri, parole chiave e parafrasi. L'isolamento della memoria per-avatar e la deduplicazione dei chunk limitano interferenze e ridondanze. Sul piano operativo, i fallback mantengono il ciclo utilizzabile anche in condizioni non ideali: degradazione TTS su CPU, gestione dei chunk falliti, recovery lato retrieval e timeout/retry lato client.
+
+Anche l'interfaccia contribuisce alla robustezza complessiva: desktop e touch condividono la stessa macchina a stati, ma usano affordance diverse in base al dispositivo. Questo riduce divergenze implementative e mantiene stabile il modello mentale dell'utente. Il contributo dei feedback visivi resta coerente con questa logica: sostiene leggibilità dello stato e identità dell'esperienza, senza sostituire i canali informativi primari.
+
+\subsection{Criticità osservate}
+\label{subsec:criticita-osservate}
+
+Durante le sessioni esplorative sono emerse tre criticità ricorrenti che non rientrano nei failure case tecnici descritti in precedenza, ma che incidono sulla qualità percepita dell'interazione.
+
+In alcuni turni l'avatar ha prodotto affermazioni non presenti nella memoria indicizzata, soprattutto con query vaghe e contesto recuperato debole. Ho osservato quindi risposte plausibili ma non allineate a quanto realmente memorizzato. L'inquadramento analitico del fenomeno è in \autoref{sec:limiti}.
+
+Con PDF a struttura articolata (tabelle, layout multi-colonna), il retrieval è apparso meno affidabile rispetto a note lineari o testo semplice. Il sintomo ricorrente è la restituzione di frammenti parziali o poco ordinati anche con documento indicizzato. I dettagli tecnici sono in \autoref{subsec:ocr-ingestione}, mentre la discussione valutativa completa è in \autoref{sec:limiti}.
+
+La voce sintetizzata è risultata comprensibile e riconoscibile come voce dell'avatar, ma con somiglianza variabile rispetto al campione originale. L'effetto non blocca l'interazione, però riduce la coerenza d'identità percepita nei turni più lunghi. La trattazione completa resta in \autoref{sec:limiti}.
+
 \subsection{Limiti emersi}
-Contenuto in preparazione.
+I limiti emersi sono coerenti con le criticità di implementazione già tracciate nel Capitolo~\ref{chap:implementazione} (\autoref{subsec:latenza-timeout}, \autoref{subsec:ocr-ingestione}, \autoref{subsec:compatibilita-dipendenze}).
+Il limite più evidente nei turni osservati è il tempo al primo audio TTS: anche con streaming e strategie di mascheramento, il valore resta nell'ordine di circa 5 s in locale e circa 7--8 s su server. La latenza end-to-end completa non è stata misurata sistematicamente e resta quindi n.d. sul piano quantitativo. La fase RAG/LLM resta il principale fattore non isolato: la dipendenza dal runtime locale di inferenza (Ollama) e dal profilo del modello quantizzato rende la prestazione sensibile a disponibilità di risorse e contesa. Nel deploy su server si aggiungono overhead di rete e proxy, che introducono jitter e allungano la coda dei tempi, aumentando i casi limite in cui un turno satura il timeout client-side o richiede ripetizione.
+
+La valutazione dell'esperienza resta esplorativa sul piano metodologico: le conclusioni su naturalezza, co-presenza e impatto dei feedback visivi derivano da osservazioni qualitative. Questo approccio guida le iterazioni progettuali, ma non consente inferenze robuste su efficacia o gradimento, anche perché la Voice UX è spesso misurata con strumenti eterogenei e non sempre validati in modo uniforme.\cite{seaborn2021voiceux}
+
+Sul versante delle metriche tecniche, la Word Error Rate (WER) non è stata misurata in modo sistematico su un corpus di riferimento. In locale Windows lo STT usa Whisper \texttt{small}; nel setup server Ubuntu testato usa \texttt{medium}, reso praticabile da una VRAM maggiore (circa 24 GB contro circa 12 GB in locale). L'assenza di una valutazione quantitativa impedisce comunque di stimare con precisione la sensibilità a rumore, accenti e condizioni acustiche avverse, e di confrontare in modo controllato taglie di modello diverse.\cite{Radford2023Whisper} Anche il modulo RAG mostra limiti strutturali: la qualità della risposta dipende dalla qualità dei chunk e dal rumore introdotto da OCR o ingestione non curata; inoltre, nonostante regole di grounded mode, possono persistere errori di faithfulness o generalizzazioni quando il contesto recuperato è incompleto o ambiguo.\cite{gao2024ragsurvey} In modo analogo, l'OCR su documenti complessi (tabelle dense, layout non lineare, scansioni degradate) resta fragile e può introdurre testo rumoroso che si propaga al retrieval.
+
+Infine, persistono limiti di portabilità pratica legati al runtime: su Windows la persistenza di ChromaDB può incorrere in lock e handle concorrenti, mitigati con procedure dedicate ma non eliminati del tutto. In generale, la riproducibilità dipende ancora dalla corretta installazione di dipendenze Python e dalla configurazione di componenti opzionali come OCR e servizi esterni; questi aspetti richiedono hardening ulteriore per ridurre la variabilità tra macchine.
+
 \subsection{Sintesi rispetto alle research questions}
-Contenuto in preparazione.
+Le tre research questions, definite nel Capitolo~\ref{chapintroduzione}, leggono i risultati su tre assi: fattibilità tecnica, qualità percepita e riproducibilità. Per RQ1, le evidenze indicano che il prototipo realizza un ciclo end-to-end stabile (STT $\rightarrow$ RAG/LLM $\rightarrow$ TTS $\rightarrow$ output audiovisivo) sia in locale sia in deploy, includendo memoria per-avatar e ingestione documentale con OCR. Nella configurazione osservata questo ciclo usa Whisper \texttt{small} in locale Windows e \texttt{medium} nel setup Ubuntu testato, coerentemente con la diversa VRAM disponibile. La risposta resta parziale sul lato quantitativo: servono campagne più ampie su tempi e accuratezza. Le basi progettuali di RQ1 sono in \autoref{sec:architettura-riferimento}, mentre i dettagli esecutivi sono nel Capitolo~\ref{chap:implementazione}.
+
+Per RQ2, i dati qualitativi suggeriscono che voice cloning, gestione del turn-taking (streaming + wait phrases) e segnali visivi di stato migliorano la fluidità percepita del dialogo. Queste evidenze vanno lette come indicatori qualitativi su co-presenza e naturalezza, utili per una valutazione successiva con protocollo dedicato. Il riferimento teorico è nel Capitolo~\ref{chap:stato-arte}, mentre l'evidenza osservativa è raccolta in \autoref{sec:qualitativi}.
+
+Per RQ3, i risultati sono più solidi: la scomposizione in micro-servizi, i contratti HTTP espliciti, i health-check e la configurazione centralizzata degli endpoint supportano modularità e replicabilità tra ambienti. Restano però limiti pratici (dipendenze Python, lock su Windows, variabilità hardware/inferenziale) che impediscono una riproducibilità pienamente ``push-button'' e richiedono ulteriore hardening. L'impostazione nasce dai requisiti di manutenibilità/portabilità in \autoref{sec:requisiti} ed è operazionalizzata nel Capitolo~\ref{chap:implementazione}.
+
+
+

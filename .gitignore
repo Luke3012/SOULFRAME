@@ -101,3 +101,24 @@ Tesi/**/*.snm
 Tesi/**/*.vrb
 Tesi/**/*.xdv
 Tesi/**/*-SAVE-ERROR
+Tesi/**/*.pdf
+
+# Build LaTeX generati accidentalmente nella root repository
+/main.aux
+/main.log
+/main.out
+/main.toc
+/main.lof
+/main.lot
+/main.fls
+/main.fdb_latexmk
+/main.synctex.gz
+/main.bbl
+/main.blg
+/main.bcf
+/main.run.xml
+/main.nav
+/main.snm
+/main.vrb
+/main.xdv
+/main.pdf

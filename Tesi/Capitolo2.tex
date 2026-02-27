@@ -3,24 +3,35 @@
 
 \section{Agenti conversazionali embodied in XR}
 \label{sec:eca-xr}
-Gli Embodied Conversational Agents (ECA) sono agenti conversazionali dotati di una rappresentazione corporea, progettati per essere percepiti come interlocutori nello spazio di interazione. In Extended Reality (XR), il corpo virtuale viene collocato in una scena tridimensionale e coordinato con i turni del dialogo, con l'obiettivo di rendere l'interazione più naturale rispetto a un'interfaccia solo testuale.
+Gli Embodied Conversational Agents (ECA) sono agenti conversazionali dotati di una rappresentazione corporea, progettati per essere percepiti come interlocutori nello spazio di interazione. In Extended Reality (XR), il corpo virtuale viene collocato in una scena tridimensionale e coordinato con i turni del dialogo per rendere l'interazione più naturale rispetto a un'interfaccia solo testuale.
 
-La letteratura recente mostra che molti sistemi ECA in XR sono sviluppati in Virtual Reality (VR), spesso con Head-Mounted Display (HMD) e con Unity come piattaforma ricorrente. Risulta frequente anche l'uso dell'interazione vocale e di configurazioni uno-a-uno. Molte applicazioni restano orientate a compiti specifici, ma cresce l'interesse verso dialoghi più adattivi supportati da modelli neurali.\cite{Yang2025ECA_XR} SOULFRAME si colloca in questo scenario come ECA vocale embodied in un ambiente 3D fruibile via WebGL senza HMD: l'agente conversa in modalità push-to-talk e mantiene un profilo avatar che integra aspetto e voce.
+La letteratura recente mostra che molti sistemi ECA in XR sono sviluppati in Virtual Reality (VR), spesso con Head-Mounted Display (HMD) e con Unity come piattaforma ricorrente. Sono frequenti anche l'interazione vocale e le configurazioni uno-a-uno. Molte applicazioni restano orientate a compiti specifici, ma cresce l'interesse verso dialoghi più adattivi supportati da modelli neurali.\cite{Yang2025ECA_XR} SOULFRAME si colloca in questo scenario come ECA vocale embodied in un ambiente 3D fruibile via WebGL senza HMD: l'agente conversa in modalità push-to-talk e mantiene un profilo avatar che integra aspetto e voce.
+
+La traiettoria che porta dai CA scriptati ai sistemi basati su modelli linguistici è sintetizzata in Figura~\ref{fig:ca-evoluzione}. Il passaggio chiarisce perché embodiment e gestione del dialogo vengano oggi trattati insieme nei prototipi XR.
+
+\begin{figure}[t]
+\centering
+% LINK_ORIGINE: [https://www.researchgate.net/figure/The-five-identified-waves-of-CA-evolutions-as-identified-by-Schobel-et-al-8_fig1_391468212]
+\includegraphics[width=0.85\textwidth]{vr_contesto_schema.png}
+\caption{Evoluzione della maturità della ricerca sui Conversational Agents (CA), dalla ``zero hour wave'' alla ``AI wave'', con riferimento ai principali passaggi tecnologici. \protect\footnotemark}
+\label{fig:ca-evoluzione}
+\end{figure}
+\footnotetext{Fonte: adattamento da una figura pubblicata su ResearchGate.}
 
 \subsection{Presenza sociale, co-presenza e ruolo della voce}
-Quando l'interazione avviene in un ambiente mediato, la presenza sociale descrive la percezione dell'altro come interlocutore con cui si condivide un'esperienza. Una trattazione utile per la valutazione scompone questo fenomeno in componenti distinguibili, includendo la co-presenza (percezione di condividere lo stesso spazio) e forme di coinvolgimento attentivo e comportamentale che rendono il dialogo più contingente e reciproco.\cite{Oh2018SocialPresence}
+Quando l'interazione avviene in un ambiente mediato, la presenza sociale descrive la percezione dell'altro come interlocutore con cui si condivide un'esperienza. In valutazione conviene scomporre questo fenomeno in componenti distinguibili, includendo la co-presenza (percezione di condividere lo stesso spazio) e forme di coinvolgimento attentivo e comportamentale che rendono il dialogo più contingente e reciproco.\cite{Oh2018SocialPresence}
 
 La voce è un canale rilevante per la presenza sociale perché rende immediatamente percepibili tempi di risposta, ritmo e prosodia. In VR questo effetto risulta più marcato quando l'agente è embodied: evidenze sperimentali indicano che un ECA con interazione vocale in tempo reale (STT+TTS) aumenta la co-presenza percepita rispetto a una condizione con audio pre-registrato.\cite{Kan2023ECA_Training} In SOULFRAME, la scelta del push-to-talk e l'uso di una voce persistente per avatar seguono questa logica, con l'obiettivo di stabilizzare i turni e mantenere coerenza d'identità.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.85\textwidth]{social_presence_audio_quality.png}
-\caption{Fattori immersivi associati alla presenza sociale: la qualità audio compare tra le variabili considerate nella letteratura. \protect\footnotemark}
+\caption{Fattori immersivi associati alla presenza sociale, con qualità audio tra le variabili considerate in letteratura. \protect\footnotemark}
 \label{fig:social-presence-audio}
 \end{figure}
 \footnotetext{Fonte: Oh et al., \emph{A Systematic Review of Social Presence: Definition, Antecedents, and Implications}, Frontiers in Robotics and AI (2018), \url{https://www.frontiersin.org/journals/robotics-and-ai/articles/10.3389/frobt.2018.00114/full} (Figura 3; licenza/uso: CC BY).}
 
-La presenza sociale e la co-presenza dipendono dall'allineamento tra canali comunicativi e tempi dell'interazione. Figura~\ref{fig:social-presence-audio} mostra che la qualità audio è una delle variabili considerate insieme ad altri fattori immersivi. Per un ECA vocale, qualità della voce e gestione temporale dei turni influenzano la naturalezza percepita; in SOULFRAME, push-to-talk, profilo vocale per avatar, warmup e frasi di attesa sono adottati per mitigare sovrapposizioni e silenzi durante l'elaborazione.
+La presenza sociale e la co-presenza dipendono dall'allineamento tra canali comunicativi e tempi dell'interazione. In Figura~\ref{fig:social-presence-audio} la qualità audio compare tra le variabili immersive considerate in letteratura. Per un ECA vocale, qualità della voce e gestione temporale dei turni influenzano la naturalezza percepita; in SOULFRAME, push-to-talk, profilo vocale per avatar, warmup e frasi di attesa mitigano sovrapposizioni e silenzi durante l'elaborazione.
 
 \subsection{Limiti aperti nei sistemi conversazionali immersivi}
 L'integrazione del dialogo in ambienti 3D introduce criticità che emergono meno nei sistemi testuali tradizionali. La principale è la latenza end-to-end tra acquisizione audio, trascrizione, generazione e sintesi: ritardi percepibili riducono la naturalezza percepita anche quando il contenuto della risposta è corretto.
@@ -31,7 +42,7 @@ In letteratura, architetture modulari open-source per ECA vocali in VR mostrano 
 
 \section{Pipeline AI adottata in SOULFRAME}
 \label{sec:pipeline-ai}
-SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento del parlato, generazione contestuale e sintesi vocale. La scomposizione in tre stadi isola i vincoli della conversazione a turni, in particolare la latenza, e permette di aggiornare i singoli moduli senza modificare l'intera architettura. Figura~\ref{fig:pipeline-ai-cap2} mostra il flusso dei dati dal segnale audio in ingresso al testo trascritto, fino al testo di risposta e all'audio sintetizzato.
+SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento del parlato, generazione contestuale e sintesi vocale. Questa scomposizione isola i vincoli della conversazione a turni, soprattutto la latenza, e permette di aggiornare i singoli moduli senza modificare l'intera architettura. Figura~\ref{fig:pipeline-ai-cap2} mostra il flusso dei dati dal segnale audio in ingresso al testo trascritto, fino al testo di risposta e all'audio sintetizzato.
 
 \begin{figure}[t]
 \centering
@@ -41,9 +52,9 @@ SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento d
 \end{figure}
 
 \subsection{Speech-to-Text con Whisper}
-Il primo stadio della pipeline è il riconoscimento automatico del parlato. Nel prototipo, l'audio viene acquisito in push-to-talk dal client WebGL e inviato a un micro-servizio dedicato che restituisce la trascrizione da inoltrare al modulo di memoria e generazione. L'esecuzione locale riduce dipendenze di rete e supporta requisiti di privacy.
+In SOULFRAME, Whisper è scelto come base STT per la robustezza zero-shot in condizioni non controllate, evitando l'onere di addestrare un ASR dedicato al progetto. Il primo stadio della pipeline è il riconoscimento automatico del parlato: l'audio acquisito in push-to-talk viene trascritto e inoltrato ai moduli conversazionali successivi.
 
-SOULFRAME utilizza Whisper, modello STT basato su architettura Transformer e addestrato su larga scala con supervisione debole. L'addestramento su circa 680.000 ore e l'impostazione multilingue (99 lingue) supportano buone prestazioni zero-shot e robustezza a variabilità di parlanti e condizioni acustiche.\cite{Radford2023Whisper} Nel prototipo è adottata la versione \texttt{medium} come compromesso tra qualità della trascrizione e costo computazionale. La struttura del modello è richiamata in Figura~\ref{fig:whisper-arch-cap2}.
+Whisper è un modello STT basato su architettura Transformer e addestrato su larga scala con supervisione debole. L'addestramento su circa 680.000 ore e l'impostazione multilingue (99 lingue) supportano buone prestazioni zero-shot e robustezza a variabilità di parlanti e condizioni acustiche.\cite{Radford2023Whisper} In questa sede interessa soprattutto il ruolo teorico del modello nella pipeline; configurazioni operative e profili di deploy sono discussi nei capitoli architetturali e implementativi.
 
 \begin{figure}[t]
 \centering
@@ -58,9 +69,9 @@ Large-Scale Weak Supervision}, ICML 2023, Fig.~1,
 \url{https://arxiv.org/abs/2212.04356}.}
 
 \subsection{Memoria conversazionale con RAG (LLM + embeddings + retrieval)}
-Il secondo stadio introduce una memoria conversazionale che combina generazione e recupero di contesto.
+In SOULFRAME, il paradigma RAG è scelto per aggiornare la memoria conversazionale senza riaddestrare il modello generativo a ogni variazione dei contenuti. Il secondo stadio introduce quindi una memoria che combina generazione e recupero di contesto.
 
-In termini operativi, la query testuale viene trasformata in embedding, usata per recuperare dall'indice i passaggi pertinenti e reinserita nel contesto fornito al Large Language Model (LLM). In questo modo la risposta può mantenere continuità tra turni e riutilizzare informazioni già emerse nella conversazione.
+La query testuale viene trasformata in embedding, usata per recuperare dall'indice i passaggi pertinenti e reinserita nel contesto fornito al Large Language Model (LLM). Così la risposta può mantenere continuità tra turni e riutilizzare informazioni già emerse nella conversazione.
 
 L'approccio RAG integra memoria parametrica del modello e memoria non parametrica aggiornata via indice; la conoscenza può quindi evolvere intervenendo sui contenuti recuperabili senza riaddestrare i pesi.\cite{Lewis2020RAG} Figura~\ref{fig:rag-frontiers} mostra il flusso retrieval$\rightarrow$generation.
 
@@ -72,12 +83,12 @@ L'approccio RAG integra memoria parametrica del modello e memoria non parametric
 \end{figure}
 \footnotetext{Fonte: Kaur et al., \emph{Knowledge, context and personalization in retrieval-augmented generation for healthcare}, Frontiers in Artificial Intelligence (2025), \url{https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2025.1697169/full} (Figura 1; licenza/uso: CC BY).}
 
-Nel prototipo SOULFRAME la memoria è persistente tra sessioni e separata per avatar, per ridurre interferenze tra profili. Il servizio RAG integra LLM via Ollama, modello di embedding e ChromaDB; supporta note testuali e ingestione di documenti (con OCR per PDF) e adotta retrieval ibrido, combinando similarità semantica e segnali lessicali.
+Nel quadro della tesi, il punto rilevante è che RAG separa la conoscenza dinamica dal solo comportamento parametrico del modello, rendendo praticabile una memoria per-avatar che può essere estesa nel tempo. Le scelte operative su runtime, storage vettoriale e retrieval sono rinviate ai capitoli di architettura e implementazione.
 
 \subsection{Text-to-Speech con Coqui XTTS v2}
-Il terzo stadio converte il testo in audio e chiude il ciclo conversazionale. In un ECA embodied, la sintesi vocale influisce sulla percezione di continuità e coerenza dell'interlocutore.
+In SOULFRAME, XTTS v2 è scelto per ottenere voce per-avatar in modalità zero-shot, evitando pipeline basate su risposte preregistrate statiche. Il terzo stadio converte il testo in audio e chiude il ciclo conversazionale: in un ECA embodied la sintesi influisce direttamente sulla percezione di continuità e coerenza dell'interlocutore.
 
-SOULFRAME adotta Coqui XTTS v2 per supporto multilingue e voice cloning tramite campione di riferimento, senza addestrare un modello vocale dedicato per ogni utente.\cite{Casanova2024XTTS} Nel prototipo, il campione è validato rispetto al testo atteso e associato al profilo avatar; il servizio supporta sintesi in streaming, warmup e frasi di attesa per mitigare la latenza percepita. Un riferimento architetturale del modello è riportato in Figura~\ref{fig:xtts-arch-cap2}.
+Coqui XTTS v2 offre supporto multilingue e voice cloning tramite campione di riferimento, senza richiedere l'addestramento di un modello vocale dedicato per ogni utente.\cite{Casanova2024XTTS} In questo capitolo il focus resta sulla rilevanza teorica del modello per il problema di ricerca; i dettagli di configurazione e integrazione sono trattati nei capitoli successivi. Un riferimento architetturale del modello è riportato in Figura~\ref{fig:xtts-arch-cap2}.
 
 \begin{figure}[t]
 \centering
@@ -92,6 +103,6 @@ Zero-Shot Text-to-Speech Model}, Interspeech 2024, Fig.~1,
 \url{https://arxiv.org/abs/2406.04904}.}
 
 \section{Posizionamento di SOULFRAME rispetto allo stato dell'arte}
-I limiti aperti richiamati nella Sezione~\ref{sec:eca-xr} riguardano soprattutto latenza end-to-end, continuità tra turni, integrazione multimodale e valutazione sperimentale. In SOULFRAME ho scelto una pipeline locale a tre stadi per ridurre dipendenze cloud e mantenere più prevedibile il ciclo audio$\rightarrow$testo$\rightarrow$risposta$\rightarrow$audio. La continuità è sostenuta da una memoria persistente e isolata per avatar, che conserva contesto e preferenze senza interferenze tra profili distinti. Sul piano del retrieval, la combinazione ibrida di segnali semantici e lessicali rende più robusta la risposta anche con query formulate in modo variabile. Per contenere la latenza percepita durante il turno conversazionale, il sistema usa sintesi in streaming e strategie di attesa che riducono i silenzi udibili. La modularità architetturale consente di sostituire singoli moduli senza modificare il client, favorendo iterazione tecnica e confrontabilità dei risultati.
+La scelta di una pipeline locale a tre stadi nasce soprattutto dal problema della latenza percepita: ridurre dipendenze cloud aiuta a mantenere più prevedibile il ciclo audio$\rightarrow$testo$\rightarrow$risposta$\rightarrow$audio. In SOULFRAME, la continuità è sostenuta da una memoria persistente e isolata per avatar, che conserva contesto e preferenze senza interferenze tra profili distinti. Nel retrieval, la combinazione ibrida di segnali semantici e lessicali rende la risposta più robusta anche con query formulate in modo variabile. Per contenere la latenza percepita, il sistema usa sintesi in streaming e strategie di attesa che riducono i silenzi udibili. La modularità architetturale permette di sostituire singoli moduli senza modificare il client, favorendo iterazione tecnica e confrontabilità dei risultati.
 
-Il posizionamento non riguarda solo la pipeline: in SOULFRAME l'avatar non è un semplice asset grafico, ma un profilo che combina aspetto, voce e memoria, così da mantenere coerenza tra sessioni e rendere più plausibile la presenza dell'interlocutore. Ho preferito vincolare l'accesso alla conversazione operativa alla disponibilità di un profilo minimo (voce e memoria) per evitare un'esperienza \textit{stateless} in cui ogni turno riparte da zero e l'utente non percepisce progressione. La memoria non è limitata a note manuali: l'ingestione di documenti e immagini consente di trasformare materiali esterni in contesto riutilizzabile, ampliando il perimetro oltre il dialogo puro e rendendo più naturale riferirsi a contenuti che l'utente ha esplicitamente fornito. Sul piano dell'accessibilità, l'esecuzione via browser riduce la barriera di ingresso rispetto a configurazioni VR tradizionali, ma impone vincoli tecnici---acquisizione microfono, gestione dell'audio e latenza---che rendono centrali scelte come streaming, warmup e segnali di attesa. Le implicazioni architetturali di queste decisioni, insieme ai componenti che le realizzano, vengono discusse nel Capitolo~\ref{chap:architettura}, mentre il Capitolo~\ref{chap:implementazione} entra nei dettagli implementativi e nei compromessi emersi durante lo sviluppo.
+Il posizionamento non riguarda solo la pipeline: in SOULFRAME l'avatar non è un semplice asset grafico, ma un profilo che combina aspetto, voce e memoria, così da mantenere coerenza tra sessioni e rendere più plausibile la presenza dell'interlocutore. Ho preferito vincolare l'accesso alla conversazione operativa alla disponibilità di un profilo minimo (voce e memoria), per evitare un'esperienza \textit{stateless} in cui ogni turno riparte da zero. La memoria non è limitata a note manuali: ingestione di documenti e immagini trasformano materiali esterni in contesto riutilizzabile e ampliano il perimetro oltre il dialogo puro. L'esecuzione via browser riduce la barriera di ingresso rispetto a configurazioni VR tradizionali, ma impone vincoli tecnici su microfono, gestione audio e latenza. In questo quadro diventano centrali streaming, warmup e segnali di attesa. Le implicazioni architetturali di queste decisioni, insieme ai componenti che le realizzano, vengono discusse nel Capitolo~\ref{chap:architettura}, mentre il Capitolo~\ref{chap:implementazione} entra nei dettagli implementativi e nei compromessi emersi durante lo sviluppo.

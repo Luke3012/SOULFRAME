@@ -3,24 +3,63 @@
 
 \section{Sintesi del lavoro svolto}
 \label{sec:sintesi}
-Contenuto in preparazione.
+SOULFRAME nasce da un problema concreto: far funzionare una conversazione vocale credibile dentro un ambiente 3D WebGL, senza ridurre l'avatar a un semplice ``parlante'' scollegato dalla scena. Nel prototipo, l'avatar è trattato come un profilo operativo completo, cioè aspetto, voce e memoria.
+
+L'architettura è stata costruita su una pipeline STT--RAG/LLM--TTS e su una separazione netta tra frontend Unity WebGL e backend a micro-servizi. Questa impostazione mi ha permesso di isolare le responsabilità (trascrizione, orchestrazione conversazionale, sintesi vocale, gestione asset) e di mantenere lo stesso flusso applicativo in locale Windows e su server Ubuntu.
+
+Un punto importante emerso durante lo sviluppo è che molte scelte non sono state ``a tavolino''. La selezione finale dei modelli (Whisper, \texttt{llama3:8b} quantizzato Q4, Coqui XTTS v2, \texttt{nomic-embed-text}) è arrivata dopo tentativi reali, con cambi di rotta anche costosi in termini di tempo.
+
+Le misure quantitative dbloccoisponibili e i relativi limiti metodologici sono raccolti nel Capitolo~\ref{chap:risultati}. Le evidenze discusse derivano da valutazioni tecniche svolte tra macchina locale e server Google Cloud. Qui l'obiettivo è chiudere il percorso in modo più onesto: cosa ha funzionato davvero, cosa è stato ridimensionato e quali sviluppi hanno senso nel perimetro del progetto.
 
 \section{Contributi principali}
 \label{sec:contributi-raggiunti}
-Contenuto in preparazione.
+Il contributo più solido è architetturale: una pipeline end-to-end leggibile, con contratti HTTP espliciti, \texttt{/health} su ogni servizio e normalizzazione degli endpoint lato client. Questo ha ridotto l'accoppiamento tra componenti e ha reso più semplice capire dove nasce un errore quando la stessa build passa da loopback locale a reverse proxy.
+
+Un secondo contributo riguarda il processo di selezione dei modelli, che è stato tutt'altro che lineare. In una fase iniziale avevo impostato il TTS su Chatterbox (ResembleAI), ma dopo giorni di conflitti tra pacchetti e problemi di compatibilità con CUDA 12.8, aggravati dalla GPU RTX 5070 Ti molto recente, ho preferito interrompere quel percorso e passare a Coqui XTTS v2. Non è stata una scelta ``elegante'' sulla carta, ma è stata quella che ha sbloccato davvero il progetto.
+
+Sul frontend, la scelta di governare desktop e touch con una FSM unica, affiancata da \texttt{UINavigator} e \texttt{UIHintBar}, ha mantenuto coerente il comportamento dell'interfaccia anche con input diversi. Nella conversazione, streaming TTS e wait phrases non eliminano i tempi di inferenza, ma evitano lunghi vuoti percepiti e rendono più leggibile lo stato del turno.
+
+Infine, il contributo operativo: runbook e script separati per locale Windows e deploy Ubuntu, più gestione avatar pensata per i vincoli WebGL. Spostare import/list/serving degli avatar sul backend ha ridotto la fragilità lato browser, soprattutto quando entrano in gioco cache, persistenza e sincronizzazione del filesystem virtuale.
 
 \section{Limiti attuali del sistema}
 \label{sec:limiti}
-Contenuto in preparazione.
+Il primo limite è metodologico. Come discusso nel Capitolo~\ref{chap:risultati}, alcune metriche restano n.d. perché manca una telemetria turn-based persistente e sincronizzata tra client e servizi. Me ne sono accorto presto: senza timestamp per turno, la diagnosi funziona per debugging operativo, ma non basta per una valutazione comparativa robusta.
+
+Un secondo limite è nella memoria conversazionale. Oggi il sistema memorizza in modo affidabile quando c'è un trigger lessicale esplicito (per esempio ``ricorda che...''), ma non estrae ancora in autonomia le informazioni davvero memorabili dal dialogo libero. Ho scelto di non forzare una versione ``semi-intelligente'' perché il rischio di falsi positivi in memoria, in questa fase, era più dannoso del beneficio.
+
+Un terzo limite riguarda la generazione facciale ad-hoc. L'idea iniziale era usare PRNet (TensorFlow) per generare volti personalizzati, ma in pratica il flusso non ha raggiunto una qualità accettabile: Blender non gestiva bene la separazione dei vertici del modello generato e il risultato richiedeva texture fittizie poco convincenti. A quel punto il rapporto costo/beneficio era sbilanciato, quindi ho preferito Avaturn per ottenere qualità visiva stabile con complessità molto più bassa.
+
+Restano poi i vincoli del runtime WebGL: nel prototipo i test operativi si sono concentrati su Microsoft Edge (Chromium), mentre altri browser non sono stati caratterizzati in modo sistematico. Inoltre, la presenza di \texttt{fs.jslib} e dell'uso di \texttt{FS.syncfs} rende esplicito che la persistenza nel browser richiede passaggi aggiuntivi e può introdurre stati intermedi.
+
+La resa del lipsync resta sensibile all'integrazione concreta tra Avaturn, \texttt{uLipSync} e condizioni WebGL. Anche con fallback e adattamenti sul mapping dei blendshape, nel prototipo non è stato possibile ottenere una sincronizzazione uniforme in tutte le combinazioni di avatar e carico.
+
+Tra i limiti emersi resta la tendenza del modello linguistico a colmare vuoti di contesto con contenuto plausibile quando il retrieval non recupera materiale davvero utile. In \autoref{subsec:criticita-osservate} questo comportamento è descritto dal punto di vista osservativo; qui lo inquadro come limite strutturale del bilanciamento tra fluidità conversazionale e controllo semantico. In un contesto embodied, anche una deviazione plausibile pesa più di un errore testuale isolato perché viene attribuita all'identità dell'interlocutore. La mitigazione richiede controlli aggiuntivi di faithfulness o politiche più conservative quando il contesto è sottosoglia, ma entrambe aumentano latenza o complessità nel perimetro attuale.
+
+Quando i PDF ingestiti contengono tabelle articolate, layout multi-colonna o scansioni a bassa qualità, l'OCR produce testo frammentato e spesso riordinato in modo non lineare. Quei chunk rumorosi finiscono comunque nello store vettoriale e possono essere recuperati con similarità alta anche se il contenuto è parziale o invertito. In pratica il retrieval risponde, ma il contesto che costruisce può essere poco utilizzabile per la generazione, con risposte confuse o dichiarazioni di incertezza anche su documenti presenti. Per risolvere davvero questo punto serve un pre-processing layout-aware prima dell'indicizzazione, che nel prototipo non è stato ancora integrato.
+
+Anche la qualità del voice cloning resta un compromesso. Coqui XTTS v2 produce una voce riconoscibile come sintetica e, su frasi lunghe o punteggiatura complessa, timbro e prosodia possono allontanarsi dal campione registrato. La causa principale è la combinazione tra campione breve raccolto in app e vincoli computazionali di un setup consumer: estendere durata e qualità del reference migliorerebbe la resa, ma allungherebbe onboarding e inferenza oltre un equilibrio sostenibile sulla macchina di sviluppo (laptop AMD Ryzen AI 9 HX 370 con RTX 5070 Ti Mobile 12 GB VRAM). In questo contesto XTTS v2 resta la scelta più praticabile per voice cloning zero-shot locale, ma la somiglianza percepita va trattata come approssimazione e non come fedeltà.
+
+Infine c'è un limite operativo che non va nascosto: la toolchain Python/CUDA resta fragile quando cambiano dipendenze o driver. A questo si aggiunge un hardening ancora parziale (autenticazione e rate limiting non completi), coerente con un prototipo single-user ma non ancora con un'esposizione estesa.
 
 \section{Sviluppi futuri prioritari}
 \label{sec:sviluppi-futuri}
 \subsection{Miglioramenti tecnici del prototipo}
-Contenuto in preparazione.
+Il primo sviluppo utile è una memoria conversazionale davvero intelligente. L'obiettivo è superare il trigger esplicito e introdurre un modulo che estragga automaticamente le informazioni rilevanti dal dialogo (ad esempio NER, intent detection o un secondo LLM leggero in pipeline), mantenendo però regole conservative per evitare memorizzazioni spurie.
+
+Il secondo sviluppo riguarda la generazione avatar personalizzata da foto reale. Qui ha senso riaprire il filone PRNet con strumenti più maturi, oppure valutare alternative recenti (gaussian splatting o NeRF leggeri) che oggi sono più accessibili. La priorità non è ``fare di più'', ma ottenere un salto percettivo reale senza riaprire la stessa complessità che aveva bloccato il primo tentativo.
+
+Il terzo sviluppo è il porting mobile/Android. L'interfaccia è già impostata con logica touch-first in vari passaggi, ma l'inferenza resta legata a un backend dedicato. Un'architettura ibrida (client mobile + modelli lato cloud) può abbassare la barriera d'accesso senza comprimere eccessivamente la qualità.
+
+Accanto a questi punti, resta prioritario consolidare la base tecnica: telemetria per turno, logging strutturato, readiness-check più rigorosi e hardening operativo minimo del deploy. Sono interventi meno ``visibili'', ma necessari per trasformare le osservazioni qualitative in evidenze misurabili.
 \subsection{Estensione della valutazione utenti}
-Contenuto in preparazione.
-% TODO facoltativo: se SUS/NPS non rientra nel Capitolo 5, chiudere qui con un piano operativo (campione, tempi, strumenti, criteri di successo) e misure per ridurre i bias.
+Il quarto sviluppo, probabilmente il più importante sul piano scientifico, è una valutazione con utenti reali su campione strutturato. Un protocollo controllato permetterebbe un confronto diretto con la letteratura su naturalezza e co-presenza e renderebbe più solidi i confronti tra iterazioni.
+
+Il disegno sperimentale dovrebbe separare almeno tre dimensioni: usabilità dell'interfaccia, qualità percepita della conversazione e tolleranza ai ritardi. In questo modo si evita che un solo fattore dominante, come il tempo al primo audio, nasconda problemi diversi di navigazione, feedback o chiarezza dello stato.
+
+Anche uno studio piccolo, se progettato bene, sarebbe già un passo avanti netto: renderebbe confrontabili le iterazioni successive e permetterebbe di decidere gli interventi futuri su basi meno impressionistiche.
 
 \section{Considerazioni finali}
 \label{sec:finali}
-Contenuto in preparazione.
+SOULFRAME mostra che una conversazione vocale embodied in WebGL è praticabile, ma solo se architettura, implementazione e operatività vengono pensate insieme. Il valore del lavoro non sta in una singola tecnica, ma nel fatto che il ciclo end-to-end resta osservabile, debuggabile e migliorabile.
+
+Ho privilegiato scelte incrementali e verificabili: prima chiudere un flusso completo che funzionasse davvero, poi aumentare qualità e copertura delle misure. Se dovessi sintetizzare il percorso in una frase, direi questa: meno promesse ``perfette'', più iterazioni concrete che reggono alla prova dell'uso reale.

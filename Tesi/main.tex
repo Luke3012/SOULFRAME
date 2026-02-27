@@ -38,6 +38,8 @@
 \usepackage{rotating}
 \usepackage{makecell}
 \usepackage{multirow}
+\usepackage{wrapfig}
+\usepackage{placeins}
 \usepackage{pifont}
 \usepackage{tabstackengine}
 \pgfplotsset{width=10cm,height=14cm,compat=1.18}
@@ -181,12 +183,12 @@ basicstyle=\ttfamily
 
 
 \graphicspath{{Risorse/}}
-\usepackage[hyperindex]{hyperref} %per l'indice interattivo
+\usepackage[hyperindex,hyperfootnotes=false]{hyperref} %per l'indice interattivo
 \hypersetup{colorlinks=true, linkcolor=black, citecolor=black} %per 
 \setmarginsrb{35mm}{30mm}{30mm}{30mm}{5mm}{10mm}{0mm}{10mm}
 \raggedbottom
 
-\title{Sviluppo di un ambiente virtuale per ridurre il senso di solitudine della popolazione anziana}
+\title{Sviluppo di un ambiente virtuale conversazionale per mitigare la loneliness}
 \author{Luca Tartaglia}
 \date{\today}
 
@@ -217,7 +219,7 @@ basicstyle=\ttfamily
 \vskip 1.0cm
 \begin{center}
 \Large
-\parbox{0.9\textwidth}{\centering Sviluppo di un ambiente virtuale per ridurre il senso di solitudine nella popolazione anziana}
+\parbox{0.9\textwidth}{\centering Sviluppo di un ambiente virtuale conversazionale per mitigare la loneliness}
 \end{center}
 \vskip 1.0 cm
 \small \centerline{Integrazione di agenti virtuali per il sostegno alla socialit\`a}
@@ -253,7 +255,27 @@ basicstyle=\ttfamily
 % --- Indice ---
 \markboth{Index}{Index}
 \tableofcontents
-\clearpage
+\cleardoublepage
+\phantomsection
+\addcontentsline{toc}{chapter}{\listfigurename}
+\begingroup
+\catcode`\_=12\relax
+\setlength{\emergencystretch}{6em}
+\hbadness=10000
+\sloppy
+\listoffigures
+\endgroup
+\cleardoublepage
+\phantomsection
+\addcontentsline{toc}{chapter}{\listtablename}
+\begingroup
+\catcode`\_=12\relax
+\setlength{\emergencystretch}{6em}
+\hbadness=10000
+\sloppy
+\listoftables
+\endgroup
+\cleardoublepage
 
 % --- Inizio capitoli numerati ---
 \pagenumbering{arabic}
