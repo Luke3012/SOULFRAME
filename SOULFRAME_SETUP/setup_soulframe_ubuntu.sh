@@ -483,6 +483,7 @@ fi
 mkdir -p \
   "$BACKEND_DIR/avatar_store" \
   "$BACKEND_DIR/rag_store" \
+  "$BACKEND_DIR/log" \
   "$BACKEND_DIR/voices" \
   "$BACKEND_DIR/voices/avatars"
 
@@ -566,6 +567,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   cat <<EOF_ENV > "$ENV_FILE"
 # SOULFRAME env
 RAG_DIR=$BACKEND_DIR/rag_store
+RAG_LOG_DIR=$BACKEND_DIR/log
 RAG_OCR_LANG=ita+eng
 TESSDATA_PREFIX=$TESSDATA_PREFIX
 
@@ -646,6 +648,7 @@ fi
 ensure_env_key "$IDLE_ENV_FILE" "STARTUP_GRACE_MINUTES" "10"
 ensure_env_key "$IDLE_ENV_FILE" "LOG_TAIL_LINES" "20000"
 ensure_env_key "$IDLE_ENV_FILE" "TRACK_SSH_ACTIVITY" "1"
+ensure_env_key "$ENV_FILE" "RAG_LOG_DIR" "$BACKEND_DIR/log"
 ensure_env_key "$ENV_FILE" "COQUI_TOS_AGREED" "1"
 
 cat <<'UNIT' > /etc/systemd/system/soulframe-whisper.service

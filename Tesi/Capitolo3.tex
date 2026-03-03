@@ -47,14 +47,14 @@ In deploy pubblico, l'elemento chiave di integrazione è il reverse proxy Caddy,
 
 Per una vista sintetica della catena conversazionale completa, Figura~\ref{fig:pipeline-e2e} mostra il flusso end-to-end dall'input vocale alla risposta dell'agente embodied.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.85\textwidth]{pipeline_e2e.png}
 \caption{Flusso end-to-end del sistema SOULFRAME: dall'input vocale dell'utente alla risposta dell'agente embodied.}
 \label{fig:pipeline-e2e}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{arch_cap3.png}
 \caption{Vista d'insieme dell'architettura a componenti di SOULFRAME: il client Unity WebGL comunica con i micro-servizi backend attraverso il reverse proxy Caddy.}
@@ -74,7 +74,7 @@ Ricevuto il testo di risposta, il client attiva la sintesi vocale tramite il ser
 
 SOULFRAME introduce inoltre strategie specifiche per mitigare i tempi morti più evidenti. Per contenere la latenza iniziale, il servizio TTS adotta meccanismi di warmup durante il boot; in parallelo, il frontend mostra un pannello di caricamento dedicato e rende disponibili le modalità operative solo quando il TTS risulta pronto. Lo stesso problema può riemergere durante i turni successivi, quando la pipeline STT$\rightarrow$RAG/LLM$\rightarrow$TTS è in corso: in questa fase il sistema usa un fallback audio di cortesia per evitare silenzi prolungati e dare un segnale immediato di reattività. I dettagli implementativi di warmup, wait phrases e streaming sono discussi nel Capitolo~\ref{chap:implementazione}.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{ui_state_diagram_cap3.png}
 \caption{Diagramma degli stati UI del client SOULFRAME: dalla fase
@@ -86,7 +86,7 @@ e alla gestione degli errori.}
 
 Figura~\ref{fig:flusso-e2e-cap3} sintetizza la sequenza temporale e i formati dati scambiati tra componenti, mettendo in evidenza dove avvengono le trasformazioni principali (WAV$\rightarrow$testo, testo$\rightarrow$testo contestualizzato, testo$\rightarrow$audio) e dove si innestano le tecniche di riduzione della latenza percepita. La stessa figura chiarisce che, in deploy con reverse proxy, gli endpoint REST restano invariati a livello logico e vengono raggiunti tramite path riscritti sotto un unico origin HTTPS.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{flusso_e2e_cap3.png}
 \caption{Flusso end-to-end di una richiesta conversazionale in SOULFRAME: dall'acquisizione audio push-to-talk alla riproduzione della risposta vocale.}
@@ -100,14 +100,14 @@ Nel percorso locale, il client seleziona un profilo già disponibile e lo carica
 
 Dopo selezione o creazione, il flusso prosegue con onboarding voce e memoria per-avatar. L'accesso a \texttt{MainMode} avviene solo quando i prerequisiti minimi del profilo risultano soddisfatti, così da evitare conversazioni prive di contesto operativo. I dettagli implementativi del bridge WebGL, del ciclo di import e delle logiche di robustezza lato asset sono trattati nel Capitolo~\ref{chap:implementazione}.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
-\includegraphics[width=0.88\textwidth]{flusso_avatar_cap3.png}
+\includegraphics[width=0.95\textwidth]{flusso_avatar_cap3.png}
 \caption{Flusso di gestione avatar in SOULFRAME: dalla creazione tramite Avaturn alla cache server-side e al rendering nel client Unity.}
 \label{fig:flusso-avatar-cap3}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.85\textwidth]{ui_carosello.png}
 \caption{Interfaccia carosello avatar in SOULFRAME: selezione del
@@ -115,28 +115,28 @@ profilo attivo tra avatar locali e importati.}
 \label{fig:ui-carosello-cap3}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.85\textwidth]{ui_mainmenu.png}
 \caption{Interfaccia \texttt{MainMenu} in SOULFRAME: accesso alle funzioni principali prima dell'onboarding dell'avatar.}
 \label{fig:ui-mainmenu-cap3}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.85\textwidth]{ui_setupvoice.png}
 \caption{Schermata \texttt{SetupVoice}: registrazione e validazione del campione vocale durante l'onboarding.}
 \label{fig:ui-setupvoice-cap3}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.85\textwidth]{ui_setupmemory.png}
 \caption{Schermata \texttt{SetupMemory}: inserimento note e ingestione contenuti per popolare la memoria per-avatar.}
 \label{fig:ui-setupmemory-cap3}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.85\textwidth]{ui_push_to_talk.png}
 \caption{Stato di ascolto push-to-talk nel client Unity WebGL:
@@ -144,13 +144,7 @@ acquisizione audio attiva con indicatore visivo.}
 \label{fig:ui-ptt-cap3}
 \end{figure}
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.85\textwidth]{ui_mainmode.png}
-\caption{MainMode conversazionale in SOULFRAME: trascrizione e
-risposta dell'avatar in corso durante un turno vocale.}
-\label{fig:ui-mainmode-cap3}
-\end{figure}
+\FloatBarrier
 
 \section{Componenti implementati}
 I componenti implementati rendono operativa l'architettura della Sezione~\ref{sec:architettura-riferimento}: integrazione Avaturn nel client Unity WebGL, backend AI a micro-servizi e persistenza per profilo avatar. La panoramica unificata dei servizi backend è riportata in Tabella~\ref{tab:microservizi-cap3}; i dettagli fini di funzioni e ottimizzazioni sono nel Capitolo~4.
@@ -161,7 +155,7 @@ L'integrazione Avaturn nel frontend Unity WebGL segue una logica a due passaggi:
 \subsection{Backend AI a micro-servizi (Whisper, RAG, TTS, Avatar Asset)}
 Il backend di SOULFRAME è realizzato come insieme di micro-servizi indipendenti basati su FastAPI, avviati con \texttt{uvicorn} su porte dedicate (8001--8004). La scomposizione in servizi rende esplicita la separazione delle responsabilità e permette di verificare disponibilità e corretto instradamento con controlli semplici (\texttt{/health}) prima di abilitare il flusso conversazionale. Tabella~\ref{tab:microservizi-cap3} sintetizza i quattro componenti e i relativi contratti API, collegando porte, endpoint e responsabilità operative in un'unica vista.
 
-\begin{table}[t]
+\begin{table}[!htbp]
 \centering
 \scriptsize
 \setlength{\tabcolsep}{2pt}
@@ -188,7 +182,7 @@ Whisper presidia la trasformazione audio$\rightarrow$testo e costituisce il punt
 La scomposizione in servizi autonomi mantiene il client Unity disaccoppiato dalla logica interna di inferenza e storage, rendendo più semplice evolvere singoli componenti senza cambiare il flusso utente. Questo vincolo consente di aggiornare STT, RAG o TTS in modo indipendente durante i test comparativi. I dettagli implementativi (caricamento modelli, gestione file temporanei, chunking/overlap, estrazione contenuto, deduplicazione, self-healing e parametri runtime) sono discussi nel Capitolo~\ref{chap:implementazione}.
 In Figura~\ref{fig:rag-swagger-cap3} è riportata la documentazione automatica degli endpoint.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.85\textwidth]{rag_docs_swagger.png}
 \caption{Interfaccia Swagger UI (\texttt{/docs}) del servizio RAG di
@@ -201,9 +195,9 @@ schema automatico generato da FastAPI.}
 
 Nel sistema, la persistenza dei dati in SOULFRAME è organizzata su filesystem e segue una separazione per \texttt{avatar\_id}: ogni profilo mantiene in modo indipendente tre store dedicati, ovvero \texttt{avatar\_store/} per gli asset \texttt{.glb}, \texttt{voices/avatars/} per il profilo vocale e \texttt{rag\_store/} per la memoria conversazionale. Questa struttura mantiene allineati identità dell'avatar e risorse operative lungo tutto il ciclo di vita del profilo.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
-\includegraphics[width=0.75\textwidth]{persistenza_tree_cap3.png}
+\includegraphics[width=0.9\textwidth]{persistenza_tree_cap3.png}
 \caption{Struttura del filesystem di persistenza in SOULFRAME:
 tre store isolati per \texttt{avatar\_id} (asset \texttt{.glb},
 profilo vocale e memoria RAG).}
@@ -213,6 +207,8 @@ profilo vocale e memoria RAG).}
 L'isolamento per profilo consente di evitare interferenze tra avatar distinti e di ricostruire lo stato dopo riavvio rileggendo i rispettivi percorsi persistenti. A livello applicativo, la presenza di memoria può essere verificata tramite \texttt{/avatar\_stats} (campo \texttt{has\_memory}), mentre asset e voce restano associati allo stesso \texttt{avatar\_id} nei rispettivi store.
 
 I dettagli implementativi (deduplicazione, scrittura atomica, self-healing dei metadati, generazione lazy delle frasi di attesa) sono discussi nel Capitolo~\ref{chap:implementazione}.
+
+\FloatBarrier
 
 \section{Setup e deploy operativo}
 Il setup e il deploy operativo rendono concreta l'architettura descritta nella Sezione~\ref{sec:architettura-riferimento}, traducendo la scomposizione in componenti in procedure ripetibili di avvio, arresto e verifica. SOULFRAME mantiene la stessa struttura logica in locale e in produzione, ma cambia l'orchestrazione dei processi e il punto di ingresso di rete, in coerenza con i vincoli di portabilità e manutenibilità discussi in Sezione~\ref{sec:requisiti}. Per ridurre errori di esercizio, ho privilegiato passaggi operativi ripetibili e un punto di controllo unificato per i servizi.
@@ -224,7 +220,7 @@ L'avvio operativo è centralizzato in \texttt{ai\_services.cmd}, che coordina i 
 
 Questo assetto favorisce debugging iterativo e osservabilità immediata: i log dei servizi sono disponibili in console, gli endpoint risultano interrogabili direttamente su loopback e il client WebGL può essere validato senza introdurre variabili infrastrutturali esterne. Le differenze operative rispetto al deploy server sono sintetizzate in Tabella~\ref{tab:deploy-confronto-cap3}.
 
-\begin{table}[t]
+\begin{table}[!htbp]
 \centering
 \footnotesize
 \setlength{\tabcolsep}{3pt}

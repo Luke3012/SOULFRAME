@@ -69,6 +69,11 @@ Posiziona un file audio di riferimento (WAV) in:
 backend/voices/default.wav
 ```
 
+### 5. Variabili ambiente utili (RAG)
+
+- `RAG_DIR`: root della memoria vettoriale per-avatar (default: `backend/rag_store`)
+- `RAG_LOG_DIR`: root dei log conversazione per-avatar (default: `backend/log`)
+
 ## Avvio Servizi
 
 ### Metodo Automatico (Consigliato)
@@ -188,6 +193,49 @@ response = requests.post("http://127.0.0.1:8002/recall", json={
 print(response.json()["documents"])
 ```
 
+### RAG Chat Session + Log conversazione
+
+Per ogni ingresso in MainMode, il frontend avvia una sessione conversazione:
+
+- `POST /chat_session/start` con `avatar_id` restituisce `session_id` e `log_file`
+- `POST /chat` accetta anche:
+  - `session_id` (opzionale)
+  - `input_mode` (`keyboard` o `voice`)
+  - `log_conversation` (`true` per append del turno nel file sessione)
+
+```python
+import requests
+
+session = requests.post("http://127.0.0.1:8002/chat_session/start", json={
+    "avatar_id": "alice"
+}).json()
+
+response = requests.post("http://127.0.0.1:8002/chat", json={
+    "avatar_id": "alice",
+    "user_text": "Ciao, come stai?",
+    "top_k": 20,
+    "session_id": session["session_id"],
+    "input_mode": "keyboard",   # oppure "voice"
+    "log_conversation": True
+})
+print(response.json()["text"])
+```
+
+```bash
+# 1) Avvia sessione
+curl -X POST http://127.0.0.1:8002/chat_session/start \
+  -H "Content-Type: application/json" \
+  -d '{"avatar_id":"alice"}'
+
+# 2) Chat loggata (sostituisci <session_id>)
+curl -X POST http://127.0.0.1:8002/chat \
+  -H "Content-Type: application/json" \
+  -d '{"avatar_id":"alice","user_text":"Ciao","top_k":20,"session_id":"<session_id>","input_mode":"voice","log_conversation":true}'
+```
+
+I log sono salvati in `backend/log/<avatar_id_sanitized>/<session_id>.log`.
+I flussi tecnici (es. `setup_voice_generator`) non vengono loggati come conversazione MainMode.
+
 ### TTS (Text-to-Speech)
 
 ```python
@@ -261,6 +309,7 @@ Per cambiare i parametri su Windows modifica direttamente `ai_services.cmd`.
 - **GPU**: TTS utilizzerà automaticamente CUDA se disponibile (molto più veloce)
 - **OCR**: configurato per italiano+inglese, modificabile con env `RAG_OCR_LANG`
 - **Memoria RAG**: i database per avatar sono salvati in `backend/rag_store/`
+- **Log conversazioni**: salvati per avatar in `backend/log/` (una sessione MainMode = un file `.log`)
 
 ### Warmup Coqui al boot
 
@@ -276,7 +325,7 @@ e animazioni dedicate), e l'interfaccia completa viene resa disponibile quando i
 Verifica che Ollama sia avviato: `ollama serve`
 
 ### "OCR non disponibile"
-Installa Tesseract e verifica il percorso in `rag_server.py` (riga 117)
+Installa Tesseract e verifica il percorso in `rag_server.py` (`TESSERACT_CMD`)
 
 ### "CUDA out of memory"
 Usa CPU per TTS: `set COQUI_TTS_DEVICE=cpu` prima di avviare

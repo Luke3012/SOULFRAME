@@ -100,6 +100,20 @@ MainMode e' la fase operativa della conversazione:
 
 Da MainMode puoi anche tornare rapidamente a setup voce/setup memoria se vuoi aggiornare il profilo.
 
+## Log Conversazioni Avatar
+
+Il backend salva un log persistente per ogni conversazione MainMode.
+
+- quando entri in MainMode viene creata una nuova sessione e un nuovo file log;
+- i log sono separati per avatar in `SOULFRAME_AI/backend/log/<avatar_id>/`;
+- ogni turno viene appeso progressivamente nello stesso file della sessione corrente;
+- ogni blocco contiene input utente (`keyboard` o `voice`) e output testuale del RAG;
+- i file esistenti non vengono cancellati automaticamente.
+
+Esempio nome file:
+
+- `SOULFRAME_AI/backend/log/LOCAL_model1/20260303_151530_a1b2c3d4.log`
+
 ## Limitazioni WebGL (Lip Sync)
 
 Il lip sync di Unity in WebGL ha limitazioni note rispetto all'esecuzione in Play Mode/Desktop.

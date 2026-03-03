@@ -269,6 +269,7 @@ public class UIFlowController : MonoBehaviour
     private Coroutine mainModeCheckRoutine;
     private Coroutine mainModeEnableRoutine;
     private Coroutine mainModeHintRefreshRoutine;
+    private Coroutine mainModeSessionStartRoutine;
     private UnityWebRequest mainModeRequest;
     private readonly List<UnityWebRequest> mainModeRequests = new List<UnityWebRequest>();
     private string ttsStreamError;
@@ -283,6 +284,8 @@ public class UIFlowController : MonoBehaviour
     private bool mainModeProcessing;
     private bool mainModeSpeaking;
     private bool mainModeTtsInterruptedByUser;
+    private string mainModeConversationSessionId;
+    private bool mainModeSessionStartInFlight;
     private float lastMouseMoveTime;
     private Vector3 lastMousePosition;
     private Transform currentCameraAnchor;
@@ -3253,6 +3256,7 @@ public class UIFlowController : MonoBehaviour
         // Se usciamo da MainMode (via pulsanti, non GoBack), disabilita l'idleLook
         if (currentState == UIState.MainMode && targetState != UIState.MainMode)
         {
+            ResetMainModeConversationSession();
             var idleLook = avatarManager != null ? avatarManager.idleLook : null;
             if (idleLook != null)
             {
@@ -4218,6 +4222,7 @@ public class UIFlowController : MonoBehaviour
                 avatar_id = "setup_voice_generator",
                 user_text = prompt,
                 top_k = 0,
+                log_conversation = false,
                 system = "Sei un generatore di frasi per test di pronuncia. "
                     + "Rispondi sempre con UNA sola frase italiana naturale. "
                     + "Non rifiutare mai la richiesta e non aggiungere spiegazioni."
@@ -4553,6 +4558,96 @@ public class UIFlowController : MonoBehaviour
         }
     }
 
+    private void ResetMainModeConversationSession()
+    {
+        mainModeConversationSessionId = null;
+        mainModeSessionStartInFlight = false;
+        if (mainModeSessionStartRoutine != null)
+        {
+            StopCoroutine(mainModeSessionStartRoutine);
+            mainModeSessionStartRoutine = null;
+        }
+    }
+
+    private IEnumerator StartMainModeConversationSessionRoutine()
+    {
+        if (mainModeSessionStartInFlight || !string.IsNullOrEmpty(mainModeConversationSessionId))
+        {
+            yield break;
+        }
+        if (servicesConfig == null || string.IsNullOrEmpty(servicesConfig.ragBaseUrl))
+        {
+            yield break;
+        }
+
+        string avatarId = avatarManager != null ? avatarManager.CurrentAvatarId : null;
+        string safeAvatarId = string.IsNullOrEmpty(avatarId) ? "default" : avatarId;
+
+        mainModeSessionStartInFlight = true;
+        try
+        {
+            string error = null;
+            ChatSessionStartResponse startResponse = null;
+            string payload = JsonUtility.ToJson(new ChatSessionStartPayload
+            {
+                avatar_id = safeAvatarId
+            });
+
+            yield return StartCoroutine(PostJson(
+                BuildServiceUrl(servicesConfig.ragBaseUrl, "chat_session/start"),
+                payload,
+                "RAG",
+                (ChatSessionStartResponse response) => startResponse = response,
+                requestError => error = requestError
+            ));
+
+            if (!string.IsNullOrEmpty(error))
+            {
+                UpdateDebugText($"Sessione log non avviata: {error}");
+                yield break;
+            }
+
+            string sessionId = startResponse != null ? startResponse.session_id : null;
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                UpdateDebugText("Sessione log non avviata: session_id mancante.");
+                yield break;
+            }
+
+            mainModeConversationSessionId = sessionId.Trim();
+        }
+        finally
+        {
+            mainModeSessionStartInFlight = false;
+            mainModeSessionStartRoutine = null;
+        }
+    }
+
+    private IEnumerator EnsureMainModeConversationSessionRoutine()
+    {
+        if (!string.IsNullOrEmpty(mainModeConversationSessionId))
+        {
+            yield break;
+        }
+
+        if (mainModeSessionStartInFlight)
+        {
+            float startedAt = Time.realtimeSinceStartup;
+            const float waitSeconds = 5f;
+            while (mainModeSessionStartInFlight && Time.realtimeSinceStartup - startedAt < waitSeconds)
+            {
+                yield return null;
+            }
+
+            if (!string.IsNullOrEmpty(mainModeConversationSessionId))
+            {
+                yield break;
+            }
+        }
+
+        yield return StartCoroutine(StartMainModeConversationSessionRoutine());
+    }
+
     private void BeginMainMode()
     {
         RequestWebGlMicrophonePermissionIfNeeded();
@@ -4564,6 +4659,7 @@ public class UIFlowController : MonoBehaviour
         ttsActiveSessionId = -1;
         mainModeChatNoteActive = false;
         ttsAudioSource = GetOrCreateLipSyncAudioSource();
+        ResetMainModeConversationSession();
         ResetMainModeTexts();
         ResetTouchMainModeConversationUi();
         SetHintBarSpacePressed(false);
@@ -4592,6 +4688,8 @@ public class UIFlowController : MonoBehaviour
             StopCoroutine(mainModeEnableRoutine);
         }
         mainModeEnableRoutine = StartCoroutine(EnsureMainModeIdleLookReady());
+
+        mainModeSessionStartRoutine = StartCoroutine(StartMainModeConversationSessionRoutine());
     }
 
     private void ResetMainModeTexts()
@@ -5320,6 +5418,8 @@ public class UIFlowController : MonoBehaviour
             yield break;
         }
 
+        yield return StartCoroutine(EnsureMainModeConversationSessionRoutine());
+
         UpdateMainModeStatus("Sto pensando...");
         string reply = null;
         string ragError = null;
@@ -5328,7 +5428,10 @@ public class UIFlowController : MonoBehaviour
         {
             avatar_id = string.IsNullOrEmpty(avatarId) ? "default" : avatarId,
             user_text = userText,
-            top_k = 20
+            top_k = 20,
+            session_id = mainModeConversationSessionId,
+            input_mode = "keyboard",
+            log_conversation = true
         });
 
         bool autoRemembered = false;
@@ -5651,6 +5754,8 @@ public class UIFlowController : MonoBehaviour
             yield break;
         }
 
+        yield return StartCoroutine(EnsureMainModeConversationSessionRoutine());
+
         UpdateMainModeStatus("Sto pensando...");
         string reply = null;
         string ragError = null;
@@ -5659,7 +5764,10 @@ public class UIFlowController : MonoBehaviour
         {
             avatar_id = string.IsNullOrEmpty(avatarId) ? "default" : avatarId,
             user_text = transcript,
-            top_k = 20
+            top_k = 20,
+            session_id = mainModeConversationSessionId,
+            input_mode = "voice",
+            log_conversation = true
         });
 
         bool autoRemembered = false;
@@ -6047,6 +6155,8 @@ public class UIFlowController : MonoBehaviour
             StopCoroutine(mainModeHintRefreshRoutine);
             mainModeHintRefreshRoutine = null;
         }
+
+        ResetMainModeConversationSession();
 
         AbortMainModeRequests();
         StopMainModeTtsPlayback();
@@ -7798,6 +7908,9 @@ public class UIFlowController : MonoBehaviour
         public string user_text;
         public int top_k;
         public string system;
+        public string session_id;
+        public string input_mode;
+        public bool log_conversation;
     }
 
     [System.Serializable]
@@ -7805,6 +7918,21 @@ public class UIFlowController : MonoBehaviour
     {
         public string text;
         public bool auto_remembered;
+    }
+
+    [System.Serializable]
+    private class ChatSessionStartPayload
+    {
+        public string avatar_id;
+    }
+
+    [System.Serializable]
+    private class ChatSessionStartResponse
+    {
+        public bool ok;
+        public string avatar_id;
+        public string session_id;
+        public string log_file;
     }
 
     [System.Serializable]

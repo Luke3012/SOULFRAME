@@ -58,6 +58,7 @@ SOULFRAME_AI/backend/voices/
 # Ignora il database locale del RAG
 SOULFRAME_AI/backend/rag_store/
 SOULFRAME_AI/backend/avatar_store/
+SOULFRAME_AI/backend/log/
 
 # Ignora chiavi API e file temporanei
 gemini_key.txt

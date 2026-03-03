@@ -34,6 +34,7 @@ set "OLLAMA_PORT=11434"
 set "BUILD_PORT=8000"
 
 set "RAG_DIR=%BACKEND%\rag_store"
+set "RAG_LOG_DIR=%BACKEND%\log"
 set "RAG_OCR_LANG=ita+eng"
 set "OLLAMA_HOST=http://127.0.0.1:11434"
 set "EMBED_MODEL=nomic-embed-text"
@@ -163,6 +164,7 @@ REM ========================= HELPERS =========================
 if not exist "%ROOT%models" mkdir "%ROOT%models" >nul 2>&1
 if not exist "%TTS_HOME%" mkdir "%TTS_HOME%" >nul 2>&1
 if not exist "%BACKEND%\voices" mkdir "%BACKEND%\voices" >nul 2>&1
+if not exist "%BACKEND%\log" mkdir "%BACKEND%\log" >nul 2>&1
 exit /b 0
 
 :PORT_IS_LISTENING

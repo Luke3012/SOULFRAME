@@ -22,6 +22,7 @@ Questa cartella contiene gli script di deploy e gestione per VM Ubuntu.
 |   +-- whisper_server.py
 |   +-- requirements.txt
 |   +-- rag_store/
+|   +-- log/
 |   +-- avatar_store/
 |   `-- voices/
 +-- webgl
@@ -88,6 +89,7 @@ Questa cartella contiene gli script di deploy e gestione per VM Ubuntu.
 - Crea anche le cartelle backend necessarie se mancanti:
   - `/opt/soulframe/backend/avatar_store`
   - `/opt/soulframe/backend/rag_store`
+  - `/opt/soulframe/backend/log`
   - `/opt/soulframe/backend/voices`
   - `/opt/soulframe/backend/voices/avatars`
 - Configura auto-shutdown idle con timer.
@@ -97,6 +99,7 @@ Questa cartella contiene gli script di deploy e gestione per VM Ubuntu.
 - `CHAT_MODEL_DEFAULT` (default: `llama3.1:8b`)
 - `EMBED_MODEL_DEFAULT` (default: `nomic-embed-text`)
 - `WHISPER_MODEL_DEFAULT` (default: `medium`)
+- `RAG_LOG_DIR` (default generated env: `/opt/soulframe/backend/log`)
 - `SKIP_OLLAMA_PULL=1` per saltare download modelli Ollama
 - `TORCH_INSTALL_CMD` per forzare una build torch/torchaudio specifica (es. CUDA)
 - `UPDATE_DROP_DIR` per personalizzare la cartella update automatica

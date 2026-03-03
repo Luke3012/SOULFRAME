@@ -5,6 +5,7 @@ Cosa fa:
 - Memoria per avatar con ChromaDB (persistente, per-avatar DB)
 - Embedding via Ollama (/api/embed)
 - Chat via Ollama (/api/chat) con RAG retrieval e deduplicazione
+- Log conversazioni per avatar/sessione MainMode su file .log persistenti
 - Ingest di file: PDF (con OCR sempre attivo), immagini (OCR), testo
 - Descrizione immagini con Gemini Vision (opzionale)
 - Pulizia testo intelligente e rimozione garbage
@@ -19,6 +20,7 @@ Endpoints principali:
 - POST /remember: salva un testo con embedding
 - POST /recall: ritrova documenti (ricerca ibrida BM25+semantic)
 - POST /chat: chat con context RAG e hybrid search
+- POST /chat_session/start: apre una sessione conversazione e crea il file log
 - POST /ingest_file: importa PDF/immagini/testo con deduplicazione
 - POST /describe_image: descrizione con Gemini Vision
 - POST /clear_avatar: cancella memoria di un avatar (soft/hard)
@@ -43,6 +45,7 @@ import io
 import difflib
 import uuid
 import time
+from datetime import datetime
 import gc
 import stat
 import shutil
@@ -120,6 +123,11 @@ PERSIST_ROOT = os.getenv("RAG_DIR", os.path.join(os.path.dirname(__file__), "rag
 PERSIST_ROOT = PERSIST_ROOT.strip().strip('"')
 PERSIST_ROOT = os.path.abspath(os.path.normpath(PERSIST_ROOT))
 os.makedirs(PERSIST_ROOT, exist_ok=True)
+
+RAG_LOG_DIR = os.getenv("RAG_LOG_DIR", os.path.join(os.path.dirname(__file__), "log"))
+RAG_LOG_DIR = RAG_LOG_DIR.strip().strip('"')
+RAG_LOG_DIR = os.path.abspath(os.path.normpath(RAG_LOG_DIR))
+os.makedirs(RAG_LOG_DIR, exist_ok=True)
 
 CHUNK_CHARS = int(os.getenv("RAG_CHUNK_CHARS", "3500"))
 CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "500"))
@@ -399,6 +407,8 @@ def _embed_one_or_http_500(text: str) -> List[float]:
 
 _AVATAR_CLIENTS: dict[str, ChromaClientAPI] = {}
 _AVATAR_LOCK = threading.Lock()
+_LOG_WRITE_LOCK = threading.Lock()
+_ALLOWED_LOG_INPUT_MODES = {"voice", "keyboard"}
 
 def _safe_avatar_key(avatar_id: str) -> str:
     s = (avatar_id or "default").strip()
@@ -410,6 +420,115 @@ def _safe_avatar_key(avatar_id: str) -> str:
 
 def _avatar_persist_dir(avatar_id: str) -> str:
     return os.path.join(PERSIST_ROOT, _safe_avatar_key(avatar_id))
+
+
+def _safe_session_key(session_id: str) -> str:
+    s = (session_id or "").strip()
+    s = re.sub(r"[^a-zA-Z0-9_-]+", "_", s)
+    if not s:
+        s = _new_conversation_session_id()
+    return s[:96]
+
+
+def _new_conversation_session_id() -> str:
+    stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
+    return f"{stamp}_{uuid.uuid4().hex[:8]}"
+
+
+def _format_local_ts(ts: datetime) -> str:
+    return ts.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _session_log_file_path(avatar_id: str, session_id: str) -> tuple[str, str, str]:
+    safe_avatar = _safe_avatar_key(avatar_id)
+    safe_session = _safe_session_key(session_id)
+    avatar_dir = os.path.join(RAG_LOG_DIR, safe_avatar)
+    os.makedirs(avatar_dir, exist_ok=True)
+    return os.path.join(avatar_dir, f"{safe_session}.log"), safe_avatar, safe_session
+
+
+def _ensure_session_log_header(
+    log_path: str,
+    avatar_id: str,
+    safe_avatar: str,
+    safe_session: str,
+    created_at: datetime,
+) -> None:
+    if os.path.exists(log_path):
+        return
+
+    avatar_display = (avatar_id or "").strip() or "default"
+    created = _format_local_ts(created_at)
+    header = (
+        "============================================================\n"
+        "SOULFRAME AVATAR CONVERSATION LOG\n"
+        f"Avatar      : {avatar_display}\n"
+        f"Avatar Safe : {safe_avatar}\n"
+        f"Session ID  : {safe_session}\n"
+        f"Created At  : {created}\n"
+        "============================================================\n\n"
+    )
+    with open(log_path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(header)
+
+
+def _normalize_input_mode(input_mode: Optional[str]) -> str:
+    mode = (input_mode or "").strip().lower()
+    return mode if mode in _ALLOWED_LOG_INPUT_MODES else "unknown"
+
+
+def _start_conversation_log_session(avatar_id: str, session_id: Optional[str] = None) -> tuple[str, str]:
+    if not (avatar_id or "").strip():
+        raise ValueError("avatar_id is required")
+
+    safe_session = _safe_session_key(session_id or _new_conversation_session_id())
+    created_at = datetime.now().astimezone()
+    log_path, safe_avatar, safe_session = _session_log_file_path(avatar_id, safe_session)
+
+    with _LOG_WRITE_LOCK:
+        _ensure_session_log_header(
+            log_path=log_path,
+            avatar_id=avatar_id,
+            safe_avatar=safe_avatar,
+            safe_session=safe_session,
+            created_at=created_at,
+        )
+    return safe_session, log_path
+
+
+def _append_conversation_log_turn(
+    avatar_id: str,
+    session_id: Optional[str],
+    input_mode: Optional[str],
+    user_text: str,
+    rag_text: str,
+) -> tuple[str, str]:
+    if not (avatar_id or "").strip():
+        raise ValueError("avatar_id is required")
+
+    safe_session = _safe_session_key(session_id or _new_conversation_session_id())
+    now_local = datetime.now().astimezone()
+    log_path, safe_avatar, safe_session = _session_log_file_path(avatar_id, safe_session)
+    mode = _normalize_input_mode(input_mode)
+    user_block = (user_text or "").strip() or "(vuoto)"
+    rag_block = (rag_text or "").strip() or "(vuoto)"
+
+    with _LOG_WRITE_LOCK:
+        _ensure_session_log_header(
+            log_path=log_path,
+            avatar_id=avatar_id,
+            safe_avatar=safe_avatar,
+            safe_session=safe_session,
+            created_at=now_local,
+        )
+        with open(log_path, "a", encoding="utf-8", newline="\n") as handle:
+            handle.write(f"[{_format_local_ts(now_local)}] USER INPUT ({mode})\n")
+            handle.write(f"{user_block}\n\n")
+            handle.write(f"[{_format_local_ts(now_local)}] RAG OUTPUT\n")
+            handle.write(f"{rag_block}\n\n")
+            handle.write("------------------------------------------------------------\n")
+
+    return safe_session, log_path
 
 def _get_client_for_avatar(avatar_id: str) -> ChromaClientAPI:
     key = _safe_avatar_key(avatar_id)
@@ -825,6 +944,13 @@ class ChatReq(BaseModel):
     user_text: str
     top_k: int = 20
     system: Optional[str] = None
+    session_id: Optional[str] = None
+    input_mode: Optional[str] = None
+    log_conversation: bool = False
+
+
+class ChatSessionStartReq(BaseModel):
+    avatar_id: str
 
 
 # -----------------------------
@@ -932,6 +1058,7 @@ def health():
         "embed_model": EMBED_MODEL,
         "chat_model": CHAT_MODEL,
         "rag_root": PERSIST_ROOT,
+        "rag_log_root": RAG_LOG_DIR,
         "per_avatar_db": True,
         "cached_avatars": len(_AVATAR_CLIENTS),
         "ocr": bool(pytesseract and Image),
@@ -1025,6 +1152,25 @@ def recall(req: RecallReq):
             include=["documents", "metadatas", "distances"],
         )
         return res
+
+
+@app.post("/chat_session/start")
+def chat_session_start(req: ChatSessionStartReq):
+    avatar_id = (req.avatar_id or "").strip()
+    if not avatar_id:
+        raise HTTPException(status_code=400, detail="avatar_id is required")
+
+    try:
+        session_id, log_path = _start_conversation_log_session(avatar_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore creazione sessione log: {e}")
+
+    return {
+        "ok": True,
+        "avatar_id": avatar_id,
+        "session_id": session_id,
+        "log_file": log_path,
+    }
 
 
 @app.post("/chat")
@@ -1122,9 +1268,31 @@ def chat(req: ChatReq):
     ).strip()
     answer = _sanitize_chat_answer(raw_answer) or "Non lo so."
 
+    conversation_logged = False
+    conversation_session_id = None
+    if req.log_conversation:
+        try:
+            conversation_session_id, _ = _append_conversation_log_turn(
+                avatar_id=req.avatar_id,
+                session_id=req.session_id,
+                input_mode=req.input_mode,
+                user_text=q,
+                rag_text=answer,
+            )
+            conversation_logged = True
+        except Exception as e:
+            print(f"[CHAT-LOG] Errore append log avatar={req.avatar_id}: {e}")
+            traceback.print_exc()
+
     rag_used = _build_rag_used_payload(docs, metas)
 
-    return {"text": answer, "rag_used": rag_used, "auto_remembered": auto_remembered}
+    return {
+        "text": answer,
+        "rag_used": rag_used,
+        "auto_remembered": auto_remembered,
+        "conversation_logged": conversation_logged,
+        "conversation_session_id": conversation_session_id,
+    }
 
 
 @app.post("/clear_avatar")
