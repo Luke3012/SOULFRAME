@@ -1,8 +1,0 @@
-﻿\chapter*{Abstract}
-\addcontentsline{toc}{chapter}{Abstract}
-
-SOULFRAME nasce da un'esigenza molto concreta: costruire un digital twin conversazionale con cui poter parlare e su cui caricare dati personali in modo progressivo. Questa tesi presenta SOULFRAME come architettura multimodale per gestire un profilo avatar 3D alimentato da contenuti eterogenei (testo, immagini e PDF), mantenendo un accesso semplice sia da desktop (tastiera e controlli tradizionali) sia da mobile/touch (push-to-talk e navigazione semplificata).
-
-Il progetto è costruito con una logica client-server: Unity WebGL gestisce avatar, interfaccia e registrazione dell'audio; sul backend una serie di servizi separati si occupa di trascrizione, orchestrazione conversazionale con memoria e sintesi vocale. La memoria è legata al singolo avatar e può essere arricchita con note e contenuti esterni, inclusi documenti e immagini.
-
-Durante lo sviluppo sono emersi punti critici tipici di un sistema end-to-end: integrazione tra componenti, latenza percepita e compatibilità tra ambienti. In particolare, la generazione della risposta vocale richiede ancora tempi percepibili e resta il vincolo operativo principale dell'interazione. Per ridurre attriti ed errori, ho dato molta importanza anche all'automazione di setup e gestione dei servizi. Il risultato è un prototipo stabile, utilizzabile sia in locale sia su server, che rende espliciti i colli di bottiglia e fornisce una base concreta per iterazioni successive.

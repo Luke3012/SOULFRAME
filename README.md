@@ -1,144 +1,148 @@
 # SOULFRAME
 
-SOULFRAME e' una piattaforma WebGL con avatar interattivi e backend AI.
-L'idea e' semplice: scegli o crei un avatar, parli, il sistema capisce la voce, ragiona con memoria contestuale e risponde in audio.
+[🇬🇧 English](#) | [🇮🇹 Italiano](README.it.md)
 
-## Cosa fa, in pratica
+---
 
-- Gestione avatar 3D locali e importati (con cache server-side degli asset `.glb`).
-- Conversazione vocale end-to-end: registrazione, trascrizione, risposta, sintesi vocale.
-- Memoria per avatar con RAG persistente (documenti, immagini, note testuali).
-- Deploy sia locale (Windows) sia server (Ubuntu) con script dedicati.
+SOULFRAME is a WebGL platform with interactive avatars and AI backend.
+The idea is simple: pick or create an avatar, speak, the system understands your voice, reasons with contextual memory, and responds in audio.
 
-## Dove gira
+## What it does
 
-### 1) Locale su Windows
+- Management of local and imported 3D avatars (with server-side caching of `.glb` assets).
+- End-to-end voice conversation: recording, transcription, response, speech synthesis.
+- Avatar memory with persistent RAG (documents, images, text notes).
+- Deployment both locally (Windows) and on server (Ubuntu) with dedicated scripts.
 
-- Setup ambiente con `SOULFRAME_SETUP/setup_soulframe_windows.bat`.
-- Avvio/stop/restart servizi con `SOULFRAME_AI/ai_services.cmd`.
-- Gestione update/deploy con `SoulframeControlCenter.bat`:
-  - `s/c/r`: avvio, chiusura, riavvio servizi (`SOULFRAME_AI/ai_services.cmd 1/2/3`)
-  - switch stream Git A/B (`.git`, `.git_stream_a`, `.git_stream_b`)
-  - `git push`/`git pull` da menu
-  - ripristino commit (soft revert o hard reset con conferma)
-  - creazione pacchetto `soulframe_update` per Ubuntu
-- Workflow tipico: sviluppo rapido e test funzionali in locale.
+## Where it runs
 
-### 2) Setup automatico su Ubuntu
+### 1) Locally on Windows
 
-- Installazione e provisioning con `SOULFRAME_SETUP/setup_soulframe_ubuntu.sh`.
-- Gestione operativa con `SOULFRAME_SETUP/sf_admin_ubuntu.sh` (alias `sfadmin`).
-- Include servizi `systemd`, reverse proxy Caddy, update guidati da `soulframe_update` (Build.zip + backend/setup), backup e opzioni di shutdown.
+- Environment setup with `SOULFRAME_SETUP/setup_soulframe_windows.bat`.
+- Service start/stop/restart with `SOULFRAME_AI/ai_services.cmd`.
+- Update/deploy management with `SoulframeControlCenter.bat`:
+  - `s/c/r`: start, stop, restart services (`SOULFRAME_AI/ai_services.cmd 1/2/3`)
+  - Git A/B stream switching (`.git`, `.git_stream_a`, `.git_stream_b`)
+  - `git push`/`git pull` from menu
+  - commit recovery (soft revert or hard reset with confirmation)
+  - creation of `soulframe_update` package for Ubuntu
+- Typical workflow: rapid development and functional testing locally.
 
-## Python e requirements
+### 2) Automated setup on Ubuntu
 
-- Versioni consigliate: Python 3.11 e 3.12.
-- Su Windows, lo script crea il venv con `py -3.11` di default.
-- Su Ubuntu, il setup seleziona automaticamente la versione disponibile (priorita: 3.12, poi 3.11, poi 3.10).
-- I requirements sono allineati tra ambienti:
-  - `SOULFRAME_AI/backend/requirements.txt` (deploy backend)
-  - `SOULFRAME_SETUP/requirements.txt` (riferimento setup Linux)
+- Installation and provisioning with `SOULFRAME_SETUP/setup_soulframe_ubuntu.sh`.
+- Operational management with `SOULFRAME_SETUP/sf_admin_ubuntu.sh` (alias `sfadmin`).
+- Includes `systemd` services, Caddy reverse proxy, guided updates via `soulframe_update` (Build.zip + backend/setup), backups and shutdown options.
 
-## Design interattivo e UX
+## Python and requirements
 
-Il frontend Unity e' pensato per essere diretto da usare:
+- Recommended versions: Python 3.11 and 3.12.
+- On Windows, the script creates the venv with `py -3.11` by default.
+- On Ubuntu, setup automatically selects the available version (priority: 3.12, then 3.11, then 3.10).
+- Requirements are aligned across environments:
+  - `SOULFRAME_AI/backend/requirements.txt` (backend deployment)
+  - `SOULFRAME_SETUP/requirements.txt` (Linux setup reference)
 
-- comandi da tastiera chiari (es. `SPACE` per parlare, `Enter` per confermare, `Esc/Back` per tornare),
-- hint contestuali a schermo (hint bar) in base allo stato UI,
-- transizioni leggere e piccole animazioni per non spezzare il flusso,
-- background rings dinamici che accompagnano boot, setup e operazioni lunghe.
+## Interactive design and UX
 
-## Pipeline AI (STT, RAG, TTS)
+The Unity frontend is designed to be straightforward to use:
 
-- STT: Whisper trascrive l'audio (`/transcribe`).
-- RAG: il backend usa Ollama + ChromaDB per memoria per-avatar, con ricerca ibrida semantica + keyword.
-- TTS: Coqui XTTS v2 genera la risposta vocale (`/tts`, `/tts_stream`).
+- clear keyboard commands (e.g., `SPACE` to speak, `Enter` to confirm, `Esc/Back` to go back),
+- contextual on-screen hints (hint bar) based on UI state,
+- smooth transitions and subtle animations to maintain flow,
+- dynamic background rings that accompany boot, setup, and long operations.
 
-### Inizializzazione Coqui al boot
+## AI Pipeline (STT, RAG, TTS)
 
-All'avvio, Coqui-TTS viene inizializzato con una frase breve ("ciao") per fare warmup del modello.
-Questa e' in genere la fase piu' lenta del boot TTS.
+- STT: Whisper transcribes audio (`/transcribe`).
+- RAG: backend uses Ollama + ChromaDB for per-avatar memory, with hybrid semantic + keyword search.
+- TTS: Coqui XTTS v2 generates voice responses (`/tts`, `/tts_stream`).
 
-Per questo motivo il frontend mostra uno stato di inizializzazione dedicato:
+### Coqui initialization at boot
 
-- pannello di loading durante il bootstrap iniziale,
-- transizioni UI e animazioni dei background rings per accompagnare l'attesa,
-- ingresso dell'interfaccia completa solo quando il servizio TTS risulta pronto.
+At startup, Coqui-TTS is initialized with a short phrase ("ciao") to warm up the model.
+This is generally the slowest phase of TTS boot.
 
-### Setup voce (profilo vocale avatar)
+For this reason, the frontend displays a dedicated initialization state:
 
-Nel setup voce:
+- loading panel during initial bootstrap,
+- UI transitions and background ring animations to accompany the wait,
+- full interface entry only when TTS service is ready.
 
-- viene generata una frase italiana lunga (target 50-80 parole),
-- la trascrizione della tua lettura viene confrontata con la frase attesa,
-- se la similarita' e' almeno del 70%, il riferimento vocale viene salvato per quell'avatar,
-- subito dopo vengono generate anche le wait phrases (es. "hm", "un_secondo") per la conversazione.
+### Voice setup (avatar voice profile)
 
-## Memoria: cosa puo' salvare
+In voice setup:
 
-La memoria RAG puo' essere alimentata da:
+- a long Italian phrase is generated (target 50-80 words),
+- transcription of your reading is compared with the expected phrase,
+- if similarity is at least 70%, the voice reference is saved for that avatar,
+- wait phrases (e.g., "hm", "un_secondo") are then generated for conversation.
 
-- testo libero/note,
-- documenti (PDF, TXT),
-- immagini.
+## Memory: what it can save
 
-Dettagli importanti:
+RAG memory can be fed by:
 
-- per i PDF viene usato OCR in modo esplicito, non solo testo embedded;
-- per le immagini c'e' OCR e, quando configurato, descrizione semantica con Gemini Vision;
-- tutto viene salvato per avatar, quindi ogni profilo mantiene il suo contesto separato.
+- free text/notes,
+- documents (PDF, TXT),
+- images.
+
+Important details:
+
+- for PDFs, OCR is used explicitly, not just embedded text;
+- for images there is OCR and, when configured, semantic description with Gemini Vision;
+- everything is saved per avatar, so each profile maintains its own separate context.
 
 ## MainMode
 
-MainMode e' la fase operativa della conversazione:
+MainMode is the operational phase of conversation:
 
-1. tieni premuto `SPACE` per parlare,
-2. rilascio -> trascrizione Whisper,
-3. richiesta al RAG con memoria dell'avatar,
-4. risposta vocale in streaming via Coqui TTS,
-5. UI aggiornata con stato, testo utente e risposta.
+1. hold `SPACE` to speak,
+2. release -> Whisper transcription,
+3. RAG request with avatar memory,
+4. voice response streaming via Coqui TTS,
+5. UI updated with state, user text, and response.
 
-Da MainMode puoi anche tornare rapidamente a setup voce/setup memoria se vuoi aggiornare il profilo.
+From MainMode you can also quickly return to voice setup/memory setup if you want to update the profile.
 
-## Log Conversazioni Avatar
+## Avatar Conversation Logs
 
-Il backend salva un log persistente per ogni conversazione MainMode.
+The backend saves a persistent log for every MainMode conversation.
 
-- quando entri in MainMode viene creata una nuova sessione e un nuovo file log;
-- i log sono separati per avatar in `SOULFRAME_AI/backend/log/<avatar_id>/`;
-- ogni turno viene appeso progressivamente nello stesso file della sessione corrente;
-- ogni blocco contiene input utente (`keyboard` o `voice`) e output testuale del RAG;
-- i file esistenti non vengono cancellati automaticamente.
+- when you enter MainMode a new session and log file are created;
+- logs are separated per avatar in `SOULFRAME_AI/backend/log/<avatar_id>/`;
+- each turn is progressively appended to the current session file;
+- each block contains user input (`keyboard` or `voice`) and textual RAG output;
+- existing files are not automatically deleted.
 
-Esempio nome file:
+Example filename:
 
 - `SOULFRAME_AI/backend/log/LOCAL_model1/20260303_151530_a1b2c3d4.log`
 
-## Limitazioni WebGL (Lip Sync)
+## WebGL Limitations (Lip Sync)
 
-Il lip sync di Unity in WebGL ha limitazioni note rispetto all'esecuzione in Play Mode/Desktop.
+Unity's lip sync in WebGL has known limitations compared to Play Mode/Desktop execution.
 
-- Sono stati applicati fix per mantenere la bocca piu' aperta durante la parlata.
-- Nonostante questi fix, il movimento labiale in WebGL puo' risultare meno preciso/naturale.
+- Fixes have been applied to keep the mouth more open during speech.
+- Despite these fixes, lip movement in WebGL may be less precise/natural.
 
-## Tesi (LaTeX)
+## SOULFRAME_THESIS (LaTeX)
 
-La cartella `Tesi/` e' inclusa nel repository e contiene i sorgenti LaTeX del progetto di tesi
-(`main.tex`, capitoli, bibliografia, classe e risorse).
+The `SOULFRAME_THESIS/` folder is included in the repository and contains LaTeX thesis sources
+(`main.tex`, chapters, bibliography, class, and resources).
 
-Note di versionamento:
+Versioning notes:
 
-- vengono tracciati i file sorgente (`.tex`, `.bib`, `.cls`, risorse);
-- i file temporanei/generati dalla compilazione LaTeX (`.aux`, `.log`, `.toc`, ecc.) sono ignorati dal `.gitignore`.
+- source files are tracked (`.tex`, `.bib`, `.cls`, resources);
+- temporary/generated files from LaTeX compilation (`.aux`, `.log`, `.toc`, etc.) are ignored by `.gitignore`.
 
-## Struttura repo
+## Repo structure
 
-- `Assets/`: frontend Unity (UI flow, avatar management, WebGL bridge).
-- `SOULFRAME_AI/`: servizi AI (Whisper, RAG, TTS, Avatar Asset Server).
-- `SOULFRAME_SETUP/`: script setup e amministrazione Windows/Linux.
-- `Tesi/`: sorgenti LaTeX della tesi e materiali correlati.
+- `Assets/`: Unity frontend (UI flow, avatar management, WebGL bridge).
+- `SOULFRAME_AI/`: AI services (Whisper, RAG, TTS, Avatar Asset Server).
+- `SOULFRAME_SETUP/`: setup scripts and Windows/Linux administration.
+- `SOULFRAME_THESIS/`: LaTeX thesis sources and related materials.
 
-## Documentazione tecnica
+## Technical documentation
 
-- Setup Linux/Ubuntu: `SOULFRAME_SETUP/README.md`
+- Linux/Ubuntu setup: `SOULFRAME_SETUP/README.md`
 - Backend AI (Whisper/RAG/TTS/Avatar): `SOULFRAME_AI/README.md`

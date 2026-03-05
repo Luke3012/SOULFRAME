@@ -566,9 +566,9 @@ echo ------------------------------------------------------------
 echo  EXPORT WRITING TXT
 echo ------------------------------------------------------------
 set "WRITING_DIR=%USERPROFILE%\Desktop\Writing"
-set "TESI_DIR=Tesi"
+set "TESI_DIR=SOULFRAME_THESIS"
 set "BIB_PATH=%TESI_DIR%\bibliografia.bib"
-set "MERGED_PATH=%WRITING_DIR%\Tesi.txt"
+set "MERGED_PATH=%WRITING_DIR%\SOULFRAME_THESIS.txt"
 set /a EXPORTED_COUNT=0
 set /a MERGED_SECTIONS=0
 

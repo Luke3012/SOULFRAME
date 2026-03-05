@@ -1,15 +1,19 @@
 # SOULFRAME Setup (Ubuntu)
 
-Questa cartella contiene gli script di deploy e gestione per VM Ubuntu.
+[🇬🇧 English](#) | [🇮🇹 Italiano](README.it.md)
 
-## Contenuto
+---
+
+This folder contains deployment and management scripts for Ubuntu VMs.
+
+## Contents
 
 - `setup_soulframe_ubuntu.sh`
-  - installazione/configurazione completa del server.
+  - complete server installation and configuration.
 - `sf_admin_ubuntu.sh`
-  - console amministrativa (`sfadmin`) per update, servizi e backup.
+  - admin console (`sfadmin`) for updates, services, and backups.
 - `requirements.txt`
-  - dipendenze Python di riferimento per Linux.
+  - Python dependencies reference for Linux.
 
 ## Layout VM atteso
 

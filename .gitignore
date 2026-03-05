@@ -83,26 +83,26 @@ Thumbs.db
 # Ignora i file bezi
 .bezisidekick/
 
-# --- TESI (traccia i sorgenti, ignora solo file generati) ---
-Tesi/**/*.aux
-Tesi/**/*.log
-Tesi/**/*.out
-Tesi/**/*.toc
-Tesi/**/*.lof
-Tesi/**/*.lot
-Tesi/**/*.fls
-Tesi/**/*.fdb_latexmk
-Tesi/**/*.synctex.gz
-Tesi/**/*.bbl
-Tesi/**/*.blg
-Tesi/**/*.bcf
-Tesi/**/*.run.xml
-Tesi/**/*.nav
-Tesi/**/*.snm
-Tesi/**/*.vrb
-Tesi/**/*.xdv
-Tesi/**/*-SAVE-ERROR
-Tesi/**/*.pdf
+# --- SOULFRAME_THESIS (traccia i sorgenti, ignora solo file generati) ---
+SOULFRAME_THESIS/**/*.aux
+SOULFRAME_THESIS/**/*.log
+SOULFRAME_THESIS/**/*.out
+SOULFRAME_THESIS/**/*.toc
+SOULFRAME_THESIS/**/*.lof
+SOULFRAME_THESIS/**/*.lot
+SOULFRAME_THESIS/**/*.fls
+SOULFRAME_THESIS/**/*.fdb_latexmk
+SOULFRAME_THESIS/**/*.synctex.gz
+SOULFRAME_THESIS/**/*.bbl
+SOULFRAME_THESIS/**/*.blg
+SOULFRAME_THESIS/**/*.bcf
+SOULFRAME_THESIS/**/*.run.xml
+SOULFRAME_THESIS/**/*.nav
+SOULFRAME_THESIS/**/*.snm
+SOULFRAME_THESIS/**/*.vrb
+SOULFRAME_THESIS/**/*.xdv
+SOULFRAME_THESIS/**/*-SAVE-ERROR
+SOULFRAME_THESIS/**/*.pdf
 
 # Build LaTeX generati accidentalmente nella root repository
 /main.aux
