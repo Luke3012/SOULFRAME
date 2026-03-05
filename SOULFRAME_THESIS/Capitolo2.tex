@@ -39,7 +39,7 @@ Quando questa condizione diventa cronica, le conseguenze sono rilevanti: aumento
 
 Per gli ECA embodied questo non implica una promessa terapeutica, ma chiarisce un problema applicativo reale. Se la loneliness dipende anche da come viene percepita la qualità della relazione, un agente che mantiene continuità tra turni, coerenza vocale e memoria può offrire un'interazione più stabile rispetto a una UI testuale stateless. In questa lettura, la social presence resta centrale: percepire un interlocutore come ``presente'' nello stesso spazio comunicativo cambia il modo in cui il dialogo viene interpretato.\cite{Oh2018SocialPresence}
 
-In questa cornice si colloca anche la scelta di SOULFRAME: trattare l'avatar come profilo operativo completo (aspetto, voce e memoria), non come semplice canale di output testuale. L'obiettivo non è ``curare'' la loneliness né sostituire relazioni umane, ma ridurre incoerenze che interrompono la continuità percepita del dialogo. Per questo, robustezza della pipeline e coerenza del profilo conversazionale restano prerequisiti sia tecnici sia valutativi.
+In questa prospettiva si colloca anche la scelta di SOULFRAME: trattare l'avatar come profilo operativo completo (aspetto, voce e memoria), non come semplice canale di output testuale. L'obiettivo non è ``curare'' la loneliness né sostituire relazioni umane, ma ridurre incoerenze che interrompono la continuità percepita del dialogo. Per questo, robustezza della pipeline e coerenza del profilo conversazionale restano prerequisiti sia tecnici sia valutativi.
 
 \subsection{Limiti aperti nei sistemi conversazionali immersivi}
 L'integrazione del dialogo in ambienti 3D introduce criticità che emergono meno nei sistemi testuali tradizionali. La principale è la latenza end-to-end tra acquisizione audio, trascrizione, generazione e sintesi: ritardi percepibili riducono la naturalezza percepita anche quando il contenuto della risposta è corretto.
@@ -63,6 +63,7 @@ SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento d
 In SOULFRAME, Whisper è scelto come base STT per la robustezza zero-shot in condizioni non controllate, evitando l'onere di addestrare un ASR dedicato al progetto. Il primo stadio della pipeline è il riconoscimento automatico del parlato: l'audio acquisito in push-to-talk viene trascritto e inoltrato ai moduli conversazionali successivi.
 
 Whisper è un modello STT basato su architettura Transformer e addestrato su larga scala con supervisione debole. L'addestramento su circa 680.000 ore e l'impostazione multilingue (99 lingue) supportano buone prestazioni zero-shot e robustezza a variabilità di parlanti e condizioni acustiche.\cite{Radford2023Whisper} In questa sede interessa soprattutto il ruolo teorico del modello nella pipeline; configurazioni operative e profili di deploy sono discussi nei capitoli architetturali e implementativi.
+La Figura~\ref{fig:whisper-arch-cap2} aiuta a leggere questa scelta, mostrando la separazione tra encoder acustico e decoder testuale che sostiene l'uso del modello in pipeline conversazionali.
 
 \begin{figure}[t]
 \centering
