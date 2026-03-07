@@ -7313,7 +7313,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UINavigator
   axisMode: 0
-  wrapAround: 1
+  wrapAround: 0
   audioSource: {fileID: 1840408694}
   moveClip: {fileID: 0}
   confirmClip: {fileID: 0}
@@ -10763,17 +10763,17 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1297987816}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 2000000006}
+  m_Father: {fileID: 2099900011}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.5}
-  m_AnchoredPosition: {x: 32.473, y: -327.04}
-  m_SizeDelta: {x: -64.6, y: 91.912}
+  m_AnchoredPosition: {x: 19.473083, y: -6.330017}
+  m_SizeDelta: {x: -38.6, y: 91.912}
   m_Pivot: {x: 0, y: 0.5}
 --- !u!114 &1297987818
 MonoBehaviour:
@@ -11009,6 +11009,7 @@ MonoBehaviour:
   pnlMainMode: {fileID: 2000000003}
   pnlLoading: {fileID: 1952192028}
   servicesConfig: {fileID: 11400000, guid: 8caa0ce7cc61d7847af2ce1a57f98ed8, type: 2}
+  resetAvatarLogsOnDelete: 0
   btnNewAvatar: {fileID: 1482831231}
   btnShowList: {fileID: 901363462}
   debugText: {fileID: 356181326}
@@ -11036,6 +11037,7 @@ MonoBehaviour:
   btnMainModeMemory: {fileID: 910000004}
   btnMainModeVoice: {fileID: 910000104}
   chatNoteInput: {fileID: 1940768254}
+  mainModeReplyBackgroundTransitionDuration: 0.3
   chatNoteTransitionDuration: 0.08
   enableTouchUi: 1
   forceTouchUi: 0
@@ -16152,7 +16154,6 @@ RectTransform:
   - {fileID: 103529721}
   - {fileID: 211383442}
   - {fileID: 2099900011}
-  - {fileID: 1297987817}
   - {fileID: 910000002}
   - {fileID: 910000102}
   - {fileID: 1940768253}
@@ -16670,7 +16671,8 @@ RectTransform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 1297987817}
   m_Father: {fileID: 2000000006}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}

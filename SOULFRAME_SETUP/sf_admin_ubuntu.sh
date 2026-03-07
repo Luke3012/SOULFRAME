@@ -187,11 +187,11 @@ upsert_env_key() {
 }
 
 resolve_default_rag_log_dir() {
-  if [[ "$RUNTIME_USER" != "root" && -n "$RUNTIME_HOME" && "$RUNTIME_HOME" != "/" ]]; then
+  if [[ -n "$RUNTIME_HOME" && "$RUNTIME_HOME" != "/" ]]; then
     echo "${RUNTIME_HOME%/}/soulframe-logs"
     return 0
   fi
-  echo "${BACKEND_DIR%/}/log"
+  echo "${HOME:-/root}/soulframe-logs"
 }
 
 configure_rag_log_dir() {
@@ -222,7 +222,7 @@ configure_rag_log_dir() {
   fi
 
   if [[ "$target_log_dir" != /* ]]; then
-    echo "[ERR] Inserisci un path assoluto (es. /home/<utente>/soulframe-logs)."
+    echo "[ERR] Inserisci un path assoluto (es. /home/<utente>/soulframe-logs o /root/soulframe-logs)."
     return 1
   fi
 

@@ -19,6 +19,20 @@
 			<div id="avaturn-sdk-container" class="avaturn-sdk-container"></div>
         </div>
 		<!-- avaturn-container div and contents required for Avaturn Web Creator -->
+        <div id="soulframe-loading-overlay" aria-live="polite">
+            <div class="soulframe-loading-content">
+                <img
+                    id="soulframe-loading-logo"
+                    src="TemplateData/SOULFRAME_Icon.png"
+                    alt="SOULFRAME"
+                >
+                <div id="soulframe-loading-text">Caricamento scena in corso<span class="soulframe-loading-dots"><span>.</span><span>.</span><span>.</span></span></div>
+                <div id="soulframe-loading-bar" aria-hidden="true">
+                    <div id="soulframe-loading-bar-fill"></div>
+                </div>
+                <div id="soulframe-loading-progress">Inizializzazione 0%</div>
+            </div>
+        </div>
         <div id="unity-container">
             <canvas id="unity-canvas" ></canvas>
         </div>

@@ -86,6 +86,7 @@ public class UIFlowController : MonoBehaviour
     [SerializeField] private Button btnMainModeMemory;
     [SerializeField] private Button btnMainModeVoice;
     [SerializeField] private TMP_InputField chatNoteInput;
+    [SerializeField, Min(0f)] private float mainModeReplyBackgroundTransitionDuration = 0.18f;
     [SerializeField, Min(0f)] private float chatNoteTransitionDuration = 0.08f;
 
     [Header("Touch UI")]
@@ -284,6 +285,7 @@ public class UIFlowController : MonoBehaviour
     private Coroutine setupMemoryCheckRoutine;
     private UnityWebRequest setupMemoryRequest;
     private bool setupMemoryInputFocused;
+    private bool setupMemoryNoteJustDismissed;
     private bool setupMemoryOperationInProgress;
     private bool setupMemoryAlreadyConfigured;
     private string setupMemoryLastErrorDetail;
@@ -314,6 +316,8 @@ public class UIFlowController : MonoBehaviour
     private readonly List<ReplyWordSpan> mainModeReplyWords = new List<ReplyWordSpan>();
     private float mainModeReplyBackgroundBaseAlpha = -1f;
     private float touchMainModeConversationBackgroundBaseAlpha = -1f;
+    private Coroutine mainModeReplyBackgroundFadeRoutine;
+    private Coroutine touchMainModeConversationBackgroundFadeRoutine;
     private string mainModeConversationSessionId;
     private bool mainModeSessionStartInFlight;
     private float lastMouseMoveTime;
@@ -559,6 +563,20 @@ public class UIFlowController : MonoBehaviour
                     OnSetMemory();
                 }
             }
+
+            if (!touchUiActive &&
+                focused &&
+                pnlSaveMemory != null &&
+                pnlSaveMemory.activeSelf &&
+                setupMemoryNoteInput != null &&
+                string.IsNullOrWhiteSpace(setupMemoryNoteInput.text) &&
+                IsKeyUp(KeyCode.Backspace))
+            {
+                CancelSetupMemoryNoteEntry();
+                UpdateMainModeTextBackgroundVisibility();
+                UpdateCameraRig();
+                return;
+            }
         }
 
         if (currentState == UIState.MainMode)
@@ -600,8 +618,8 @@ public class UIFlowController : MonoBehaviour
         bool showDesktop = canShowText && !touchUiActive && replyHasText;
         bool showTouch = canShowText && touchUiActive && (replyHasText || transcriptHasText);
 
-        SetBackgroundAlpha(mainModeReplyBackgroundImage, mainModeReplyBackgroundBaseAlpha, showDesktop);
-        SetBackgroundAlpha(touchMainModeConversationBackgroundImage, touchMainModeConversationBackgroundBaseAlpha, showTouch);
+        SetMainModeBackgroundAlpha(mainModeReplyBackgroundImage, mainModeReplyBackgroundBaseAlpha, showDesktop, isTouchBackground: false);
+        SetMainModeBackgroundAlpha(touchMainModeConversationBackgroundImage, touchMainModeConversationBackgroundBaseAlpha, showTouch, isTouchBackground: true);
     }
 
     private static bool HasVisibleTmpContent(string rawText)
@@ -616,7 +634,7 @@ public class UIFlowController : MonoBehaviour
         return !string.IsNullOrWhiteSpace(cleaned);
     }
 
-    private static void SetBackgroundAlpha(Image image, float baseAlpha, bool visible)
+    private void SetMainModeBackgroundAlpha(Image image, float baseAlpha, bool visible, bool isTouchBackground)
     {
         if (image == null)
         {
@@ -631,8 +649,83 @@ public class UIFlowController : MonoBehaviour
             return;
         }
 
-        c.a = targetAlpha;
-        image.color = c;
+        Coroutine fadeRoutine = isTouchBackground
+            ? touchMainModeConversationBackgroundFadeRoutine
+            : mainModeReplyBackgroundFadeRoutine;
+
+        if (fadeRoutine != null)
+        {
+            StopCoroutine(fadeRoutine);
+        }
+
+        Coroutine startedRoutine = StartCoroutine(FadeMainModeBackgroundAlpha(image, targetAlpha, isTouchBackground));
+        if (isTouchBackground)
+        {
+            touchMainModeConversationBackgroundFadeRoutine = startedRoutine;
+        }
+        else
+        {
+            mainModeReplyBackgroundFadeRoutine = startedRoutine;
+        }
+    }
+
+    private IEnumerator FadeMainModeBackgroundAlpha(Image image, float targetAlpha, bool isTouchBackground)
+    {
+        if (image == null)
+        {
+            ClearMainModeBackgroundFadeRoutine(isTouchBackground);
+            yield break;
+        }
+
+        Color color = image.color;
+        float from = color.a;
+        float duration = Mathf.Max(0f, mainModeReplyBackgroundTransitionDuration);
+
+        if (duration <= 0f)
+        {
+            color.a = targetAlpha;
+            image.color = color;
+            ClearMainModeBackgroundFadeRoutine(isTouchBackground);
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            if (image == null)
+            {
+                ClearMainModeBackgroundFadeRoutine(isTouchBackground);
+                yield break;
+            }
+
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            Color current = image.color;
+            current.a = Mathf.Lerp(from, targetAlpha, t);
+            image.color = current;
+            yield return null;
+        }
+
+        if (image != null)
+        {
+            Color finalColor = image.color;
+            finalColor.a = targetAlpha;
+            image.color = finalColor;
+        }
+
+        ClearMainModeBackgroundFadeRoutine(isTouchBackground);
+    }
+
+    private void ClearMainModeBackgroundFadeRoutine(bool isTouchBackground)
+    {
+        if (isTouchBackground)
+        {
+            touchMainModeConversationBackgroundFadeRoutine = null;
+        }
+        else
+        {
+            mainModeReplyBackgroundFadeRoutine = null;
+        }
     }
 
     private void ClearMainModeReplyDisplay()
@@ -1205,19 +1298,7 @@ public class UIFlowController : MonoBehaviour
             return;
         }
 
-        if (memoryPanelTransitionRoutine != null)
-        {
-            StopCoroutine(memoryPanelTransitionRoutine);
-        }
-
-        if (pnlSaveMemory != null && pnlSaveMemory.activeSelf)
-        {
-            memoryPanelTransitionRoutine = StartCoroutine(TransitionToChooseMemory());
-        }
-        else
-        {
-            ShowChooseMemoryPanel();
-        }
+        CancelSetupMemoryNoteEntry();
     }
 
     private void OnTouchDeleteRestoreAvatarPressed()
@@ -2608,6 +2689,7 @@ public class UIFlowController : MonoBehaviour
             }
         }
         setupMemoryInputFocused = false;
+        UpdateHintBar(UIState.SetupMemory);
         ConfigureNavigatorForState(UIState.SetupMemory, true);
     }
 
@@ -2721,6 +2803,8 @@ public class UIFlowController : MonoBehaviour
             FocusSetupMemoryInputWithoutSelection();
             SyncSetupMemoryTypingState(resetNavigator: true);
         }
+
+        memoryPanelTransitionRoutine = null;
     }
 
     private void SyncSetupMemoryTypingState(bool resetNavigator)
@@ -2802,7 +2886,47 @@ public class UIFlowController : MonoBehaviour
         }
 
         setupMemoryInputFocused = false;
+        UpdateHintBar(UIState.SetupMemory);
         ConfigureNavigatorForState(UIState.SetupMemory, true);
+
+        memoryPanelTransitionRoutine = null;
+    }
+
+    private void CancelSetupMemoryNoteEntry()
+    {
+        if (setupMemoryNoteJustDismissed)
+        {
+            return;
+        }
+
+        setupMemoryNoteJustDismissed = true;
+        StartCoroutine(ClearSetupMemoryNoteDismissFlag());
+
+        if (memoryPanelTransitionRoutine != null)
+        {
+            StopCoroutine(memoryPanelTransitionRoutine);
+        }
+
+        if (pnlSaveMemory != null && pnlSaveMemory.activeSelf)
+        {
+            memoryPanelTransitionRoutine = StartCoroutine(TransitionToChooseMemory());
+        }
+        else
+        {
+            ShowChooseMemoryPanel();
+        }
+    }
+
+    private IEnumerator ClearSetupMemoryNoteDismissFlag()
+    {
+        while (memoryPanelTransitionRoutine != null)
+        {
+            yield return null;
+        }
+
+        yield return null;
+        yield return null;
+        setupMemoryNoteJustDismissed = false;
     }
 
     private void OnSetMemory()
@@ -2825,6 +2949,8 @@ public class UIFlowController : MonoBehaviour
 
     private IEnumerator SetMemoryRoutine()
     {
+        const float minRingsVisibleSeconds = 2f;
+
         string text = setupMemoryNoteInput != null ? setupMemoryNoteInput.text : null;
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -2841,6 +2967,7 @@ public class UIFlowController : MonoBehaviour
         }
 
         yield return StartCoroutine(ShowRingsForOperation());
+        float ringsShownAt = Time.unscaledTime;
 
         setupMemoryLastErrorDetail = null;
         bool rememberOk = false;
@@ -2851,7 +2978,14 @@ public class UIFlowController : MonoBehaviour
             false
         ));
 
-        yield return StartCoroutine(HideRingsAfterOperation());
+        float elapsedRings = Time.unscaledTime - ringsShownAt;
+        float remainingRings = minRingsVisibleSeconds - elapsedRings;
+        if (remainingRings > 0f)
+        {
+            yield return new WaitForSecondsRealtime(remainingRings);
+        }
+
+        yield return StartCoroutine(HideRingsAfterOperation(restorePanel: false));
 
         if (!rememberOk)
         {
@@ -2874,6 +3008,11 @@ public class UIFlowController : MonoBehaviour
     {
         UpdateSetupMemoryLog(message);
         UpdateDebugText(message);
+
+        if (setupMemoryNoteInput != null)
+        {
+            setupMemoryNoteInput.text = string.Empty;
+        }
 
         if (memoryPanelTransitionRoutine != null)
         {
@@ -2906,7 +3045,7 @@ public class UIFlowController : MonoBehaviour
         yield return StartCoroutine(FadeUiBlocked(true));
     }
 
-    private IEnumerator HideRingsAfterOperation()
+    private IEnumerator HideRingsAfterOperation(bool restorePanel = true)
     {
         setupMemoryOperationInProgress = false;
         if (ringsTransform != null)
@@ -2919,7 +3058,7 @@ public class UIFlowController : MonoBehaviour
             ringsController.SetOrbitSpeedMultiplier(1f);
         }
 
-        yield return StartCoroutine(FadeUiBlocked(false));
+        yield return StartCoroutine(FadeUiBlocked(false, restorePanel));
     }
 
     private IEnumerator ShowRingsForVoiceOperation()
@@ -2955,19 +3094,19 @@ public class UIFlowController : MonoBehaviour
     }
 
 
-    private IEnumerator FadeUiBlocked(bool blocked)
+    private IEnumerator FadeUiBlocked(bool blocked, bool restorePanel = true)
     {
         if (uiBlockFadeRoutine != null)
         {
             StopCoroutine(uiBlockFadeRoutine);
         }
 
-        uiBlockFadeRoutine = StartCoroutine(FadeUiBlockedRoutine(blocked));
+        uiBlockFadeRoutine = StartCoroutine(FadeUiBlockedRoutine(blocked, restorePanel));
         yield return uiBlockFadeRoutine;
         uiBlockFadeRoutine = null;
     }
 
-    private IEnumerator FadeUiBlockedRoutine(bool blocked)
+    private IEnumerator FadeUiBlockedRoutine(bool blocked, bool restorePanel)
     {
         GameObject panel = GetPanel(currentState);
         GameObject activeHintObject = GetActiveHintBarObject();
@@ -3019,7 +3158,7 @@ public class UIFlowController : MonoBehaviour
         float duration = transitionDuration;
         float elapsed = 0f;
         float fromPanel = panelGroup != null ? panelGroup.alpha : 0f;
-        float toPanel = blocked ? 0f : uiBlockPanelAlpha;
+        float toPanel = blocked ? 0f : (restorePanel ? uiBlockPanelAlpha : 0f);
         float fromHint = hintGroup != null ? hintGroup.alpha : 0f;
         float toHint = blocked ? 0f : uiBlockHintAlpha;
 
@@ -3054,8 +3193,8 @@ public class UIFlowController : MonoBehaviour
         if (panelGroup != null && uiBlockPanelWasActive)
         {
             panelGroup.alpha = toPanel;
-            panelGroup.interactable = !blocked;
-            panelGroup.blocksRaycasts = !blocked;
+            panelGroup.interactable = !blocked && restorePanel;
+            panelGroup.blocksRaycasts = !blocked && restorePanel;
         }
 
         if (hintGroup != null && uiBlockHintWasActive)
@@ -3081,6 +3220,11 @@ public class UIFlowController : MonoBehaviour
             }
 
             if (panel != null && !uiBlockPanelWasActive)
+            {
+                panel.SetActive(false);
+            }
+
+            if (panel != null && uiBlockPanelWasActive && !restorePanel)
             {
                 panel.SetActive(false);
             }
@@ -3243,6 +3387,11 @@ public class UIFlowController : MonoBehaviour
 
         if (currentState == UIState.SetupMemory)
         {
+            if (setupMemoryNoteJustDismissed)
+            {
+                return;
+            }
+
             CancelSetupMemory();
             if (setupMemoryFromMainMode && setupMemoryAlreadyConfigured)
             {
@@ -4076,6 +4225,11 @@ public class UIFlowController : MonoBehaviour
     private void ApplyMainModeDebugVisibility()
     {
         bool showMainModeDebug = !debugUiHidden && !mainModeChatNoteActive;
+        if (mainModeStatusText != null)
+        {
+            mainModeStatusText.gameObject.SetActive(showMainModeDebug);
+        }
+
         if (touchUiActive)
         {
             if (!showMainModeDebug)

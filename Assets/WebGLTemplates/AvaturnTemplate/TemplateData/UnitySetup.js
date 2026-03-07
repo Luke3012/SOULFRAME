@@ -2,6 +2,34 @@ function unityShowBanner(msg, type) {
         
     }
 
+    var loadingOverlay = document.querySelector("#soulframe-loading-overlay");
+    var loadingProgressText = document.querySelector("#soulframe-loading-progress");
+    var loadingBarFill = document.querySelector("#soulframe-loading-bar-fill");
+
+    function updateLoadingProgress(progress) {
+        var percent = Math.max(0, Math.min(100, Math.round(progress * 100)));
+
+        if (loadingProgressText) {
+            loadingProgressText.textContent = "Inizializzazione " + percent + "%";
+        }
+
+        if (loadingBarFill) {
+            loadingBarFill.style.width = percent + "%";
+        }
+
+        if (!loadingProgressText && !loadingBarFill) {
+            return;
+        }
+    }
+
+    function hideLoadingOverlay() {
+        if (!loadingOverlay) {
+            return;
+        }
+
+        loadingOverlay.classList.add("is-hidden");
+    }
+
     function applyWebGLCursor() {
         if (!canvas) {
             return;
@@ -40,11 +68,15 @@ function unityShowBanner(msg, type) {
     canvas.style.width = "";
     canvas.style.height = "";
     applyWebGLCursor();
+    updateLoadingProgress(0);
 
     createUnityInstance(canvas, config, (progress) => {
+        updateLoadingProgress(progress);
     })
         .then((unityInstance) => {
             gameInstance = unityInstance;
+            updateLoadingProgress(1);
+            window.setTimeout(hideLoadingOverlay, 150);
 
             // Alcuni browser possono resettare lo style del canvas dopo focus/fullscreen.
             applyWebGLCursor();

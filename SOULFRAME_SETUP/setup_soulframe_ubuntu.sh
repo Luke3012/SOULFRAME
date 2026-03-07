@@ -167,11 +167,11 @@ resolve_home_dir() {
 }
 
 resolve_default_rag_log_dir() {
-  if [[ "$RUNTIME_USER" != "root" && -n "$RUNTIME_HOME" && "$RUNTIME_HOME" != "/" ]]; then
+  if [[ -n "$RUNTIME_HOME" && "$RUNTIME_HOME" != "/" ]]; then
     echo "${RUNTIME_HOME%/}/soulframe-logs"
     return 0
   fi
-  echo "${BACKEND_DIR%/}/log"
+  echo "${HOME:-/root}/soulframe-logs"
 }
 
 has_backend_core_files() {
