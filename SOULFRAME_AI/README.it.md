@@ -74,7 +74,9 @@ backend/voices/default.wav
 ### 5. Variabili ambiente utili (RAG)
 
 - `RAG_DIR`: root della memoria vettoriale per-avatar (default: `backend/rag_store`)
-- `RAG_LOG_DIR`: root dei log conversazione per-avatar (default: `backend/log`)
+- `RAG_LOG_DIR`: root dei log conversazione per-avatar.
+  - Default locale Windows: `backend/log`
+  - Default setup Ubuntu: `/home/<utente_runtime>/soulframe-logs` (fallback: `/opt/soulframe/backend/log`)
 
 ## Avvio Servizi
 
@@ -300,4 +302,25 @@ Se non esiste `..\Build`, imposta la variabile ambiente `BUILD_DIR` con il path 
 
 ```powershell
 set BUILD_DIR=C:\Path\To\Build
+ai_services.cmd 1
 ```
+
+Per cambiare i parametri su Windows modifica direttamente `ai_services.cmd`.
+
+## Warmup Coqui al boot
+
+Dopo l'avvio del servizio TTS, il backend esegue una inizializzazione/warmup del modello Coqui
+usando una frase breve (`"ciao"`). Questa e' in genere la fase piu lenta del primo startup.
+
+## Warmup RAG/Ollama al boot
+
+All'avvio del servizio RAG, `rag_server` esegue un warmup best-effort di Ollama:
+
+- step embedding su `/api/embed` (modello `EMBED_MODEL`);
+- step chat su `/api/chat` (modello `CHAT_MODEL`, con `num_predict` ridotto).
+
+Se Ollama non e' raggiungibile in quel momento, il warmup viene loggato come warning ma
+`rag_server` resta attivo (nessun crash di startup).
+
+Nel bootstrap Unity viene atteso anche `RAG /health` (oltre a `TTS /health`) prima di
+considerare il sistema completamente pronto.

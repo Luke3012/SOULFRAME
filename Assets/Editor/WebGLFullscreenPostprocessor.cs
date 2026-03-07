@@ -21,6 +21,20 @@ public sealed class WebGLFullscreenPostprocessor : IPostprocessBuildWithReport
 
         PatchIndexHtml(Path.Combine(outputPath, "index.html"));
         PatchStyleCss(Path.Combine(outputPath, "TemplateData", "style.css"));
+        ValidateWebTemplateAssets(outputPath);
+    }
+
+    private static void ValidateWebTemplateAssets(string outputPath)
+    {
+        var templateDataPath = Path.Combine(outputPath, "TemplateData");
+        var iconPngPath = Path.Combine(templateDataPath, "SOULFRAME_Icon.png");
+        var cursorPath = Path.Combine(templateDataPath, "SOULFRAME_Cursor_32.png");
+
+        if (!File.Exists(iconPngPath))
+            UnityEngine.Debug.LogWarning($"[WebGL] Missing SOULFRAME favicon PNG in build output: {iconPngPath}");
+
+        if (!File.Exists(cursorPath))
+            UnityEngine.Debug.LogWarning($"[WebGL] Missing custom cursor in build output: {cursorPath}");
     }
 
     private static void PatchIndexHtml(string indexHtmlPath)

@@ -101,7 +101,7 @@ Questa cartella contiene gli script di deploy e gestione per VM Ubuntu.
 - `CHAT_MODEL_DEFAULT` (default: `llama3.1:8b`)
 - `EMBED_MODEL_DEFAULT` (default: `nomic-embed-text`)
 - `WHISPER_MODEL_DEFAULT` (default: `medium`)
-- `RAG_LOG_DIR` (default generated env: `/opt/soulframe/backend/log`)
+- `RAG_LOG_DIR` (default generato in env: `/home/<utente_runtime>/soulframe-logs`, fallback: `/opt/soulframe/backend/log`)
 - `SKIP_OLLAMA_PULL=1` per saltare download modelli Ollama
 - `TORCH_INSTALL_CMD` per forzare una build torch/torchaudio specifica (es. CUDA)
 - `UPDATE_DROP_DIR` per personalizzare la cartella update automatica
@@ -136,7 +136,13 @@ Menu:
 - `[5]` Avvia server
 - `[6]` Spegni VM (shutdown macchina)
 - `[7]` Gestisci backup (elimina singolo/tutti o mantieni ultimi `N`)
+- `[8]` Configura path log RAG (`RAG_LOG_DIR`)
 - `[0]` Esci
+
+Nota log RAG:
+
+- la voce `[8]` crea automaticamente la directory scelta e prova ad assegnarla all'utente runtime;
+- non viene eseguita migrazione automatica dei log già esistenti nel path precedente.
 
 ### Cartella update automatica
 

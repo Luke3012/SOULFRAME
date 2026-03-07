@@ -154,6 +154,93 @@ is_no() {
   [[ "${1,,}" == "n" ]]
 }
 
+read_env_key() {
+  local file_path="$1"
+  local key="$2"
+  if [[ ! -f "$file_path" ]]; then
+    echo ""
+    return 0
+  fi
+  grep -E "^${key}=" "$file_path" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r' | xargs || true
+}
+
+upsert_env_key() {
+  local file_path="$1"
+  local key="$2"
+  local value="$3"
+  local escaped="$value"
+
+  if [[ ! -f "$file_path" ]]; then
+    mkdir -p "$(dirname "$file_path")"
+    touch "$file_path"
+  fi
+
+  escaped="${escaped//\\/\\\\}"
+  escaped="${escaped//&/\\&}"
+  escaped="${escaped//|/\\|}"
+
+  if grep -qE "^${key}=" "$file_path" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${escaped}|" "$file_path"
+  else
+    echo "${key}=${value}" >> "$file_path"
+  fi
+}
+
+resolve_default_rag_log_dir() {
+  if [[ "$RUNTIME_USER" != "root" && -n "$RUNTIME_HOME" && "$RUNTIME_HOME" != "/" ]]; then
+    echo "${RUNTIME_HOME%/}/soulframe-logs"
+    return 0
+  fi
+  echo "${BACKEND_DIR%/}/log"
+}
+
+configure_rag_log_dir() {
+  local current_log_dir=""
+  local default_log_dir=""
+  local target_log_dir=""
+  local input_path=""
+  local runtime_group=""
+
+  default_log_dir="$(resolve_default_rag_log_dir)"
+  current_log_dir="$(read_env_key "$ENV_FILE" "RAG_LOG_DIR")"
+  if [[ -z "$current_log_dir" ]]; then
+    current_log_dir="$default_log_dir"
+  fi
+
+  echo
+  echo "--------- Configura Path Log RAG ---------"
+  echo "File env: $ENV_FILE"
+  echo "Path attuale: $current_log_dir"
+  echo "Default suggerito: $default_log_dir"
+  echo "Nota: i log già esistenti NON vengono migrati automaticamente."
+  read -r -p "Nuovo path assoluto (invio = default): " input_path
+
+  target_log_dir="${input_path:-$default_log_dir}"
+  target_log_dir="$(echo "$target_log_dir" | tr -d '\r' | xargs)"
+  if [[ -z "$target_log_dir" ]]; then
+    target_log_dir="$default_log_dir"
+  fi
+
+  if [[ "$target_log_dir" != /* ]]; then
+    echo "[ERR] Inserisci un path assoluto (es. /home/<utente>/soulframe-logs)."
+    return 1
+  fi
+
+  mkdir -p "$target_log_dir"
+  if [[ "$RUNTIME_USER" != "root" ]] && id -u "$RUNTIME_USER" >/dev/null 2>&1; then
+    runtime_group="$(id -gn "$RUNTIME_USER" 2>/dev/null || echo "$RUNTIME_USER")"
+    chown "$RUNTIME_USER:$runtime_group" "$target_log_dir" || true
+  fi
+
+  upsert_env_key "$ENV_FILE" "RAG_LOG_DIR" "$target_log_dir"
+  echo "[OK] RAG_LOG_DIR impostata a: $target_log_dir"
+
+  read -r -p "Riavviare i servizi ora? [s/N]: " yn
+  if is_yes "$yn"; then
+    sf_all restart
+  fi
+}
+
 is_managed_backup_path() {
   local path="$1"
   case "$path" in
@@ -439,6 +526,23 @@ apply_update_file() {
   return 0
 }
 
+apply_all_update_files() {
+  local -r -a _files=("$@")
+  local -n _all_targets="updated_targets"
+  local -n _all_any="updated_any"
+  local -n _all_setup="updated_setup_script"
+  local -n _all_admin="updated_admin_script"
+  local -n _all_applied="applied_source_files"
+  local src_file
+
+  for src_file in "${_files[@]}"; do
+    if apply_update_file "$src_file" "$backup_root" \
+      _all_targets _all_any _all_setup _all_admin; then
+      _all_applied+=("$src_file")
+    fi
+  done
+}
+
 canonical_path() {
   local path="$1"
   if command -v realpath >/dev/null 2>&1; then
@@ -467,6 +571,8 @@ is_path_inside_dir() {
 }
 
 cleanup_update_sources_after_confirm() {
+  local skip_confirm="${1:-0}"
+  shift || true
   local -a raw_files=("$@")
   local -a files=()
   local file
@@ -492,13 +598,15 @@ cleanup_update_sources_after_confirm() {
     fi
   done
 
-  echo
-  echo "[INFO] File sorgente usati da update (dentro $UPDATE_DIR):"
-  printf '  - %s\n' "${unique[@]}"
-  read -r -p "Eliminare questi file sorgente ora? [s/N]: " yn
-  if ! is_yes "$yn"; then
-    echo "[INFO] Pulizia sorgenti annullata."
-    return 0
+  if [[ "$skip_confirm" -eq 0 ]]; then
+    echo
+    echo "[INFO] File sorgente usati da update (dentro $UPDATE_DIR):"
+    printf '  - %s\n' "${unique[@]}"
+    read -r -p "Eliminare questi file sorgente ora? [s/N]: " yn
+    if ! is_yes "$yn"; then
+      echo "[INFO] Pulizia sorgenti annullata."
+      return 0
+    fi
   fi
 
   for file in "${unique[@]}"; do
@@ -541,22 +649,33 @@ detect_build_source() {
 update_build() {
   local skip_stop="${1:-0}"
   local ask_restart="${2:-1}"
+  local force_all="${3:-0}"
   local auto_zip=""
   auto_zip="$(find_latest_build_zip "$UPDATE_DIR")"
-  if [[ -n "$auto_zip" ]]; then
-    echo "[INFO] ZIP candidato in $UPDATE_DIR:"
-    echo "  $auto_zip"
-  fi
-
-  read -r -p "Percorso ZIP nuova build (invio = candidato): " zip_path
-  if [[ -z "${zip_path:-}" ]]; then
+  
+  if [[ "$force_all" -eq 1 ]]; then
     zip_path="$auto_zip"
-    if [[ -n "$zip_path" ]]; then
-      echo "[INFO] ZIP rilevato automaticamente in $UPDATE_DIR:"
-      echo "  $zip_path"
-    else
-      echo "[INFO] Nessun ZIP indicato e nessun ZIP trovato in $UPDATE_DIR."
+    if [[ -z "$zip_path" ]]; then
+      echo "[INFO] Nessun ZIP trovato in $UPDATE_DIR, Build skipped."
       return
+    fi
+    echo "[INFO] Build ZIP (AUTO): $zip_path"
+  else
+    if [[ -n "$auto_zip" ]]; then
+      echo "[INFO] ZIP candidato in $UPDATE_DIR:"
+      echo "  $auto_zip"
+    fi
+
+    read -r -p "Percorso ZIP nuova build (invio = candidato): " zip_path
+    if [[ -z "${zip_path:-}" ]]; then
+      zip_path="$auto_zip"
+      if [[ -n "$zip_path" ]]; then
+        echo "[INFO] ZIP rilevato automaticamente in $UPDATE_DIR:"
+        echo "  $zip_path"
+      else
+        echo "[INFO] Nessun ZIP indicato e nessun ZIP trovato in $UPDATE_DIR."
+        return
+      fi
     fi
   fi
   if [[ ! -f "$zip_path" ]]; then
@@ -600,7 +719,7 @@ update_build() {
 
   rm -rf "$tmp_dir"
   echo "[OK] Build aggiornata in: $BUILD_DIR"
-  cleanup_update_sources_after_confirm "$zip_path"
+  cleanup_update_sources_after_confirm "$force_all" "$zip_path"
 
   if [[ "$ask_restart" == "1" ]]; then
     read -r -p "Riavviare i servizi ora? [s/N]: " yn
@@ -614,6 +733,7 @@ update_backend() {
   local skip_stop="${1:-0}"
   local ask_restart="${2:-1}"
   local allow_manual_fallback="${3:-1}"
+  local force_all="${4:-0}"
 
   if [[ "$skip_stop" != "1" ]]; then
     echo "[INFO] Stop servizi..."
@@ -639,24 +759,66 @@ update_backend() {
   fi
 
   apply_auto=0
-  if [[ "${#auto_files[@]}" -gt 0 ]]; then
-    echo "[INFO] File aggiornati rilevati automaticamente in: $UPDATE_DIR"
-    printf '  - %s\n' "${auto_files[@]}"
-    read -r -p "Applico questi file automaticamente? [S/n]: " auto_choice
-    if [[ "${auto_choice,,}" != "n" ]]; then
+  apply_all=0
+  
+  if [[ "$force_all" -eq 1 ]]; then
+    # Modalità ALL: non chiedere, procedi automaticamente
+    if [[ "${#auto_files[@]}" -gt 0 ]]; then
+      apply_all=1
       apply_auto=1
     fi
+  elif [[ "${#auto_files[@]}" -gt 0 ]]; then
+    echo "[INFO] File aggiornati rilevati automaticamente in: $UPDATE_DIR"
+    printf '  - %s\n' "${auto_files[@]}"
+    read -r -p "Applico questi file automaticamente? [S/n/a]: " auto_choice
+    case "${auto_choice,,}" in
+      s|"")
+        apply_auto=1
+        ;;
+      a)
+        apply_all=1
+        ;;
+      n)
+        apply_auto=0
+        ;;
+      *)
+        apply_auto=0
+        ;;
+    esac
   else
     echo "[INFO] Nessun file supportato trovato in $UPDATE_DIR."
   fi
 
-  if [[ "$apply_auto" -eq 1 ]]; then
-    for src_file in "${auto_files[@]}"; do
-      if apply_update_file "$src_file" "$backup_root" \
-        updated_targets updated_any updated_setup_script updated_admin_script; then
-        applied_source_files+=("$src_file")
+  if [[ "$apply_all" -eq 1 ]]; then
+    echo
+    echo "===== RIEPILOGO AGGIORNAMENTO =====" 
+    echo
+    echo "[FILE DA AGGIORNARE]"
+    printf '  - %s\n' "${auto_files[@]}"
+    echo
+    if [[ -d "$UPDATE_DIR" ]]; then
+      local -a residui=()
+      while IFS= read -r -d '' residuo; do
+        residui+=("$residuo")
+      done < <(find "$UPDATE_DIR" -type f -print0 2>/dev/null)
+      if [[ "${#residui[@]}" -gt 0 ]]; then
+        echo "[FILE CHE VERRANNO ELIMINATI DOPO L'UPDATE]"
+        printf '  - %s\n' "${residui[@]}"
+        echo
       fi
-    done
+    fi
+    if [[ "$force_all" -eq 0 ]]; then
+      read -r -p "Procedere con aggiornamento e pulizia? [S/n]: " confirm_choice
+      if [[ "${confirm_choice,,}" == "n" ]]; then
+        echo "[INFO] Aggiornamento annullato."
+        return
+      fi
+    fi
+    apply_auto=1
+  fi
+
+  if [[ "$apply_auto" -eq 1 ]]; then
+    apply_all_update_files "${auto_files[@]}"
   fi
 
   if [[ "$updated_any" -eq 0 && "$allow_manual_fallback" == "1" ]]; then
@@ -698,7 +860,7 @@ update_backend() {
     echo "[OK] Backend aggiornato. Backup: $backup_root"
     echo "[INFO] File aggiornati:"
     printf '  - %s\n' "${updated_targets[@]}"
-    cleanup_update_sources_after_confirm "${applied_source_files[@]}"
+    cleanup_update_sources_after_confirm "$force_all" "${applied_source_files[@]}"
   fi
 
   if [[ "$ask_restart" == "1" ]]; then
@@ -715,6 +877,7 @@ update_all() {
   local -a auto_files=()
   local src_file
   local has_any=0
+  local force_all=0
 
   auto_zip="$(find_latest_build_zip "$UPDATE_DIR")"
   while IFS= read -r src_file; do
@@ -723,49 +886,87 @@ update_all() {
   done < <(discover_update_files "$UPDATE_DIR")
 
   echo "[INFO] Sorgenti update rilevate in: $UPDATE_DIR"
+  echo
+  echo "===== RIEPILOGO COMPLETO AGGIORNAMENTO ====="
+  echo
+  
   if [[ -n "$auto_zip" ]]; then
-    echo "  Build ZIP: $auto_zip"
+    echo "[BUILD ZIP]"
+    echo "  $auto_zip"
     has_any=1
   else
-    echo "  Build ZIP: non trovato (Build.zip o *.zip)"
+    echo "[BUILD ZIP]"
+    echo "  non trovato"
+  fi
+  
+  echo
+  if [[ "${#auto_files[@]}" -gt 0 ]]; then
+    echo "[FILE BACKEND/SETUP]"
+    printf '  - %s\n' "${auto_files[@]}"
+    has_any=1
+  else
+    echo "[FILE BACKEND/SETUP]"
+    echo "  non trovati"
   fi
 
-  if [[ "${#auto_files[@]}" -gt 0 ]]; then
-    echo "  File backend/setup:"
-    printf '    - %s\n' "${auto_files[@]}"
-    has_any=1
-  else
-    echo "  File backend/setup: non trovati"
+  echo
+  if [[ -d "$UPDATE_DIR" ]]; then
+    local -a residui=()
+    while IFS= read -r -d '' residuo; do
+      residui+=("$residuo")
+    done < <(find "$UPDATE_DIR" -type f -print0 2>/dev/null)
+    if [[ "${#residui[@]}" -gt 0 ]]; then
+      echo "[RESIDUI DA ELIMINARE DOPO UPDATE]"
+      printf '  - %s\n' "${residui[@]}"
+    fi
   fi
+  
+  echo
 
   if [[ "$has_any" -eq 0 ]]; then
     echo "[INFO] Nessun artefatto update trovato. Copia file in $UPDATE_DIR e riprova."
     return
   fi
 
-  read -r -p "Procedere con update completo ora? [S/n]: " yn
-  if is_no "$yn"; then
-    echo "[INFO] Update annullato."
-    return
-  fi
+  read -r -p "Procedere con update? [S/n/a]: " choice
+  case "${choice,,}" in
+    s|"")
+      force_all=0
+      ;;
+    a)
+      force_all=1
+      ;;
+    n)
+      echo "[INFO] Update annullato."
+      return
+      ;;
+    *)
+      echo "[INFO] Update annullato."
+      return
+      ;;
+  esac
 
   echo "[INFO] Stop servizi..."
   sf_all stop
 
   if [[ -n "$auto_zip" ]]; then
-    # Build: invio = usa candidato automatico, altrimenti puoi inserire un percorso diverso.
-    update_build 1 0
+    update_build 1 0 "$force_all"
   else
     echo "[INFO] Update build saltato (nessun ZIP rilevato)."
   fi
 
-  # Backend/setup: usa solo auto-detection nella update dir.
-  update_backend 1 0 0
+  update_backend 1 0 0 "$force_all"
 
-  read -r -p "Riavviare i servizi ora? [s/N]: " yn
-  if is_yes "$yn"; then
+  if [[ "$force_all" -eq 1 ]]; then
+    echo "[INFO] Riavvio servizi automatico (modalità ALL)..."
     systemctl daemon-reload
     sf_all start
+  else
+    read -r -p "Riavviare i servizi ora? [s/N]: " yn
+    if is_yes "$yn"; then
+      systemctl daemon-reload
+      sf_all start
+    fi
   fi
 }
 
@@ -808,6 +1009,7 @@ while true; do
   echo "[5] Avvia server"
   echo "[6] Spegni VM"
   echo "[7] Gestisci backup"
+  echo "[8] Configura path log RAG"
   echo "[0] Esci"
   read -r -p "> " choice
 
@@ -819,6 +1021,7 @@ while true; do
     5) sf_all start ;;
     6) shutdown_vm ;;
     7) manage_backups ;;
+    8) configure_rag_log_dir ;;
     0) exit 0 ;;
     *) echo "[INFO] Scelta non valida." ;;
   esac

@@ -29,6 +29,17 @@
     z-index: 2;
     margin: 0;
     padding: 0;
+    cursor: url("SOULFRAME_Cursor_32.png") 0 0, auto;
+}
+
+#unity-container {
+    cursor: url("SOULFRAME_Cursor_32.png") 0 0, auto;
+}
+
+/* Keep pointer cursor for explicit interactive elements from template scripts/UI. */
+#unity-container.cursor-pointer,
+#unity-canvas.cursor-pointer {
+    cursor: pointer;
 }
 
 canvas {

@@ -76,7 +76,9 @@ backend/voices/default.wav
 ### 5. Useful environment variables (RAG)
 
 - `RAG_DIR`: root of vector memory per-avatar (default: `backend/rag_store`)
-- `RAG_LOG_DIR`: root of conversation logs per-avatar (default: `backend/log`)
+- `RAG_LOG_DIR`: root of conversation logs per-avatar.
+  - Windows local default: `backend/log`
+  - Ubuntu setup default: `/home/<utente_runtime>/soulframe-logs` (fallback: `/opt/soulframe/backend/log`)
 
 ## Starting Services
 
@@ -302,7 +304,6 @@ If `..\Build` doesn't exist, set the `BUILD_DIR` environment variable with the f
 
 ```powershell
 set BUILD_DIR=C:\Path\To\Build
-```
 ai_services.cmd 1
 ```
 
@@ -323,6 +324,19 @@ usando una frase breve (`"ciao"`). Questa e' in genere la fase piu lenta del pri
 
 Nel frontend Unity, durante questa fase viene mostrato lo stato di inizializzazione (loading panel
 e animazioni dedicate), e l'interfaccia completa viene resa disponibile quando il TTS risulta pronto.
+
+### Warmup RAG/Ollama al boot
+
+All'avvio del servizio RAG, `rag_server` esegue un warmup best-effort di Ollama:
+
+- step embedding su `/api/embed` (modello `EMBED_MODEL`);
+- step chat su `/api/chat` (modello `CHAT_MODEL`, con `num_predict` ridotto).
+
+Se Ollama non e' raggiungibile in quel momento, il warmup viene loggato come warning ma
+`rag_server` resta attivo (nessun crash di startup).
+
+Nel bootstrap Unity viene atteso anche `RAG /health` (oltre a `TTS /health`) prima di
+considerare il sistema completamente pronto.
 
 ## Troubleshooting
 

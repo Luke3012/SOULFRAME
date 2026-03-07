@@ -33,6 +33,7 @@ if "%MENU_CHOICE%"=="0" goto END
 if /I "%MENU_CHOICE%"=="s" goto MENU_SERVER_START
 if /I "%MENU_CHOICE%"=="c" goto MENU_SERVER_STOP
 if /I "%MENU_CHOICE%"=="r" goto MENU_SERVER_RESTART
+if /I "%MENU_CHOICE%"=="debug" goto MENU_SERVER_DEBUG
 if "%MENU_CHOICE%"=="69" goto MENU_WRITING_SECRET
 if "%MENU_CHOICE%"=="6" goto MENU_REVERT
 if "%MENU_CHOICE%"=="5" goto MENU_BACKUP
@@ -57,6 +58,10 @@ goto END
 call :RunAiServices 3
 call :PauseScreen
 goto MAIN_MENU
+
+:MENU_SERVER_DEBUG
+call :RunAiServices debug
+goto END
 
 :MENU_REVERT
 call :GitRevertMenu
@@ -288,6 +293,10 @@ if "%~1"=="2" (
 if "%~1"=="3" (
     echo [INFO] Riavvio servizi con:
     echo        "%AI_SERVICES_CMD%" 3
+)
+if /I "%~1"=="debug" (
+    echo [INFO] Avvio servizi debug con:
+    echo        "%AI_SERVICES_CMD%" debug
 )
 
 call "%AI_SERVICES_CMD%" %~1

@@ -63,11 +63,20 @@ The Unity frontend is designed to be straightforward to use:
 At startup, Coqui-TTS is initialized with a short phrase ("ciao") to warm up the model.
 This is generally the slowest phase of TTS boot.
 
+### RAG/Ollama warmup at boot
+
+At startup, `rag_server` also runs a best-effort warmup on Ollama:
+
+- embedding warmup on `/api/embed`,
+- chat warmup on `/api/chat` with a very short generation.
+
+If Ollama is not ready yet, warmup logs a warning but does not block service startup.
+
 For this reason, the frontend displays a dedicated initialization state:
 
 - loading panel during initial bootstrap,
 - UI transitions and background ring animations to accompany the wait,
-- full interface entry only when TTS service is ready.
+- full interface entry only when TTS and RAG services are ready.
 
 ### Voice setup (avatar voice profile)
 

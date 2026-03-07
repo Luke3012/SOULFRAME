@@ -7,6 +7,7 @@ REM  Args:
 REM   ai_services.cmd 1  -> start
 REM   ai_services.cmd 2  -> stop (kill per porta - SOLO python)
 REM   ai_services.cmd 3  -> restart
+REM   ai_services.cmd debug -> start modalita' ridotta servizi AI
 REM   ai_services.cmd    -> menu
 REM ============================================================
 
@@ -42,7 +43,13 @@ set "CHAT_MODEL=llama3:8b-instruct-q4_K_M"
 set "CHAT_TEMPERATURE=0.45"
 set "CHAT_TOP_P=0.9"
 set "CHAT_REPEAT_PENALTY=1.08"
-set "CHAT_NUM_PREDICT=220"
+set "CHAT_NUM_PREDICT=280"
+set "RAG_CHAT_TOP_K_CAP=8"
+set "RAG_FACTUAL_SCORE_MIN=0.33"
+set "RAG_FACTUAL_SCORE_GAP_MIN=0.08"
+set "RAG_FACTUAL_MAX_CONTEXT_CHARS=3600"
+set "RAG_SESSION_TURNS=8"
+set "RAG_INTENT_ROUTER_NUM_PREDICT=32"
 set "WHISPER_MODEL=small"
 
 REM Coqui XTTS v2 (se coqui_tts_server.py legge queste env)
@@ -56,6 +63,7 @@ set "COQUI_TTS_DEVICE=cuda"
 if "%~1"=="1" goto START
 if "%~1"=="2" goto STOP
 if "%~1"=="3" goto RESTART
+if /I "%~1"=="debug" goto DEBUG_START
 goto MENU
 
 :MENU
@@ -79,15 +87,7 @@ echo Avvio servizi...
 
 call :ENSURE_DIRS
 
-REM --- Ollama (solo se non in ascolto) ---
-call :PORT_IS_LISTENING %OLLAMA_PORT%
-if "!LISTENING!"=="1" (
-  echo    Ollama gia' attivo su %OLLAMA_PORT%
-) else (
-  echo    Avvio Ollama...
-  REM Avvio con cmd /c. Si chiudera' solo quando il processo sulla porta 11434 verra' killato.
-  start "SOULFRAME_OLLAMA" /min cmd /c "ollama serve"
-)
+call :START_OLLAMA
 
 REM --- Whisper ---
 call :PORT_IS_LISTENING %WHISPER_PORT%
@@ -97,13 +97,7 @@ if "!LISTENING!"=="1" (
   start "SOULFRAME_WHISPER" /D "%BACKEND%" cmd /c ""%PY%" -m uvicorn whisper_server:app --host 127.0.0.1 --port %WHISPER_PORT% --log-level info"
 )
 
-REM --- RAG ---
-call :PORT_IS_LISTENING %RAG_PORT%
-if "!LISTENING!"=="1" (
-  echo    RAG gia' attivo su %RAG_PORT%
-) else (
-  start "SOULFRAME_RAG" /D "%BACKEND%" cmd /c ""%PY%" -m uvicorn rag_server:app --host 127.0.0.1 --port %RAG_PORT% --log-level info"
-)
+call :START_RAG
 
 REM --- Coqui TTS ---
 call :PORT_IS_LISTENING %TTS_PORT%
@@ -133,22 +127,47 @@ echo.
 call :BUILD_SERVER
 exit /b 0
 
+:DEBUG_START
+echo.
+echo Avvio servizi AI in modalita' debug...
+
+call :ENSURE_DIRS
+call :START_OLLAMA
+call :START_RAG
+
+echo.
+echo Servizi debug:
+echo    RAG:      http://127.0.0.1:%RAG_PORT%/docs
+echo.
+exit /b 0
+
 :STOP
 echo.
 echo Stop servizi...
 REM Kill Python services
-call :KILL_PORT_PY %WHISPER_PORT%
-call :KILL_PORT_PY %RAG_PORT%
-call :KILL_PORT_PY %TTS_PORT%
-call :KILL_PORT_PY %AVATAR_ASSET_PORT%
-call :KILL_PORT_PY %BUILD_PORT%
+for %%P in (%WHISPER_PORT% %RAG_PORT% %TTS_PORT% %AVATAR_ASSET_PORT% %BUILD_PORT%) do (
+  for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":%%P .*LISTENING" /C:":%%P .*IN ASCOLTO"') do (
+    set "STOP_PID=%%p"
+    set "STOP_PN="
+    for /f "tokens=1 delims=," %%n in ('tasklist /FI "PID eq %%p" /FO CSV /NH') do set "STOP_PN=%%~n"
+    if /I "!STOP_PN!"=="python.exe" (
+      echo    [KILL] porta %%P -^> PID !STOP_PID! ^(python.exe^)
+      taskkill /PID !STOP_PID! /F /T >nul 2>&1
+    ) else (
+      echo    [SKIP] porta %%P -^> PID !STOP_PID! ^(!STOP_PN! - non e python^)
+    )
+  )
+)
 
 REM Chiudi eventuali finestre residue del server WebGL (cmd /k)
-call :KILL_WINDOWTITLE "WebGL Python Server"
-call :KILL_WINDOWTITLE "SOULFRAME_BUILD"
+taskkill /FI "WINDOWTITLE eq WebGL Python Server*" /F /T >nul 2>&1
+taskkill /FI "WINDOWTITLE eq SOULFRAME_BUILD*" /F /T >nul 2>&1
 
 REM Kill Ollama (speciale, non e' python)
-call :KILL_PORT_FORCE %OLLAMA_PORT%
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":%OLLAMA_PORT% .*LISTENING" /C:":%OLLAMA_PORT% .*IN ASCOLTO"') do (
+  echo    [KILL] OLLAMA porta %OLLAMA_PORT% -^> PID %%p
+  taskkill /PID %%p /F /T >nul 2>&1
+)
 
 echo Fatto.
 exit /b 0
@@ -167,6 +186,27 @@ if not exist "%BACKEND%\voices" mkdir "%BACKEND%\voices" >nul 2>&1
 if not exist "%BACKEND%\log" mkdir "%BACKEND%\log" >nul 2>&1
 exit /b 0
 
+:START_OLLAMA
+REM Modalita' ridotta disponibile via parametro diretto "debug".
+call :PORT_IS_LISTENING %OLLAMA_PORT%
+if "!LISTENING!"=="1" (
+  echo    Ollama gia' attivo su %OLLAMA_PORT%
+) else (
+  echo    Avvio Ollama...
+  REM Avvio con cmd /c. Si chiudera' solo quando il processo sulla porta 11434 verra' killato.
+  start "SOULFRAME_OLLAMA" /min cmd /c "ollama serve"
+)
+exit /b 0
+
+:START_RAG
+call :PORT_IS_LISTENING %RAG_PORT%
+if "!LISTENING!"=="1" (
+  echo    RAG gia' attivo su %RAG_PORT%
+) else (
+  start "SOULFRAME_RAG" /D "%BACKEND%" cmd /c ""%PY%" -m uvicorn rag_server:app --host 127.0.0.1 --port %RAG_PORT% --log-level info"
+)
+exit /b 0
+
 :PORT_IS_LISTENING
 set "LISTENING=0"
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":%~1 .*LISTENING" /C:":%~1 .*IN ASCOLTO"') do (
@@ -174,14 +214,14 @@ for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":%~1 .*LISTENING" /C:"
 )
 exit /b 0
 
-:KILL_PORT_PY
+:STOP_PORT_PYTHON
 set "PORT=%~1"
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":%PORT% .*LISTENING" /C:":%PORT% .*IN ASCOLTO"') do (
-  call :KILL_PID_IF_PY %%p %PORT%
+  call :STOP_PID_IF_PYTHON %%p %PORT%
 )
 exit /b 0
 
-:KILL_PID_IF_PY
+:STOP_PID_IF_PYTHON
 setlocal DisableDelayedExpansion
 set "PID=%~1"
 set "PORT=%~2"

@@ -21,6 +21,7 @@ PYTHON_APT_PKGS=()
 RUNTIME_USER=${SUDO_USER:-}
 RUNTIME_HOME=""
 UPDATE_DROP_DIR=""
+RAG_LOG_DIR_DEFAULT=""
 BACKEND_SOURCE_DIR=""
 SOURCE_SETUP_DIR="$SCRIPT_DIR"
 SETUP_TARGET_DIR="$INSTALL_DIR/SOULFRAME_SETUP"
@@ -163,6 +164,14 @@ resolve_home_dir() {
   fi
 
   echo "$home_dir"
+}
+
+resolve_default_rag_log_dir() {
+  if [[ "$RUNTIME_USER" != "root" && -n "$RUNTIME_HOME" && "$RUNTIME_HOME" != "/" ]]; then
+    echo "${RUNTIME_HOME%/}/soulframe-logs"
+    return 0
+  fi
+  echo "${BACKEND_DIR%/}/log"
 }
 
 has_backend_core_files() {
@@ -393,6 +402,7 @@ resolve_python_packages() {
 RUNTIME_USER="$(resolve_runtime_user)"
 RUNTIME_HOME="$(resolve_home_dir "$RUNTIME_USER")"
 UPDATE_DROP_DIR="${UPDATE_DROP_DIR:-$RUNTIME_HOME/soulframe_update}"
+RAG_LOG_DIR_DEFAULT="$(resolve_default_rag_log_dir)"
 
 bootstrap_setup_location "$@"
 
@@ -429,7 +439,7 @@ run_quiet "Installo dipendenze di sistema" \
 if ! command -v ollama >/dev/null 2>&1; then
   run_quiet "Installo Ollama" bash -c "set -euo pipefail; tmp=\$(mktemp); curl -fsSL https://ollama.com/install.sh -o \"\$tmp\"; sh \"\$tmp\"; rm -f \"\$tmp\""
 else
-  box_block "[INFO] Ollama" "Gia installato, salto installazione."
+  box_block "[OK] Ollama" "Già installato"
 fi
 
 run_quiet "Abilito servizio Ollama" systemctl enable --now ollama
@@ -447,7 +457,7 @@ if ! command -v caddy >/dev/null 2>&1; then
   run_quiet "Aggiorno indice apt (Caddy)" apt-get update
   run_quiet "Installo Caddy" env DEBIAN_FRONTEND=noninteractive apt-get install -y caddy
 else
-  box_block "[INFO] Caddy" "Gia installato, salto installazione."
+  box_block "[OK] Caddy" "Già installato"
 fi
 
 box_block "[INFO] Setup scripts pronti" "$SETUP_TARGET_DIR"
@@ -460,7 +470,7 @@ chmod 775 "$UPDATE_DROP_DIR" || true
 
 mkdir -p "$BACKEND_DIR" "$WEBGL_DIR" "$BACKUPS_DIR"
 if BACKEND_SOURCE_DIR="$(resolve_backend_source_dir)"; then
-  echo "[INFO] Backend sorgente rilevato: $BACKEND_SOURCE_DIR"
+  box_block "[OK] Backend sorgente" "$BACKEND_SOURCE_DIR"
   if command -v rsync >/dev/null 2>&1; then
     rsync -a "$BACKEND_SOURCE_DIR/" "$BACKEND_DIR/"
   else
@@ -486,6 +496,12 @@ mkdir -p \
   "$BACKEND_DIR/log" \
   "$BACKEND_DIR/voices" \
   "$BACKEND_DIR/voices/avatars"
+
+mkdir -p "$RAG_LOG_DIR_DEFAULT"
+if [[ "$RUNTIME_USER" != "root" ]] && id -u "$RUNTIME_USER" >/dev/null 2>&1; then
+  log_group="$(id -gn "$RUNTIME_USER" 2>/dev/null || echo "$RUNTIME_USER")"
+  chown "$RUNTIME_USER:$log_group" "$RAG_LOG_DIR_DEFAULT" || true
+fi
 
 if [[ ! -d "$VENV_DIR" ]]; then
   $PYTHON_BIN -m venv "$VENV_DIR"
@@ -533,16 +549,9 @@ then
 fi
 
 if [[ -n "$TORCH_INSTALL_CMD" ]]; then
-  echo "[INFO] Installazione torch/torchaudio con comando personalizzato."
-  run_quiet "Eseguo TORCH_INSTALL_CMD personalizzato" bash -c "$TORCH_INSTALL_CMD"
+  run_quiet "Installo Torch/torchaudio personalizzato" bash -c "$TORCH_INSTALL_CMD"
 else
-  cat <<'TORCH_NOTE'
-[NOTE] Torch/torchaudio installati da requirements.txt.
-Se vuoi una build CUDA specifica, usa TORCH_INSTALL_CMD con il comando corretto:
-https://pytorch.org/get-started/locally/
-Esempio CUDA 12.8:
-  pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
-TORCH_NOTE
+  box_block "[INFO] Torch/torchaudio" "Installati da requirements.txt"
 fi
 
 mkdir -p "$ENV_DIR"
@@ -567,7 +576,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   cat <<EOF_ENV > "$ENV_FILE"
 # SOULFRAME env
 RAG_DIR=$BACKEND_DIR/rag_store
-RAG_LOG_DIR=$BACKEND_DIR/log
+RAG_LOG_DIR=$RAG_LOG_DIR_DEFAULT
 RAG_OCR_LANG=ita+eng
 TESSDATA_PREFIX=$TESSDATA_PREFIX
 
@@ -578,7 +587,13 @@ CHAT_MODEL=$CHAT_MODEL_DEFAULT
 CHAT_TEMPERATURE=0.45
 CHAT_TOP_P=0.9
 CHAT_REPEAT_PENALTY=1.08
-CHAT_NUM_PREDICT=220
+CHAT_NUM_PREDICT=280
+RAG_CHAT_TOP_K_CAP=8
+RAG_FACTUAL_SCORE_MIN=0.33
+RAG_FACTUAL_SCORE_GAP_MIN=0.08
+RAG_FACTUAL_MAX_CONTEXT_CHARS=3600
+RAG_SESSION_TURNS=8
+RAG_INTENT_ROUTER_NUM_PREDICT=32
 
 # Whisper
 WHISPER_MODEL=$WHISPER_MODEL_DEFAULT
@@ -648,8 +663,29 @@ fi
 ensure_env_key "$IDLE_ENV_FILE" "STARTUP_GRACE_MINUTES" "10"
 ensure_env_key "$IDLE_ENV_FILE" "LOG_TAIL_LINES" "20000"
 ensure_env_key "$IDLE_ENV_FILE" "TRACK_SSH_ACTIVITY" "1"
-ensure_env_key "$ENV_FILE" "RAG_LOG_DIR" "$BACKEND_DIR/log"
+ensure_env_key "$ENV_FILE" "RAG_LOG_DIR" "$RAG_LOG_DIR_DEFAULT"
 ensure_env_key "$ENV_FILE" "COQUI_TOS_AGREED" "1"
+ensure_env_key "$ENV_FILE" "CHAT_NUM_PREDICT" "280"
+ensure_env_key "$ENV_FILE" "RAG_CHAT_TOP_K_CAP" "8"
+ensure_env_key "$ENV_FILE" "RAG_FACTUAL_SCORE_MIN" "0.33"
+ensure_env_key "$ENV_FILE" "RAG_FACTUAL_SCORE_GAP_MIN" "0.08"
+ensure_env_key "$ENV_FILE" "RAG_FACTUAL_MAX_CONTEXT_CHARS" "3600"
+ensure_env_key "$ENV_FILE" "RAG_SESSION_TURNS" "8"
+ensure_env_key "$ENV_FILE" "RAG_INTENT_ROUTER_NUM_PREDICT" "32"
+
+if grep -qE '^CHAT_NUM_PREDICT=220$' "$ENV_FILE" 2>/dev/null; then
+  sed -i 's/^CHAT_NUM_PREDICT=220$/CHAT_NUM_PREDICT=280/' "$ENV_FILE"
+fi
+
+RAG_LOG_DIR_EFFECTIVE="$(grep -E '^RAG_LOG_DIR=' "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r' | xargs || true)"
+if [[ -z "$RAG_LOG_DIR_EFFECTIVE" ]]; then
+  RAG_LOG_DIR_EFFECTIVE="$RAG_LOG_DIR_DEFAULT"
+fi
+mkdir -p "$RAG_LOG_DIR_EFFECTIVE"
+if [[ "$RUNTIME_USER" != "root" ]] && id -u "$RUNTIME_USER" >/dev/null 2>&1; then
+  log_group="$(id -gn "$RUNTIME_USER" 2>/dev/null || echo "$RUNTIME_USER")"
+  chown "$RUNTIME_USER:$log_group" "$RAG_LOG_DIR_EFFECTIVE" || true
+fi
 
 cat <<'UNIT' > /etc/systemd/system/soulframe-whisper.service
 [Unit]
@@ -949,6 +985,15 @@ Unit=soulframe-idle-shutdown.service
 WantedBy=timers.target
 UNIT
 
+systemctl daemon-reload
+systemctl enable soulframe.target
+
+box_block "SOULFRAME Setup Completato!" \
+  "Installazione: $INSTALL_DIR" \
+  "Backend: $BACKEND_DIR" \
+  "Env: $ENV_FILE" \
+  "Log: $SETUP_LOG_FILE"
+
 cat <<'SFCTL' > /usr/local/bin/sfctl
 #!/usr/bin/env bash
 set -euo pipefail
@@ -1134,5 +1179,3 @@ URL:
 Cartella update automatica:
   ${UPDATE_DROP_DIR}
 POST
-
-

@@ -2737,8 +2737,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 702, y: 0.001499176}
-  m_SizeDelta: {x: -1420.63, y: -0.002998352}
+  m_AnchoredPosition: {x: 645.70386, y: 0.001499176}
+  m_SizeDelta: {x: -1371.4077, y: -0.003}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &356181326
 MonoBehaviour:
@@ -6699,7 +6699,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
-  m_Color: {r: 0, g: 0, b: 0, a: 0}
+  m_Color: {r: 0.015686275, g: 0.023529412, b: 0.043137256, a: 0.5}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -7357,8 +7357,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -204.68, y: 0}
-  m_SizeDelta: {x: -505.37, y: -8}
+  m_AnchoredPosition: {x: -208.6825, y: 0}
+  m_SizeDelta: {x: -497.365, y: -8}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &902000012
 CanvasRenderer:
@@ -10772,8 +10772,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.5}
-  m_AnchoredPosition: {x: 32.473, y: -299}
-  m_SizeDelta: {x: -64.599976, y: 129.1862}
+  m_AnchoredPosition: {x: 32.473, y: -327.04}
+  m_SizeDelta: {x: -64.6, y: 91.912}
   m_Pivot: {x: 0, y: 0.5}
 --- !u!114 &1297987818
 MonoBehaviour:
@@ -10822,15 +10822,15 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 23
-  m_fontSizeBase: 23
+  m_fontSize: 24
+  m_fontSizeBase: 24
   m_fontWeight: 400
-  m_enableAutoSizing: 0
-  m_fontSizeMin: 0
-  m_fontSizeMax: 0
+  m_enableAutoSizing: 1
+  m_fontSizeMin: 10
+  m_fontSizeMax: 24
   m_fontStyle: 0
   m_HorizontalAlignment: 2
-  m_VerticalAlignment: 256
+  m_VerticalAlignment: 512
   m_textAlignment: 65535
   m_characterSpacing: 0
   m_characterHorizontalScale: 1
@@ -11031,6 +11031,8 @@ MonoBehaviour:
   mainModeStatusText: {fileID: 103529722}
   mainModeTranscriptText: {fileID: 211383443}
   mainModeReplyText: {fileID: 1297987818}
+  mainModeReplyBackgroundImage: {fileID: 2099900012}
+  touchMainModeConversationBackgroundImage: {fileID: 856476395}
   btnMainModeMemory: {fileID: 910000004}
   btnMainModeVoice: {fileID: 910000104}
   chatNoteInput: {fileID: 1940768254}
@@ -11158,6 +11160,19 @@ MonoBehaviour:
   cameraSmoothTime: 0.25
   cameraRotateSpeed: 6
   cameraReturnDuration: 0.35
+  enableMainModeReplyWordFlow: 1
+  replyDesktopWindowWords: 50
+  replyTouchWindowWords: 30
+  replyLookAheadWords: 5
+  replyMinWordStepSeconds: 0.14
+  replyBaseCharsPerSecond: 14
+  replyPunctuationPauseSeconds: 0.5
+  replyAudioLeadCompSeconds: 0.06
+  replyCaretBlinkSeconds: 0.42
+  replyShowTrailingCaret: 1
+  replyPastWordColor: {r: 0.62, g: 0.72, b: 0.82, a: 1}
+  replyCurrentWordColor: {r: 0.95, g: 0.99, b: 1, a: 1}
+  replyFutureWordColor: {r: 0.76, g: 0.86, b: 0.94, a: 1}
   enableTtsWebGlStreamingLogs: 1
   ttsStreamMaxChunkChars: 140
   transitionDuration: 0.25
@@ -13871,8 +13886,8 @@ MonoBehaviour:
   m_fontSizeBase: 22
   m_fontWeight: 400
   m_enableAutoSizing: 1
-  m_fontSizeMin: 14
-  m_fontSizeMax: 23
+  m_fontSizeMin: 16
+  m_fontSizeMax: 24
   m_fontStyle: 0
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 256
@@ -15889,11 +15904,11 @@ MonoBehaviour:
   - mouthN
   - MTH_N
   maxWeight: 1
-  vowelGain: 1.15
-  smooth: 10
+  vowelGain: 0.9
+  smooth: 8
   enableWebGlAssist: 1
-  webGlWeightBoost: 1.3
-  webGlCloseSpeedMultiplier: 0.3
+  webGlWeightBoost: 1
+  webGlCloseSpeedMultiplier: 0.6
   webGlVolumeFloor: 0.08
   logSetupSummary: 1
   logBlendshapeNames: 0
@@ -16136,6 +16151,7 @@ RectTransform:
   m_Children:
   - {fileID: 103529721}
   - {fileID: 211383442}
+  - {fileID: 2099900011}
   - {fileID: 1297987817}
   - {fileID: 910000002}
   - {fileID: 910000102}
@@ -16266,8 +16282,8 @@ MonoBehaviour:
   m_fontSizeBase: 22
   m_fontWeight: 400
   m_enableAutoSizing: 1
-  m_fontSizeMin: 14
-  m_fontSizeMax: 23
+  m_fontSizeMin: 16
+  m_fontSizeMax: 24
   m_fontStyle: 0
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 256
@@ -16625,6 +16641,81 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: -16}
   m_SizeDelta: {x: -48, y: 28}
   m_Pivot: {x: 0.5, y: 1}
+--- !u!1 &2099900010
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2099900011}
+  - component: {fileID: 2099900013}
+  - component: {fileID: 2099900012}
+  m_Layer: 0
+  m_Name: Pnl_MainModeReplyCard
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &2099900011
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2099900010}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2000000006}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0.5}
+  m_AnchorMax: {x: 1, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: -320.71}
+  m_SizeDelta: {x: -26, y: 120.57}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &2099900012
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2099900010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+  m_Material: {fileID: 0}
+  m_Color: {r: 0.011764706, g: 0.019607844, b: 0.039215688, a: 0.52}
+  m_RaycastTarget: 0
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 0}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &2099900013
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2099900010}
+  m_CullTransparentMesh: 1
 --- !u!1 &5000001000
 GameObject:
   m_ObjectHideFlags: 0
