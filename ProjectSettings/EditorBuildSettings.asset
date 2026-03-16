@@ -6,8 +6,8 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/Scena1.unity
-    guid: 7fcf4e202e0eaec408716f206f757514
+    path: Assets/Scenes/SOULFRAME_Scene.unity
+    guid: 49400ae8f61fb734aa0451a197fdd5ab
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0

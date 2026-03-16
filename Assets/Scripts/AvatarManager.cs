@@ -7,7 +7,7 @@ using System.Collections;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
-#if UNITY_WEBGL || UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR || UNITY_STANDALONE_WIN
 using GLTFast;
 #endif
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -380,7 +380,7 @@ public class AvatarManager : MonoBehaviour
         profileRouter?.ApplyGender(avatarInfo.Gender); // Applica profilo LipSync in base al genere
     }
 
-#if UNITY_WEBGL || UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR || UNITY_STANDALONE_WIN
     private void StartImportAndLoadMainWebGL(AvatarData avatarData)
     {
         cancelPendingDownloads = false;
@@ -516,7 +516,7 @@ public class AvatarManager : MonoBehaviour
 
         profileRouter?.ApplyGender(avatarData.gender);
 
-#if UNITY_WEBGL || UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR || UNITY_STANDALONE_WIN
         StartLoadMainFromUrlWebGL(avatarData);
 #else
         var info = avatarData.ToAvatarInfo();
@@ -853,8 +853,16 @@ public class AvatarManager : MonoBehaviour
 
     private void EnsureLocalModelInList()
     {
-        AddLocalModelIfMissing(localModel1AvatarId, localModel1FileName, localModel1Gender);
-        AddLocalModelIfMissing(localModel2AvatarId, localModel2FileName, localModel2Gender);
+        if (IsEmpiricalTestModeEnabled())
+        {
+            AddLocalModelIfMissing(localModel1AvatarId, localModel1FileName, localModel1Gender);
+            AddLocalModelIfMissing(localModel2AvatarId, localModel2FileName, localModel2Gender);
+        }
+        else
+        {
+            AddLocalModelIfMissing(localModel1AvatarId, localModel1FileName, localModel1Gender);
+            AddLocalModelIfMissing(localModel2AvatarId, localModel2FileName, localModel2Gender);
+        }
     }
 
     private void AddLocalModelIfMissing(string avatarId, string fileName, string gender)
@@ -1088,7 +1096,7 @@ public class AvatarManager : MonoBehaviour
 
     public bool DownloadPreview(AvatarData avatarData, Action<Transform> onLoaded, bool destroyDownloaderAfter)
     {
-#if UNITY_WEBGL || UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR || UNITY_STANDALONE_WIN
         return DownloadPreviewToTransform(avatarData, transform, onLoaded, destroyDownloaderAfter);
 #else
         // Se c'e' gia' un download in corso, lo cancelliamo: nella preview rapida vince l'ultima richiesta.
@@ -1146,7 +1154,7 @@ public class AvatarManager : MonoBehaviour
 
     public bool DownloadPreviewToTransform(AvatarData data, Transform parent, Action<Transform> onLoaded, bool destroyDownloaderAfter)
     {
-#if UNITY_WEBGL || UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR || UNITY_STANDALONE_WIN
         if (_isPreviewDownloading)
         {
             CancelPreviewDownloads();
@@ -1283,7 +1291,7 @@ public class AvatarManager : MonoBehaviour
 
     private IEnumerator WebGLRequestAvatarList(Action<List<AvatarData>> cb)
     {
-        string url = $"{backendBaseUrl.TrimEnd('/')}/avatars/list";
+        string url = AppendEmpiricalTestModeQuery($"{backendBaseUrl.TrimEnd('/')}/avatars/list");
         using (var request = UnityWebRequest.Get(url))
         {
             request.timeout = webglRequestTimeoutSeconds;
@@ -1313,6 +1321,7 @@ public class AvatarManager : MonoBehaviour
                 }
 
                 EnsureLocalEntries(results);
+                ApplyEmpiricalAvatarFilter(results);
                 cb?.Invoke(results);
             }
             catch (Exception e)
@@ -1323,7 +1332,7 @@ public class AvatarManager : MonoBehaviour
         }
     }
 
-#if UNITY_WEBGL || UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR || UNITY_STANDALONE_WIN
     private IEnumerator WebGLPreviewDownload(AvatarData data, Transform parent, int sessionId, Action<Transform> onLoaded)
     {
         if (data == null)
@@ -1375,14 +1384,15 @@ public class AvatarManager : MonoBehaviour
             yield break;
         }
 
-        string url = $"{backendBaseUrl.TrimEnd('/')}/avatars/import";
+        string url = AppendEmpiricalTestModeQuery($"{backendBaseUrl.TrimEnd('/')}/avatars/import");
         var payload = new ImportRequest
         {
             avatar_id = data.avatarId,
             url = data.sourceUrl,
             gender = data.gender,
             bodyId = data.bodyId,
-            urlType = data.urlType
+            urlType = data.urlType,
+            empirical_test_mode = IsEmpiricalTestModeEnabled()
         };
 
         string json = JsonUtility.ToJson(payload);
@@ -1612,6 +1622,7 @@ public class AvatarManager : MonoBehaviour
         public string gender;
         public string bodyId;
         public string urlType;
+        public bool empirical_test_mode;
     }
 
     [System.Serializable]
@@ -1627,8 +1638,31 @@ public class AvatarManager : MonoBehaviour
     private List<AvatarData> BuildLocalAvatarList()
     {
         var list = new List<AvatarData>();
-        list.Add(CreateLocalAvatar(localModel1AvatarId, localModel1FileName, localModel1Gender));
-        list.Add(CreateLocalAvatar(localModel2AvatarId, localModel2FileName, localModel2Gender));
+        if (IsEmpiricalTestModeEnabled())
+        {
+            if (GetEmpiricalAvatarCarouselGroup() == UIFlowController.EmpiricalAvatarCarouselGroup.Personal)
+            {
+                if (savedData != null && savedData.avatars != null)
+                {
+                    foreach (var item in savedData.avatars)
+                    {
+                        if (item != null && !IsLocalTestAvatarId(item.avatarId))
+                        {
+                            list.Add(item);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                list.Add(CreateLocalAvatar(GetEmpiricalActiveLocalAvatarId(), GetEmpiricalActiveLocalFileName(), GetEmpiricalActiveLocalGender()));
+            }
+        }
+        else
+        {
+            list.Add(CreateLocalAvatar(localModel1AvatarId, localModel1FileName, localModel1Gender));
+            list.Add(CreateLocalAvatar(localModel2AvatarId, localModel2FileName, localModel2Gender));
+        }
         return list;
     }
 
@@ -1661,6 +1695,17 @@ public class AvatarManager : MonoBehaviour
             return;
         }
 
+        ApplyEmpiricalAvatarFilter(list);
+
+        if (IsEmpiricalTestModeEnabled())
+        {
+            if (GetEmpiricalAvatarCarouselGroup() == UIFlowController.EmpiricalAvatarCarouselGroup.General)
+            {
+                EnsureEmpiricalLocalAvatarPresent(list, GetEmpiricalActiveLocalAvatarId());
+            }
+            return;
+        }
+
         bool hasModel1 = false;
         bool hasModel2 = false;
 
@@ -1683,6 +1728,106 @@ public class AvatarManager : MonoBehaviour
         if (!hasModel2)
         {
             list.Insert(1, CreateLocalAvatar(localModel2AvatarId, localModel2FileName, localModel2Gender));
+        }
+    }
+
+    private bool IsEmpiricalTestModeEnabled()
+    {
+        return uiFlowController != null && uiFlowController.EmpiricalTestModeEnabled;
+    }
+
+    private UIFlowController.EmpiricalAvatarCarouselGroup GetEmpiricalAvatarCarouselGroup()
+    {
+        if (uiFlowController == null)
+        {
+            return UIFlowController.EmpiricalAvatarCarouselGroup.General;
+        }
+
+        return uiFlowController.EmpiricalCarouselGroup;
+    }
+
+    private string GetEmpiricalActiveLocalAvatarId()
+    {
+        if (uiFlowController == null || string.IsNullOrWhiteSpace(uiFlowController.EmpiricalActiveLocalAvatarId))
+        {
+            return localModel2AvatarId;
+        }
+
+        return uiFlowController.EmpiricalActiveLocalAvatarId;
+    }
+
+    private string GetEmpiricalActiveLocalFileName()
+    {
+        return string.Equals(GetEmpiricalActiveLocalAvatarId(), localModel1AvatarId, StringComparison.OrdinalIgnoreCase)
+            ? localModel1FileName
+            : localModel2FileName;
+    }
+
+    private string GetEmpiricalActiveLocalGender()
+    {
+        return string.Equals(GetEmpiricalActiveLocalAvatarId(), localModel1AvatarId, StringComparison.OrdinalIgnoreCase)
+            ? localModel1Gender
+            : localModel2Gender;
+    }
+
+    private bool IsLocalTestAvatarId(string avatarId)
+    {
+        return string.Equals(avatarId, localModel1AvatarId, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(avatarId, localModel2AvatarId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsureEmpiricalLocalAvatarPresent(List<AvatarData> list, string avatarId)
+    {
+        bool alreadyPresent = list.Exists(item =>
+            item != null &&
+            string.Equals(item.avatarId, avatarId, StringComparison.OrdinalIgnoreCase));
+
+        if (alreadyPresent)
+        {
+            return;
+        }
+
+        if (string.Equals(avatarId, localModel1AvatarId, StringComparison.OrdinalIgnoreCase))
+        {
+            list.Insert(0, CreateLocalAvatar(localModel1AvatarId, localModel1FileName, localModel1Gender));
+            return;
+        }
+
+        list.Insert(0, CreateLocalAvatar(localModel2AvatarId, localModel2FileName, localModel2Gender));
+    }
+
+    private string AppendEmpiricalTestModeQuery(string url)
+    {
+        if (!IsEmpiricalTestModeEnabled() || string.IsNullOrEmpty(url))
+        {
+            return url;
+        }
+
+        return url.Contains("?")
+            ? $"{url}&empirical_test_mode=true"
+            : $"{url}?empirical_test_mode=true";
+    }
+
+    private void ApplyEmpiricalAvatarFilter(List<AvatarData> list)
+    {
+        if (!IsEmpiricalTestModeEnabled() || list == null)
+        {
+            return;
+        }
+
+        switch (GetEmpiricalAvatarCarouselGroup())
+        {
+            case UIFlowController.EmpiricalAvatarCarouselGroup.General:
+                string activeLocalAvatarId = GetEmpiricalActiveLocalAvatarId();
+                list.RemoveAll(item =>
+                    item != null &&
+                    (!string.Equals(item.avatarId, activeLocalAvatarId, StringComparison.OrdinalIgnoreCase)));
+                break;
+            case UIFlowController.EmpiricalAvatarCarouselGroup.Personal:
+                list.RemoveAll(item =>
+                    item != null &&
+                    IsLocalTestAvatarId(item.avatarId));
+                break;
         }
     }
 

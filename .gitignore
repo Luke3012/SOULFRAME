@@ -2,6 +2,7 @@
 /[Tt]emp/
 /[Oo]bj/
 /[Bb]uild/
+/[Bb]uild_Windows64/
 /[Bb]uilds/
 /[Ll]ogs/
 /[Pp]ackages/
@@ -59,11 +60,13 @@ SOULFRAME_AI/backend/voices/
 SOULFRAME_AI/backend/rag_store/
 SOULFRAME_AI/backend/avatar_store/
 SOULFRAME_AI/backend/log/
+SOULFRAME_AI/backend/empirical_test/
 
 # Ignora chiavi API e file temporanei
 gemini_key.txt
 *.log
 SOULFRAME_AI/PID
+SOULFRAME_AI/ai_services.mode.cfg
 /PID
 /__*.txt
 
@@ -123,3 +126,9 @@ SOULFRAME_THESIS/**/*.pdf
 /main.vrb
 /main.xdv
 /main.pdf
+SOULFRAME_THESIS/Risorse/_mermaid_config.json
+Assets/Resources/PerformanceTestRunInfo.json
+Assets/Resources/PerformanceTestRunInfo.json.meta
+Assets/Resources/PerformanceTestRunSettings.json
+Assets/Resources/PerformanceTestRunSettings.json.meta
+SOULFRAME_THESIS/main.synctex(busy)

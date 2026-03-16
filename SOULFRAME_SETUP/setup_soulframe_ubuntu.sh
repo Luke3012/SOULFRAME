@@ -789,34 +789,40 @@ mkdir -p "$WEBGL_DIR" "$BACKUPS_DIR"
 CADDY_SITE_LABEL="$SOULFRAME_DOMAIN_EFFECTIVE"
 cat <<CADDY > /etc/caddy/Caddyfile
 ${CADDY_SITE_LABEL} {
-  encode zstd gzip
-  root * $WEBGL_DIR
-  file_server
   log {
     output file /var/log/caddy/access.log
   }
 
-  handle_path /api/whisper/* {
-    reverse_proxy 127.0.0.1:8001
-  }
-
-  handle_path /api/rag/* {
-    reverse_proxy 127.0.0.1:8002
-  }
-
-  handle_path /api/avatar/* {
-    reverse_proxy 127.0.0.1:8003 {
-      header_up X-Forwarded-Prefix /api/avatar
+  route {
+    handle_path /api/tts/* {
+      reverse_proxy 127.0.0.1:8004 {
+        flush_interval -1
+      }
     }
-  }
 
-  # Compatibilità con URL legacy assolute restituite in precedenza dal backend avatar.
-  handle /avatars/* {
-    reverse_proxy 127.0.0.1:8003
-  }
+    encode zstd gzip
 
-  handle_path /api/tts/* {
-    reverse_proxy 127.0.0.1:8004
+    handle_path /api/whisper/* {
+      reverse_proxy 127.0.0.1:8001
+    }
+
+    handle_path /api/rag/* {
+      reverse_proxy 127.0.0.1:8002
+    }
+
+    handle_path /api/avatar/* {
+      reverse_proxy 127.0.0.1:8003 {
+        header_up X-Forwarded-Prefix /api/avatar
+      }
+    }
+
+    # Compatibilità con URL legacy assolute restituite in precedenza dal backend avatar.
+    handle /avatars/* {
+      reverse_proxy 127.0.0.1:8003
+    }
+
+    root * $WEBGL_DIR
+    file_server
   }
 }
 CADDY
@@ -1013,6 +1019,34 @@ usage() {
   echo "Servizi: whisper | rag | avatar | tts | ollama | all"
 }
 
+manage_all_services() {
+  local action="$1"
+  case "$action" in
+    start)
+      systemctl start soulframe.target
+      systemctl start caddy
+      ;;
+    stop)
+      # Stopping the target alone may not stop all wanted units.
+      systemctl stop "${ALL_UNITS[@]}"
+      systemctl stop caddy
+      ;;
+    restart)
+      systemctl daemon-reload
+      systemctl stop caddy || true
+      systemctl stop "${ALL_UNITS[@]}" || true
+      systemctl start soulframe.target
+      systemctl start caddy
+      ;;
+    status)
+      systemctl status "${ALL_UNITS[@]}" caddy --no-pager
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 service_name() {
   case "$1" in
     whisper) echo "soulframe-whisper.service" ;;
@@ -1034,21 +1068,7 @@ fi
 case "$ACTION" in
   start|stop|restart|status)
     if [[ "$UNIT" == "__all__" ]]; then
-      case "$ACTION" in
-        start)
-          systemctl start soulframe.target
-          ;;
-        stop)
-          # Stopping the target alone may not stop all wanted units.
-          systemctl stop "${ALL_UNITS[@]}"
-          ;;
-        restart)
-          systemctl restart "${ALL_UNITS[@]}"
-          ;;
-        status)
-          systemctl status "${ALL_UNITS[@]}" --no-pager
-          ;;
-      esac
+      manage_all_services "$ACTION"
     else
       systemctl "$ACTION" "$UNIT"
     fi
@@ -1145,11 +1165,15 @@ Comandi utili (esegui dalla VM):
 
 Avvio rapido:
   sfctl start
+  sfctl restart all
   sfctl status
   sfctl logs rag
   sfadmin
   sfurl
   sfurl --open
+
+Per applicare subito modifiche runtime a servizi/env/unita:
+  sfctl restart all
 
 Ollama:
   systemctl status ollama

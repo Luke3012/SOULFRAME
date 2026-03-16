@@ -1,3 +1,4 @@
+% !TEX root = ./main.tex
 \chapter{Fondamenti e Stato dell'Arte}
 \label{chap:stato-arte}
 
@@ -7,7 +8,7 @@ Gli Embodied Conversational Agents (ECA) sono agenti conversazionali dotati di u
 
 La letteratura recente mostra che molti sistemi ECA in XR sono sviluppati in Virtual Reality (VR), spesso con Head-Mounted Display (HMD) e con Unity come piattaforma ricorrente. Sono frequenti anche l'interazione vocale e le configurazioni uno-a-uno. Molte applicazioni restano orientate a compiti specifici, ma cresce l'interesse verso dialoghi più adattivi supportati da modelli neurali.\cite{Yang2025ECA_XR} In questo quadro si inserisce anche SOULFRAME: un ECA vocale embodied in un ambiente 3D fruibile via WebGL senza HMD, con interazione push-to-talk e un profilo avatar che integra aspetto e voce.
 
-La traiettoria che porta dai CA scriptati ai sistemi basati su modelli linguistici è sintetizzata in Figura~\ref{fig:ca-evoluzione}. La figura serve a chiarire perché embodiment e gestione del dialogo vengano oggi trattati insieme nei prototipi XR.
+Figura~\ref{fig:ca-evoluzione} sintetizza la traiettoria che porta dai CA scriptati ai sistemi basati su modelli linguistici, chiarendo perché embodiment e gestione del dialogo vengano oggi trattati insieme nei prototipi XR.
 
 \begin{figure}[t]
 \centering
@@ -30,13 +31,13 @@ La voce è un canale rilevante per la presenza sociale perché rende immediatame
 \end{figure}
 \footnotetext{Fonte: Oh et al., \emph{A Systematic Review of Social Presence: Definition, Antecedents, and Implications}, Frontiers in Robotics and AI (2018), \url{https://www.frontiersin.org/journals/robotics-and-ai/articles/10.3389/frobt.2018.00114/full} (Figura 3; licenza/uso: CC BY).}
 
-La presenza sociale e la co-presenza dipendono dall'allineamento tra canali comunicativi e tempi dell'interazione. In Figura~\ref{fig:social-presence-audio} la qualità audio compare tra le variabili immersive considerate in letteratura. Per un ECA vocale, qualità della voce e gestione temporale dei turni influenzano direttamente la naturalezza percepita; per questo, nei capitoli successivi, push-to-talk, profilo vocale per avatar, warmup e frasi di attesa non verranno trattati come dettagli secondari.
+La presenza sociale e la co-presenza dipendono dall'allineamento tra canali comunicativi e tempi dell'interazione. In Figura~\ref{fig:social-presence-audio} la qualità audio compare tra le variabili immersive considerate in letteratura. Per un ECA vocale, qualità della voce e gestione temporale dei turni influenzano direttamente la naturalezza percepita; per questo, nei capitoli successivi, la modalità \textit{push-to-talk}, il profilo vocale per avatar, la pre-attivazione della sintesi e le frasi di attesa non verranno trattati come dettagli secondari.
 
 Nel contesto delle interazioni mediate conviene distinguere loneliness e isolamento sociale oggettivo. L'isolamento riguarda la quantità dei contatti; la loneliness riguarda invece come quei legami vengono vissuti. Nasce da una discrepanza percepita tra le relazioni che una persona desidera e quelle che sente di avere. Per questo motivo non coincide con il semplice ``stare da soli'': si può avere una rete di contatti e sentirsi comunque disconnessi.\cite{HawkleyCacioppo2010}
 
 Quando questa condizione diventa cronica, le conseguenze sono rilevanti: aumento del rischio depressivo, declino cognitivo, maggiore vulnerabilità cardiovascolare e incremento della mortalità prematura (circa 26\%).\cite{HawkleyCacioppo2010} La letteratura descrive un circuito auto-rinforzante: la percezione di disconnessione aumenta l'ipervigilanza verso possibili minacce sociali, che a sua volta favorisce letture negative delle interazioni e indebolisce l'autoregolazione. Nel tempo, questo meccanismo rende più probabile confermare la stessa percezione iniziale di esclusione.
 
-Per gli ECA embodied questo non implica una promessa terapeutica, ma chiarisce un problema applicativo reale. Se la loneliness dipende anche da come viene percepita la qualità della relazione, un agente che mantiene continuità tra turni, coerenza vocale e memoria può offrire un'interazione più stabile rispetto a una UI testuale stateless. In questa lettura, la social presence resta centrale: percepire un interlocutore come ``presente'' nello stesso spazio comunicativo cambia il modo in cui il dialogo viene interpretato.\cite{Oh2018SocialPresence}
+Per gli ECA embodied questo non implica una promessa terapeutica, ma chiarisce un problema applicativo reale. Se la loneliness dipende anche da come viene percepita la qualità della relazione, un agente che mantiene continuità tra turni, coerenza vocale e memoria può offrire un'interazione più stabile rispetto a una UI testuale stateless. La social presence resta quindi centrale: percepire un interlocutore come ``presente'' nello stesso spazio comunicativo cambia il modo in cui il dialogo viene interpretato.\cite{Oh2018SocialPresence}
 
 Su questa linea si colloca anche la scelta di trattare l'avatar come profilo operativo completo (aspetto, voce e memoria), non come semplice canale di output testuale. L'obiettivo non è ``curare'' la loneliness né sostituire relazioni umane, ma ridurre incoerenze che interrompono la continuità percepita del dialogo. Di conseguenza, robustezza della pipeline e coerenza del profilo conversazionale diventano prerequisiti sia tecnici sia valutativi.
 
@@ -49,7 +50,7 @@ In letteratura, architetture modulari open-source per ECA vocali in VR mostrano 
 
 \section{Pipeline AI adottata in SOULFRAME}
 \label{sec:pipeline-ai}
-SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento del parlato, generazione contestuale e sintesi vocale. Questa scomposizione isola i vincoli della conversazione a turni, soprattutto la latenza, e permette di aggiornare i singoli moduli senza modificare l'intera architettura. Figura~\ref{fig:pipeline-ai-cap2} mostra il flusso dei dati dal segnale audio in ingresso al testo trascritto, fino al testo di risposta e all'audio sintetizzato.
+SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento del parlato, generazione contestuale e sintesi vocale. Questa scomposizione isola i vincoli della conversazione a turni, soprattutto la latenza, e permette di aggiornare i singoli moduli senza modificare l'intera architettura. Figura~\ref{fig:pipeline-ai-cap2} ne riassume il flusso dei dati dal segnale audio in ingresso al testo trascritto, fino al testo di risposta e all'audio sintetizzato.
 
 \begin{figure}[t]
 \centering
@@ -58,12 +59,10 @@ SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento d
 \label{fig:pipeline-ai-cap2}
 \end{figure}
 
-La figura funziona qui come mappa di lettura: i tre blocchi vengono ripresi subito sotto con vincoli e problemi diversi.
-
 \subsection{Speech-to-Text con Whisper}
 Nel primo stadio della pipeline non basta ``trascrivere'': serve una base STT che regga parlanti, microfoni e condizioni non perfettamente controllate senza richiedere l'addestramento di un ASR dedicato. Per questo il progetto adotta Whisper come componente di riferimento.
 
-Whisper è un modello STT basato su architettura Transformer e addestrato su larga scala con supervisione debole. L'addestramento su circa 680.000 ore e l'impostazione multilingue (99 lingue) spiegano perché venga spesso considerato robusto in zero-shot rispetto a variazioni di voce e contesto acustico.\cite{Radford2023Whisper} In una pipeline conversazionale questo aspetto conta molto: un errore in trascrizione non resta confinato allo STT, ma si propaga alla memoria e alla generazione della risposta. La Figura~\ref{fig:whisper-arch-cap2} richiama la separazione tra encoder acustico e decoder testuale su cui si appoggia questo uso del modello.
+Whisper è un modello STT basato su architettura Transformer e addestrato su larga scala con supervisione debole. L'addestramento su circa 680.000 ore e l'impostazione multilingue (99 lingue) spiegano perché venga spesso considerato robusto in zero-shot, cioè senza addestramento specifico sul parlante o sul caso d'uso, rispetto a variazioni di voce e contesto acustico.\cite{Radford2023Whisper} In una pipeline conversazionale questo aspetto pesa molto: un errore in trascrizione non si ferma allo STT, ma si propaga alla memoria e alla generazione della risposta. La Figura~\ref{fig:whisper-arch-cap2} richiama per questo la separazione tra encoder acustico e decoder testuale.
 
 \begin{figure}[t]
 \centering
@@ -77,27 +76,25 @@ multilingue zero-shot.\protect\footnotemark}
 Large-Scale Weak Supervision}, ICML 2023, Fig.~1,
 \url{https://arxiv.org/abs/2212.04356}.}
 
-Più che entrare nel dettaglio del modello, qui la figura serve a collocare il punto di contatto tra segnale acustico e testo.
-
  \subsection{Memoria conversazionale con RAG (LLM + embeddings + retrieval)}
 Il secondo stadio nasce da un'esigenza diversa: mantenere continuità tra i turni senza dover riaddestrare il modello generativo ogni volta che cambiano i contenuti disponibili. Qui questa funzione è affidata a un approccio RAG, che combina generazione e recupero di contesto.
 
-La query testuale viene trasformata in embedding, usata per recuperare i passaggi pertinenti dall'indice e poi reinserita nel contesto fornito al Large Language Model (LLM). La risposta non dipende quindi solo dalla memoria parametrica del modello, ma anche da una memoria non parametrica aggiornabile.\cite{Lewis2020RAG} In questo progetto il punto è importante perché la memoria deve restare separata per avatar e poter crescere nel tempo senza cambiare i pesi del modello. Figura~\ref{fig:rag-frontiers} mostra il flusso retrieval$\rightarrow$generation.
+La query testuale viene trasformata in embedding, una rappresentazione numerica che permette di confrontare domande e contenuti anche quando non condividono esattamente le stesse parole. Da qui il sistema recupera i passaggi pertinenti dall'indice e li reinserisce nel contesto fornito al Large Language Model (LLM). Nel progetto l'LLM non coincide con l'archivio personale dell'avatar: lavora sul materiale recuperato per costruire la risposta del turno. La risposta dipende quindi sia dalla memoria parametrica del modello sia da una memoria esterna, aggiornabile nel tempo.\cite{Lewis2020RAG} Questo consente di mantenere la memoria separata per avatar senza intervenire ogni volta sui pesi del modello. Se cambia il profilo o vengono aggiunti nuovi contenuti, basta renderli recuperabili al momento opportuno. Figura~\ref{fig:rag-frontiers} mostra il flusso retrieval$\rightarrow$generation nella sua forma concettuale di base.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.70\textwidth]{rag_frontiers_architecture.png}
-\caption{Schema concettuale di Retrieval-Augmented Generation (RAG): recupero di contesto e generazione della risposta. \protect\footnotemark}
+\caption{Schema concettuale di Retrieval-Augmented Generation (RAG): recupero di contesto e generazione della risposta. La figura mostra l'idea di base, che in SOULFRAME viene poi adattata a memoria per-avatar, routing dell'intento e controllo finale del testo. \protect\footnotemark}
 \label{fig:rag-frontiers}
 \end{figure}
 \footnotetext{Fonte: Kaur et al., \emph{Knowledge, context and personalization in retrieval-augmented generation for healthcare}, Frontiers in Artificial Intelligence (2025), \url{https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2025.1697169/full} (Figura 1; licenza/uso: CC BY).}
 
-Il punto chiave è che RAG rende praticabile una memoria per-avatar esterna al modello e aggiornabile nel tempo. La figura serve soprattutto a tenere distinta questa separazione tra recupero del contesto e generazione, più che a esaurire le varianti possibili di RAG. La memoria può quindi evolvere intervenendo sui contenuti recuperabili, non sui pesi del modello.
+RAG rende praticabile una memoria per-avatar esterna al modello e aggiornabile nel tempo. La figura tiene distinta questa separazione tra recupero del contesto e generazione, ma va letta come uno schema di base, non come una fotografia completa del backend di SOULFRAME. Nel progetto questo schema viene poi esteso con una logica più esplicitamente conversazionale: routing dell'intento, cioè scelta del ramo più adatto al turno, retrieval ibrido lessicale+vettoriale, distinzione tra memoria persistente e contesto recente di sessione, e controllo finale della risposta quando il contesto recuperato è debole o ambiguo. La memoria può quindi evolvere lavorando sui contenuti recuperabili, non sui pesi del modello.
 
 \subsection{Text-to-Speech con Coqui XTTS v2}
-Il terzo stadio riguarda la resa vocale dell'avatar. In un ECA embodied la risposta non deve essere solo pertinente sul piano testuale: timbro, lingua e continuità della voce influenzano direttamente la percezione dell'interlocutore. Per questo il progetto adotta Coqui XTTS v2.
+Il terzo stadio riguarda la resa vocale dell'avatar. In un ECA embodied la risposta non deve essere solo pertinente nel testo: timbro, lingua e continuità della voce influenzano direttamente la percezione dell'interlocutore. Per questo il progetto adotta Coqui XTTS v2.
 
-Coqui XTTS v2 offre supporto multilingue e \emph{voice cloning} tramite un campione di riferimento, senza richiedere l'addestramento di un modello vocale dedicato per ogni utente.\cite{Casanova2024XTTS} Nel progetto questo significa poter associare una voce al singolo avatar e riutilizzarla nei turni successivi, mantenendo un'identità sonora coerente pur restando in uno scenario zero-shot. Figura~\ref{fig:xtts-arch-cap2} richiama l'architettura del modello.
+Coqui XTTS v2 offre supporto multilingue e \emph{voice cloning}, quindi la costruzione di una voce sintetica a partire da un breve campione di riferimento senza richiedere l'addestramento di un modello vocale dedicato per ogni utente.\cite{Casanova2024XTTS} Nel progetto questo permette di associare una voce al singolo avatar e riutilizzarla nei turni successivi, mantenendo un'identità sonora coerente pur restando in uno scenario zero-shot. Figura~\ref{fig:xtts-arch-cap2} richiama l'architettura del modello.
 
 \begin{figure}[t]
 \centering
@@ -114,6 +111,6 @@ Zero-Shot Text-to-Speech Model}, Interspeech 2024, Fig.~1,
 Nel progetto il riferimento architetturale serve soprattutto a chiarire il ruolo del conditioning vocale, non a discutere il modello in ogni dettaglio.
 
 \section{Posizionamento di SOULFRAME rispetto allo stato dell'arte}
-Una pipeline locale a tre stadi risponde a un compromesso preciso tra latenza percepita, controllabilità del sistema e continuità del profilo avatar. Qui la modularità non è un fine astratto: serve a sostituire i singoli blocchi senza riscrivere il client e a mantenere separati problemi diversi, cioè trascrizione, memoria, generazione e voce.
+Una pipeline locale a tre stadi risponde a un compromesso preciso tra latenza percepita, controllabilità del sistema e continuità del profilo avatar. La modularità non viene cercata in astratto: serve a sostituire i singoli blocchi senza riscrivere il client e a mantenere separati problemi diversi, cioè trascrizione, memoria, generazione e voce.
 
-Il posizionamento del progetto dipende anche da come viene trattato l'avatar. Qui non è un semplice asset grafico, ma un profilo che combina aspetto, voce e memoria, così che la conversazione non riparta da zero a ogni sessione. Ho quindi vincolato l'accesso alla conversazione operativa alla disponibilità di un profilo minimo, per evitare un'esperienza \textit{stateless}. L'esecuzione via browser abbassa la barriera di accesso rispetto a configurazioni VR più tradizionali, ma rende più stringenti i vincoli su audio, routing e latenza: per questo streaming, warmup e segnali di attesa diventano parte integrante della soluzione e non semplici ottimizzazioni.
+Il posizionamento del progetto dipende anche da come viene trattato l'avatar. In SOULFRAME non è un semplice asset grafico, ma un profilo che combina aspetto, voce e memoria, così che la conversazione non riparta da zero a ogni sessione. Di conseguenza, l'accesso alla conversazione operativa è vincolato alla disponibilità di un profilo minimo, per evitare un'esperienza \textit{stateless}. L'esecuzione via browser abbassa la barriera di accesso rispetto a configurazioni VR più tradizionali, ma rende più stringenti i vincoli su audio, instradamento delle richieste e latenza: per questo streaming, pre-attivazione della sintesi e segnali di attesa diventano parte integrante della soluzione e non semplici ottimizzazioni.

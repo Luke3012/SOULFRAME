@@ -44,10 +44,7 @@ public class AudioRecorder : MonoBehaviour
         if (webglCaptureProvider is IAudioCaptureWebGL webglCapture && webglCapture.IsSupported)
         {
             webglCapture.SetSampleRate(sampleRate);
-            if (!webglCapture.HasPermission)
-            {
-                webglCapture.RequestPermission();
-            }
+            webglCapture.RequestPermission();
         }
 #endif
     }
@@ -109,7 +106,15 @@ public class AudioRecorder : MonoBehaviour
                 webglCapture.RequestPermission();
                 return false;
             }
-            return webglCapture.StartRecording();
+
+            bool started = webglCapture.StartRecording();
+            if (!started)
+            {
+                // In WebGL il browser puo' invalidare lo stream dopo overlay/focus change
+                // pur lasciando il permesso gia' concesso. Richiediamo un refresh dello stream.
+                webglCapture.RequestPermission();
+            }
+            return started;
         }
         return false;
 #else
@@ -124,7 +129,7 @@ public class AudioRecorder : MonoBehaviour
         }
 
         activeDevice = Microphone.devices[0];
-        activeClip = Microphone.Start(activeDevice, false, 30, sampleRate);
+        activeClip = Microphone.Start(activeDevice, false, 60, sampleRate);
         return true;
 #endif
     }

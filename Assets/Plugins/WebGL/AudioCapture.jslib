@@ -1,4 +1,63 @@
 mergeInto(LibraryManager.library, {
+  $webgl_audio_has_live_stream__deps: ['$webgl_audio_ctx'],
+  $webgl_audio_has_live_stream: function() {
+    if (!webgl_audio_ctx.stream) {
+      return false;
+    }
+
+    if (webgl_audio_ctx.stream.active === false) {
+      return false;
+    }
+
+    if (typeof webgl_audio_ctx.stream.getAudioTracks !== 'function') {
+      return true;
+    }
+
+    var tracks = webgl_audio_ctx.stream.getAudioTracks();
+    if (!tracks || !tracks.length) {
+      return false;
+    }
+
+    for (var i = 0; i < tracks.length; i++) {
+      var track = tracks[i];
+      if (track && track.readyState === 'live' && track.enabled !== false) {
+        return true;
+      }
+    }
+
+    return false;
+  },
+
+  $webgl_audio_cleanup__deps: ['$webgl_audio_ctx'],
+  $webgl_audio_cleanup: function() {
+    try {
+      if (webgl_audio_ctx.mediaRecorder) {
+        try {
+          if (webgl_audio_ctx.mediaRecorder.state && webgl_audio_ctx.mediaRecorder.state !== 'inactive') {
+            webgl_audio_ctx.mediaRecorder.stop();
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
+
+    webgl_audio_ctx.mediaRecorder = null;
+    webgl_audio_ctx.chunks = [];
+    webgl_audio_ctx.isRecording = false;
+
+    if (webgl_audio_ctx.stream && typeof webgl_audio_ctx.stream.getTracks === 'function') {
+      var tracks = webgl_audio_ctx.stream.getTracks();
+      for (var i = 0; i < tracks.length; i++) {
+        try { tracks[i].stop(); } catch (e) {}
+      }
+    }
+    webgl_audio_ctx.stream = null;
+
+    if (webgl_audio_ctx.audioContext) {
+      try { webgl_audio_ctx.audioContext.close(); } catch (e) {}
+    }
+    webgl_audio_ctx.audioContext = null;
+  },
+
   $webgl_audio_convert: function(audioBuffer) {
     var numChannels = audioBuffer.numberOfChannels;
     var sampleRate = audioBuffer.sampleRate;
@@ -63,7 +122,7 @@ mergeInto(LibraryManager.library, {
            typeof navigator.mediaDevices.getUserMedia === 'function';
   },
 
-  WebGLAudio_RequestPermission__deps: ['$webgl_audio_ctx'],
+  WebGLAudio_RequestPermission__deps: ['$webgl_audio_ctx', '$webgl_audio_has_live_stream', '$webgl_audio_cleanup'],
   WebGLAudio_RequestPermission: function(callbackPtr) {
     if (!webgl_audio_ctx.initialized) {
       webgl_audio_ctx.stream = null;
@@ -74,6 +133,29 @@ mergeInto(LibraryManager.library, {
       webgl_audio_ctx.sampleRate = 16000;
       webgl_audio_ctx.initialized = true;
     }
+
+    if (webgl_audio_has_live_stream()) {
+      try {
+        if (!webgl_audio_ctx.audioContext || webgl_audio_ctx.audioContext.state === 'closed') {
+          webgl_audio_ctx.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: webgl_audio_ctx.sampleRate
+          });
+        }
+
+        if (webgl_audio_ctx.audioContext && webgl_audio_ctx.audioContext.state === 'suspended') {
+          webgl_audio_ctx.audioContext.resume();
+        }
+      } catch (e) {
+        console.warn('WebGL Audio: audio context refresh failed', e);
+      }
+
+      if (callbackPtr) {
+        {{{ makeDynCall('vi', 'callbackPtr') }}}(1);
+      }
+      return;
+    }
+
+    webgl_audio_cleanup();
     
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(function(stream) {
@@ -129,7 +211,35 @@ mergeInto(LibraryManager.library, {
       return 0;
     }
 
+    if (webgl_audio_ctx.stream.active === false) {
+      console.warn('WebGL Audio: inactive stream, recording aborted');
+      return 0;
+    }
+
+    if (typeof webgl_audio_ctx.stream.getAudioTracks === 'function') {
+      var tracks = webgl_audio_ctx.stream.getAudioTracks();
+      var hasLiveTrack = false;
+      for (var i = 0; i < tracks.length; i++) {
+        var track = tracks[i];
+        if (track && track.readyState === 'live' && track.enabled !== false) {
+          hasLiveTrack = true;
+          break;
+        }
+      }
+
+      if (!hasLiveTrack) {
+        console.warn('WebGL Audio: no live audio track, recording aborted');
+        return 0;
+      }
+    }
+
     try {
+      if (!webgl_audio_ctx.audioContext || webgl_audio_ctx.audioContext.state === 'closed') {
+        webgl_audio_ctx.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+          sampleRate: webgl_audio_ctx.sampleRate
+        });
+      }
+
       if (webgl_audio_ctx.audioContext && webgl_audio_ctx.audioContext.state === 'suspended') {
         webgl_audio_ctx.audioContext.resume();
       }

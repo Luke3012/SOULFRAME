@@ -1,8 +1,9 @@
-\chapter*{Abstract}
-\addcontentsline{toc}{chapter}{Abstract}
+% !TEX root = ./main.tex
+\chapter*{Sommario}
+\addcontentsline{toc}{chapter}{Sommario}
 
-SOULFRAME nasce da un'esigenza semplice da formulare ma non banale da realizzare: costruire un avatar con cui parlare e che non riparta da zero a ogni sessione. La tesi presenta un'architettura multimodale per gestire un avatar 3D alimentato da contenuti eterogenei (testo, immagini e PDF), mantenendo un accesso praticabile sia da desktop (tastiera e controlli tradizionali) sia da mobile/touch (push-to-talk e navigazione semplificata).
+SOULFRAME nasce da un'esigenza semplice da formulare ma non banale da realizzare: costruire un avatar con cui parlare e che non riparta da zero a ogni sessione. La tesi presenta un'architettura multimodale per gestire un avatar 3D alimentato da contenuti eterogenei (testo, immagini e PDF), mantenendo un accesso praticabile sia da desktop (tastiera e controlli tradizionali) sia in contesto touch, dentro la stessa esperienza WebGL.
 
-Il progetto segue una logica client-server: Unity WebGL gestisce avatar, interfaccia e registrazione dell'audio; sul backend, servizi separati si occupano di trascrizione, orchestrazione conversazionale con memoria e sintesi vocale. La memoria per-avatar può essere arricchita con note e contenuti esterni, inclusi documenti e immagini, così da mantenere continuità del profilo tra sessioni e ambienti diversi.
+Il progetto segue una logica client-server: Unity WebGL gestisce avatar, interfaccia e registrazione dell'audio; sul backend, servizi separati si occupano di trascrizione, orchestrazione conversazionale con memoria e sintesi vocale. In particolare, il servizio RAG non si limita a recuperare passaggi simili alla query, ma interpreta il turno, instrada la richiesta sul percorso più adatto e combina retrieval ibrido, contesto recente di sessione e memoria persistente per-avatar. La memoria per-avatar può essere arricchita con note e contenuti esterni, inclusi documenti e immagini, così da mantenere continuità del profilo tra sessioni e ambienti diversi.
 
 Durante lo sviluppo sono emersi i problemi tipici di una pipeline end-to-end reale: integrazione tra componenti, latenza percepita e compatibilità tra ambienti. La generazione della risposta vocale richiede ancora tempi percepibili ed è il vincolo operativo più evidente dell'interazione. Da qui anche l'attenzione all'automazione di setup e gestione dei servizi. Il risultato è un prototipo utilizzabile sia in locale sia su server, abbastanza stabile da far vedere con chiarezza dove sono i colli di bottiglia e da dove conviene ripartire nelle iterazioni successive.

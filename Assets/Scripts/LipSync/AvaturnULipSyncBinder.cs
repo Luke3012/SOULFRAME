@@ -20,6 +20,7 @@ public class AvaturnULipSyncBinder : MonoBehaviour
     [Range(0f, 200f)] public float maxWeight = 1f;
     [Range(0f, 4f)] public float vowelGain = 1.2f;
     [Range(0f, 20f)] public float smooth = 12f;
+    [SerializeField, Range(1f, 2f)] private float desktopSmoothBoost = 1.25f;
     
     [Header("WebGL Assist")]
     [SerializeField] private bool enableWebGlAssist = true;
@@ -127,11 +128,14 @@ public class AvaturnULipSyncBinder : MonoBehaviour
             }
         }
 
-        // Smussatura indipendente dal frame-rate: in WebGL evita una bocca "scattosa" con FPS variabile.
+        // Smussatura indipendente dal frame-rate: su desktop aumenta leggermente la reattivita'.
         float dt = Mathf.Max(0f, Time.unscaledDeltaTime);
-        float blend = 1f - Mathf.Exp(-smooth * dt);
-
         bool webGlAssistActive = enableWebGlAssist && Application.platform == RuntimePlatform.WebGLPlayer;
+        float effectiveSmooth = webGlAssistActive
+            ? smooth
+            : smooth * Mathf.Max(1f, desktopSmoothBoost);
+        float blend = 1f - Mathf.Exp(-effectiveSmooth * dt);
+
         float closeBlendMultiplier = webGlAssistActive ? Mathf.Clamp01(webGlCloseSpeedMultiplier) : 1f;
 
         _a = SmoothPhoneme(_a, a, blend, closeBlendMultiplier);
@@ -147,6 +151,10 @@ public class AvaturnULipSyncBinder : MonoBehaviour
     {
         if (_indices == null || _indices.Count == 0) return;
 
+        bool webGlAssistActive = enableWebGlAssist && Application.platform == RuntimePlatform.WebGLPlayer;
+        float volume = webGlAssistActive ? Mathf.Max(_volume, webGlVolumeFloor) : _volume;
+        float gain = webGlAssistActive ? (vowelGain * webGlWeightBoost) : vowelGain;
+
         // rimuovi renderer distrutti
         List<SkinnedMeshRenderer> dead = null;
 
@@ -161,9 +169,6 @@ public class AvaturnULipSyncBinder : MonoBehaviour
             }
 
             var idx = kv.Value;
-            bool webGlAssistActive = enableWebGlAssist && Application.platform == RuntimePlatform.WebGLPlayer;
-            float volume = webGlAssistActive ? Mathf.Max(_volume, webGlVolumeFloor) : _volume;
-            float gain = webGlAssistActive ? (vowelGain * webGlWeightBoost) : vowelGain;
 
             ZeroAll(r, idx);
 

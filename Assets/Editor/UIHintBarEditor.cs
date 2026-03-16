@@ -17,6 +17,7 @@ public class UIHintBarEditor : Editor
     private SerializedProperty deleteAssetProp;
     private SerializedProperty anyAssetProp;
     private SerializedProperty insAssetProp;
+    private SerializedProperty tAssetProp;
 
     private SerializedProperty touchBackAssetProp;
     private SerializedProperty touchKeyboardAssetProp;
@@ -50,6 +51,7 @@ public class UIHintBarEditor : Editor
         deleteAssetProp = serializedObject.FindProperty("deleteAsset");
         anyAssetProp = serializedObject.FindProperty("anyAsset");
         insAssetProp = serializedObject.FindProperty("insAsset");
+        tAssetProp = serializedObject.FindProperty("tAsset");
 
         touchBackAssetProp = serializedObject.FindProperty("touchBackAsset");
         touchKeyboardAssetProp = serializedObject.FindProperty("touchKeyboardAsset");
@@ -110,6 +112,7 @@ public class UIHintBarEditor : Editor
         EditorGUILayout.PropertyField(deleteAssetProp);
         EditorGUILayout.PropertyField(anyAssetProp);
         EditorGUILayout.PropertyField(insAssetProp);
+        EditorGUILayout.PropertyField(tAssetProp);
     }
 
     private void DrawTouchAssets()

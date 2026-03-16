@@ -1,0 +1,151 @@
+% !TEX root = ./main.tex
+\chapter{Frontend Unity e Logica Applicativa}
+\label{app:frontend}
+
+\section{Architettura client e stato applicativo}
+Nel frontend, la centralità di \texttt{UIFlowController} non significa che tutto il lavoro ricada su una sola classe. La soluzione si distribuisce invece su alcuni componenti che, letti insieme, mostrano abbastanza bene la forma applicativa del client.
+
+\par\begingroup
+\scriptsize
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Componenti principali del frontend Unity.}
+\label{tab:appendix-frontend-components}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.33\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.67\textwidth-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+\textbf{Classe} & \textbf{Funzione nel client} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Classe} & \textbf{Funzione nel client} \\
+\hline
+\endhead
+\texttt{UIFlowController} & Governa la macchina a stati, le transizioni principali, le richieste backend e la logica di \texttt{MainMode}. \\
+\hline
+\texttt{AvatarManager} & Coordina selezione avatar, import backend-driven, caricamento runtime dei \texttt{.glb} e wiring dei componenti embodied. \\
+\hline
+\path{AvatarLibraryCarousel.cs} & Gestisce libreria, preview asincrone, selezione e conferma del profilo attivo. \\
+\hline
+\path{AvaturnULipSyncBinder.cs} & Costruisce a runtime il mapping viseme$\rightarrow$blendshape per gli avatar importati. \\
+\hline
+\path{AvaturnIdleLookAndBlink.cs} & Introduce blink, micro-movimenti e gestione dello sguardo in idle, listening e speaking. \\
+\hline
+\end{longtable}
+\par\endgroup
+
+Letta così, la tabella rischia di sembrare una semplice mappa di classi. In realtà mostra una divisione del lavoro abbastanza netta: \texttt{UIFlowController} tiene insieme il ciclo applicativo, \texttt{AvatarManager} si occupa del profilo embodied e del suo caricamento, mentre i componenti più specifici entrano in gioco solo quando quel profilo deve diventare un avatar davvero usabile in scena. Il frontend funziona perché questi livelli restano distinti senza diventare scollegati.
+
+\paragraph{Macchina a stati e gating del profilo.}
+Il client si muove attorno a sei stati: \texttt{Boot}, \texttt{MainMenu}, \texttt{AvatarLibrary}, \texttt{SetupVoice}, \texttt{SetupMemory}, \texttt{MainMode}. Il punto più importante non è il numero degli stati, ma la logica di gating:
+
+Questo disegno evita che l'utente entri direttamente in conversazione con un profilo ancora incompleto. Nel progetto questa scelta vale più di molte ottimizzazioni minori, perché trasforma onboarding e bootstrap in una parte reale del sistema, non in un prologo separato.
+
+\begin{lstlisting}[style=sfcode,language={[Sharp]C},caption={Estratto adattato da \texttt{UIFlowController.cs}: scelta dello stato dopo i controlli di boot.}]
+if (!coquiReady || !ragReady)
+    return UIState.Boot;
+if (!voiceInfo.has_voice)
+    return UIState.SetupVoice;
+if (statsInfo.total_memories <= 0)
+    return UIState.SetupMemory;
+return UIState.MainMenu;
+\end{lstlisting}
+
+\section{Gestione avatar e setup voce}
+\paragraph{AvatarManager e libreria avatar.}
+\texttt{AvatarManager} mantiene separati tre problemi:
+\begin{itemize}
+\item come ottenere il riferimento a un avatar;
+\item come normalizzare URL e sorgenti tra locale e deploy pubblico;
+\item come istanziare il modello in scena e completarne il wiring.
+\end{itemize}
+
+Nel percorso importato, il manager riceve un payload JSON dal bridge Avaturn, invia \texttt{/avatars/import} al backend e ottiene un \texttt{cached\_glb\_url}. Solo a quel punto scarica il file dal proprio backend e lo istanzia con GLTFast. Nel percorso locale, invece, usa i modelli di fallback già previsti nel progetto.
+
+\begin{lstlisting}[language=json,style=sfpayload,title={Import avatar backend-driven},caption={Payload minimo osservabile nel passaggio tra export Avaturn e catalogo del backend.}]
+POST /avatars/import
+{
+  "url": "https://api.avaturn.me/avatars/exports/.../model",
+  "gender": "male",
+  "bodyId": "body_1",
+  "urlType": "httpURL"
+}
+
+200 OK
+{
+  "avatar_id": "019c8296-1a77-75b1-9d4b-c36ff20d1a4c",
+  "cached_glb_url": "/avatars/019c.../model.glb",
+  "dedup": false
+}
+\end{lstlisting}
+
+\texttt{AvatarLibraryCarousel} lavora soprattutto sulle preview. Scarica una miniatura tridimensionale dell'avatar, la inserisce in un item del carosello e rende selezionabile il profilo solo quando il modello è abbastanza pronto da non produrre un'esperienza incoerente.
+
+Un dettaglio utile, che nel corpo starebbe stretto, è la separazione tra preview e avatar principale. \texttt{AvatarManager} usa identificatori di sessione distinti per evitare che un caricamento tardivo della preview finisca per sovrascrivere l'avatar attivo in scena. È una misura molto pratica: nel catalogo l'utente può cambiare scelta rapidamente, quindi i caricamenti asincroni devono poter arrivare ``fuori tempo'' senza corrompere lo stato corrente.
+
+Questo spiega anche perché la libreria avatar non sia trattata come un semplice passaggio cosmetico. Ogni scelta lì prepara già il resto della pipeline: memoria, voce, comportamento embodied e disponibilità effettiva del modello in scena. Se la preview e il caricamento principale si confondessero, l'utente non avrebbe solo un problema visivo; entrerebbe in uno stato conversazionale ambiguo.
+
+\paragraph{SetupVoice: frase guida, filtro e salvataggio.}
+Nel setup voce il client non si limita a registrare un campione. Costruisce prima una frase guida, poi filtra il materiale registrato e solo alla fine lo consegna a Coqui.
+
+\begin{lstlisting}[basicstyle=\ttfamily\small,breaklines=true]
+1. prova a generare una frase italiana con /chat
+2. se la frase non e valida, usa un fallback locale
+3. registra il WAV con lo stesso stack audio di MainMode
+4. scarta subito campioni troppo brevi
+5. invia il file a /transcribe
+6. scarta trascrizioni vuote o spurie
+7. calcola il match con la frase attesa
+8. se il match e sufficiente:
+     -> /set_avatar_voice
+\end{lstlisting}
+
+La frase guida viene chiesta al backend come una singola frase italiana naturale, con vincoli minimi su lunghezza e forma. Se il RAG non restituisce qualcosa di adatto, \texttt{UIFlowController} ricade su una frase locale già pronta. Questo evita che \texttt{SetupVoice} diventi fragile proprio nel momento in cui l'utente sta ancora completando il profilo.
+
+Il cuore del controllo è \texttt{CalculateSimilarity}. Dopo una normalizzazione che porta il testo in minuscolo, rimuove diacritici e compatta i simboli non alfanumerici, il client combina due segnali:
+\[
+s = \mathrm{clip}_{[0,1]}\big(0.6 \cdot s_{\mathrm{seq}} + 0.4 \cdot s_{\mathrm{word}}\big),
+\]
+dove \(s_{\mathrm{seq}}\) deriva dalla distanza di Levenshtein normalizzata e \(s_{\mathrm{word}}\) dall'overlap lessicale tra i token. La soglia usata nel progetto è \texttt{setupVoiceMinSimilarity = 0.7f}. Questa scelta non pretende di certificare l'identità del parlante: serve a scartare reference vocali troppo corte, troppo rumorose o troppo lontane dalla frase proposta.
+
+\begin{lstlisting}[style=sfterminal,title={Esito tipico della validazione voce},caption={Il feedback che la UI costruisce prima di inviare il campione a Coqui.}]
+frase attesa: "Mi chiamo Luca e oggi sto provando la mia voce."
+trascrizione: "mi chiamo luca oggi provo la mia voce"
+match: 82%
+soglia minima: 70%
+esito: upload verso /set_avatar_voice
+\end{lstlisting}
+
+\sloppy Un altro punto concreto riguarda la robustezza della coroutine. Il flag \texttt{setupVoiceCancelling} viene controllato dopo stop recording, trascrizione, match e upload, così il setup può essere interrotto senza lasciare richieste attive o side effect tardivi. Nel flusso reale questo incide parecchio sulla qualità percepita, perché evita onboarding ``appesi'' o messaggi incoerenti quando l'utente torna indietro a metà operazione.
+
+\section{MainMode lato client}
+\texttt{MainMode} tiene insieme stato UI, microfono, sessione conversazionale, playback e comportamento embodied. Letto in modo lineare, il flusso è questo:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small,breaklines=true]
+ingresso in MainMode
+  -> verifica prerequisiti avatar
+  -> apre una sessione con /chat_session/start
+  -> ascolta PTT oppure riceve input keyboard
+  -> invia audio a /transcribe se il turno e vocale
+  -> invia il turno a /chat con avatar_id e session_id
+  -> prepara la risposta per la resa testuale e vocale
+  -> avvia /tts_stream
+  -> alimenta playback e lip sync dallo stesso flusso audio
+\end{lstlisting}
+
+Che il client supporti anche turni \texttt{keyboard} è importante, perché dimostra che \texttt{MainMode} non coincide con una sola gesture di input: coincide con una sessione conversazionale dell'avatar.
+
+Dal lato client la sessione non è un metadato secondario. Serve a tenere insieme tre cose: il recap locale dei turni, il log conversazionale e la continuità tra input vocali e testuali. Per questo \texttt{BeginMainMode} apre la sessione appena il profilo è pronto, invece di aspettare il primo messaggio effettivo: in questo modo il turno nasce già dentro un contenitore coerente.
+
+Anche la differenza tra desktop e touch va letta così. I due ambienti cambiano gesture, hint e comandi, ma non aprono due flussi diversi: PTT e tastiera sono soltanto due modi di entrare nella stessa conversazione.
+
+\section{Comportamento embodied}
+Due componenti rendono l'avatar meno ``piatto'' nei turni:
+
+{\subsectionfont{\upshape}\paragraph{\normalfont\texttt{AvaturnULipSyncBinder}.}}
+Il binder non assume un naming unico dei blendshape. Cerca invece a runtime candidati compatibili per i visemi principali e aggiorna i pesi in \texttt{LateUpdate}. Questo è un dettaglio molto pratico: gli avatar non sono tutti uguali, quindi un mapping statico sarebbe troppo fragile.
+
+{\subsectionfont{\upshape}\paragraph{\normalfont\texttt{AvaturnIdleLookAndBlink}.}}
+Lo sguardo e il blink non vengono trattati come animazioni decorative. Il controller cambia comportamento in base allo stato del turno: idle, listening, speaking, focus esterno. In questo modo il volto dell'avatar non resta neutro proprio nei momenti in cui l'utente si aspetta un segnale di presenza.
+
+Guardando i componenti, le scelte descritte nel capitolo implementativo prendono una forma più concreta: qui si vedono i passaggi con cui stati, onboarding, avatar e comportamento embodied vengono davvero tenuti insieme nel client Unity.

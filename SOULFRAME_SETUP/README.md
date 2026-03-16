@@ -15,7 +15,7 @@ This folder contains deployment and management scripts for Ubuntu VMs.
 - `requirements.txt`
   - Python dependencies reference for Linux.
 
-## Layout VM atteso
+## Expected VM layout
 
 ```text
 /opt/soulframe
@@ -50,70 +50,70 @@ This folder contains deployment and management scripts for Ubuntu VMs.
 +-- sfurl
 `-- idle_shutdown.sh
 
-/home/<utente_corrente>
+/home/<current_user>
 `-- soulframe_update
 ```
 
 ## setup_soulframe_ubuntu.sh
 
-### Cosa fa
+### What it does
 
-- Installa dipendenze sistema (`ffmpeg`, `tesseract`, `nano`, `rsync`, toolchain).
-- Rileva automaticamente Python disponibile (`python3.12`, `3.11`, `3.10`, fallback `python3`).
-- Installa/avvia Ollama.
-- Installa Caddy e genera `Caddyfile` con reverse proxy:
+- Installs system dependencies (`ffmpeg`, `tesseract`, `nano`, `rsync`, toolchain).
+- Automatically detects the available Python version (`python3.12`, `3.11`, `3.10`, fallback `python3`).
+- Installs and starts Ollama.
+- Installs Caddy and generates a `Caddyfile` with reverse proxy rules:
   - `/api/whisper/* -> 127.0.0.1:8001`
   - `/api/rag/* -> 127.0.0.1:8002`
   - `/api/avatar/* -> 127.0.0.1:8003`
   - `/api/tts/* -> 127.0.0.1:8004`
-- Prepara log Caddy con permessi corretti (`/var/log/caddy/access.log`, owner `caddy:caddy`).
-- Crea venv in `/opt/soulframe/.venv`.
-- Crea esplicitamente le cartelle:
+- Prepares Caddy logs with the correct permissions (`/var/log/caddy/access.log`, owner `caddy:caddy`).
+- Creates the virtual environment in `/opt/soulframe/.venv`.
+- Explicitly creates these directories:
   - `/opt/soulframe/webgl`
   - `/opt/soulframe/backups`
-- Installa dipendenze Python da `/opt/soulframe/backend/requirements.txt`.
-  - Se manca, prova a generarlo con `pipreqs`.
-- Crea unit `systemd` per servizi AI.
-- Crea helper:
-  - `sfctl` (gestione servizi AI),
-  - `sfurl` (URL/health),
-  - `sfadmin` (console admin).
-- Se lo esegui da una cartella diversa da `/opt/soulframe`, copia automaticamente:
-  - `setup_soulframe_ubuntu.sh` e `sf_admin_ubuntu.sh` in `/opt/soulframe/SOULFRAME_SETUP`
-  - file backend rilevati in `/opt/soulframe/backend` (da root progetto o da `soulframe_update`)
-- Se nella stessa cartella dello script trova `SOULFRAME.zip`, lo estrae automaticamente
-  (deve contenere `soulframe_update/`).
-- Dopo la copia, rilancia automaticamente il setup da `/opt/soulframe/SOULFRAME_SETUP`.
-- Al rilancio completato, prova a rimuovere lo script sorgente bootstrap
-  (solo se proveniva da `soulframe_update`).
-- Normalizza automaticamente i line ending (`CRLF -> LF`) per gli script Linux copiati.
-- Crea automaticamente una cartella update per l'utente corrente:
-  - default: `/home/<utente_corrente>/soulframe_update`
-  - esportata anche come `SOULFRAME_UPDATE_DIR` in `soulframe.env`.
-- Crea anche le cartelle backend necessarie se mancanti:
+- Installs Python dependencies from `/opt/soulframe/backend/requirements.txt`.
+  - If that file is missing, it tries to generate it with `pipreqs`.
+- Creates `systemd` units for the AI services.
+- Creates helper commands:
+  - `sfctl` (AI service management)
+  - `sfurl` (URL and health checks)
+  - `sfadmin` (admin console)
+- If you run it from a directory different from `/opt/soulframe`, it automatically copies:
+  - `setup_soulframe_ubuntu.sh` and `sf_admin_ubuntu.sh` into `/opt/soulframe/SOULFRAME_SETUP`
+  - detected backend files into `/opt/soulframe/backend` (from the project root or from `soulframe_update`)
+- If it finds `SOULFRAME.zip` in the same directory as the script, it extracts it automatically
+  (it must contain `soulframe_update/`).
+- After copying, it automatically relaunches setup from `/opt/soulframe/SOULFRAME_SETUP`.
+- Once the relaunch is complete, it attempts to remove the original bootstrap script
+  (only if it came from `soulframe_update`).
+- Automatically normalizes line endings (`CRLF -> LF`) for copied Linux scripts.
+- Automatically creates an update directory for the current user:
+  - default: `/home/<current_user>/soulframe_update`
+  - also exported as `SOULFRAME_UPDATE_DIR` in `soulframe.env`.
+- Also creates the required backend directories if they are missing:
   - `/opt/soulframe/backend/avatar_store`
   - `/opt/soulframe/backend/rag_store`
   - `/opt/soulframe/backend/log`
   - `/opt/soulframe/backend/voices`
   - `/opt/soulframe/backend/voices/avatars`
-- Configura auto-shutdown idle con timer.
+- Configures idle auto-shutdown with a timer.
 
-### Variabili utili
+### Useful variables
 
 - `CHAT_MODEL_DEFAULT` (default: `llama3.1:8b`)
 - `EMBED_MODEL_DEFAULT` (default: `nomic-embed-text`)
 - `WHISPER_MODEL_DEFAULT` (default: `medium`)
-- `RAG_LOG_DIR` (default generated env: `/home/<utente_runtime>/soulframe-logs`, fallback: `/opt/soulframe/backend/log`)
-- `SKIP_OLLAMA_PULL=1` per saltare download modelli Ollama
-- `TORCH_INSTALL_CMD` per forzare una build torch/torchaudio specifica (es. CUDA)
-- `UPDATE_DROP_DIR` per personalizzare la cartella update automatica
+- `RAG_LOG_DIR` (default generated env: `/home/<runtime_user>/soulframe-logs`, fallback: `/opt/soulframe/backend/log`)
+- `SKIP_OLLAMA_PULL=1` to skip downloading Ollama models
+- `TORCH_INSTALL_CMD` to force a specific torch/torchaudio build (for example CUDA)
+- `UPDATE_DROP_DIR` to customize the automatic update directory
 
-### Note importanti
+### Important notes
 
-- `torch/torchaudio` sono installati da `requirements.txt`.
-- Se vuoi una build CUDA specifica, usa `TORCH_INSTALL_CMD`.
-- `soulframe.env` viene creato con permessi `640`; se disponibile `setfacl`, lo script prova ad aggiungere read all'utente che ha lanciato `sudo`.
-- Rilanciare `setup_soulframe_ubuntu.sh` non crea duplicati di servizi/helper: unit file e script helper vengono sovrascritti in modo idempotente.
+- `torch/torchaudio` are installed from `requirements.txt`.
+- If you want a specific CUDA build, use `TORCH_INSTALL_CMD`.
+- `soulframe.env` is created with `640` permissions; if `setfacl` is available, the script tries to grant read access to the user who invoked `sudo`.
+- Re-running `setup_soulframe_ubuntu.sh` does not create duplicate services or helper commands: unit files and helper scripts are overwritten idempotently.
 
 ## sfctl
 
@@ -123,7 +123,7 @@ sfctl start|stop|restart|status|logs [whisper|rag|avatar|tts|ollama|all]
 
 ## sfadmin (sf_admin_ubuntu.sh)
 
-Avvio:
+Start:
 
 ```bash
 sudo sfadmin
@@ -131,129 +131,167 @@ sudo sfadmin
 
 Menu:
 
-- `[1]` Aggiorna tutto (Build ZIP + backend/setup)
-- `[2]` Spegni server (ferma servizi AI + Caddy)
-- `[3]` Riavvia server
-- `[4]` Modifica parametri (`/etc/soulframe/soulframe.env`, `/etc/soulframe/idle.env`)
-- `[5]` Avvia server
-- `[6]` Spegni VM (shutdown macchina)
-- `[7]` Gestisci backup (elimina singolo/tutti o mantieni ultimi `N`)
-- `[8]` Configura path log RAG (`RAG_LOG_DIR`)
-- `[0]` Esci
+- `[1]` Update everything (Build ZIP + backend/setup)
+- `[2]` Shut down the server (stop AI services + Caddy)
+- `[3]` Restart the server
+- `[4]` Edit parameters (`/etc/soulframe/soulframe.env`, `/etc/soulframe/idle.env`)
+- `[5]` Start the server
+- `[6]` Shut down the VM (machine shutdown)
+- `[7]` Manage backups (restore, delete one, delete all, or keep the latest `N`)
+- `[8]` Configure the RAG log path (`RAG_LOG_DIR`)
+- `[0]` Exit
 
-Nota log RAG:
+RAG log note:
 
-- la voce `[8]` crea automaticamente la directory scelta e prova ad assegnarla all'utente runtime;
-- non viene fatta migrazione automatica dei log già esistenti nel path precedente.
+- option `[8]` automatically creates the selected directory and tries to assign it to the runtime user
+- existing logs from the previous path are not migrated automatically
 
-### Cartella update automatica
+### Automatic update directory
 
-`sfadmin` usa `UPDATE_DIR` con questa priorita':
+`sfadmin` uses `UPDATE_DIR` with this priority:
 
-1. variabile ambiente `UPDATE_DIR` se impostata.
-2. valore `SOULFRAME_UPDATE_DIR` in `/etc/soulframe/soulframe.env`.
-3. fallback `/home/<utente_corrente>/soulframe_update`.
+1. the `UPDATE_DIR` environment variable, if set
+2. the `SOULFRAME_UPDATE_DIR` value in `/etc/soulframe/soulframe.env`
+3. fallback `/home/<current_user>/soulframe_update`.
 
-### Update unificato (opzione `[1]`)
+### Unified update (option `[1]`)
 
-Durante `[1]`, `sfadmin` fa in sequenza:
+During `[1]`, `sfadmin` performs the following in sequence:
 
-- update build da ZIP (`Build.zip` preferito, altrimenti ultimo `.zip` in `UPDATE_DIR`);
-- update backend/setup dai file supportati in `UPDATE_DIR`.
+- build update from ZIP (`Build.zip` preferred, otherwise the latest `.zip` in `UPDATE_DIR`)
+- backend/setup update from supported files in `UPDATE_DIR`
 
-File supportati:
+Supported files:
 
 - `avatar_asset_server.py`
 - `coqui_tts_server.py`
 - `rag_server.py`
 - `whisper_server.py`
-- `requirements.txt` (copiato in `/opt/soulframe/backend/requirements.txt`)
+- `requirements.txt` (copied into `/opt/soulframe/backend/requirements.txt`)
 - `setup_soulframe_ubuntu.sh`
 - `sf_admin_ubuntu.sh`
 
-Se aggiorni `setup_soulframe_ubuntu.sh` e/o `sf_admin_ubuntu.sh`, `sfadmin` esegue automaticamente:
+If you update `setup_soulframe_ubuntu.sh` and/or `sf_admin_ubuntu.sh`, `sfadmin` automatically runs:
 
 ```bash
 install -m 755 "$SETUP_DIR/sf_admin_ubuntu.sh" /usr/local/bin/sfadmin
 cd "$SETUP_DIR" && SKIP_OLLAMA_PULL=1 ./setup_soulframe_ubuntu.sh
 ```
 
-Per la parte build, se lasci vuoto il percorso ZIP, usa automaticamente:
-- prima `Build.zip` (se presente in `UPDATE_DIR`);
-- altrimenti il file ZIP piu recente trovato in `UPDATE_DIR`.
+For the build part, if you leave the ZIP path empty, it automatically uses:
+- `Build.zip` first, if present in `UPDATE_DIR`
+- otherwise the most recent ZIP file found in `UPDATE_DIR`
 
-### Pulizia file update dopo conferma
+### Update file cleanup after confirmation
 
-Dopo update riuscito:
+After a successful update:
 
-- puo eliminare il file ZIP sorgente;
-- puo eliminare i file sorgente backend/setup applicati.
+- it can delete the source ZIP file
+- it can delete the applied backend/setup source files
 
-La pulizia:
+Cleanup behavior:
 
-- chiede sempre conferma esplicita (`[s/N]`);
-- elimina solo file dentro `UPDATE_DIR`.
+- always asks for explicit confirmation (`[y/N]` equivalent of the current prompt)
+- only deletes files inside `UPDATE_DIR`
+
+### Backup management (option `[7]`)
+
+`Gestione Backup` shows a single catalog ordered by recency for:
+
+- `webgl_backup_*` (WebGL build snapshots)
+- `backend_update_*` (backend/setup snapshots)
+
+For each entry, `sfadmin` shows:
+
+- backup type
+- full path
+- human-readable size when available
+
+Available actions inside the submenu:
+
+- restore one selected backup
+- delete one selected backup
+- delete all backups
+- keep only the latest `N` backups
+
+Restore behavior:
+
+- selecting a `webgl_backup_*` backup restores only `/opt/soulframe/webgl`
+- selecting a `backend_update_*` backup restores only the files contained in that snapshot under `/opt/soulframe`
+- before restoring, `sfadmin` stops the stack with `sfctl stop all`
+- before overwriting anything, `sfadmin` creates a safety backup using the same naming conventions
+- after a successful restore, `sfadmin` restarts the stack automatically with `sfctl restart all`
+- if the restored backend snapshot includes `setup_soulframe_ubuntu.sh` and/or `sf_admin_ubuntu.sh`, `sfadmin` reinstalls the helper and reruns:
+
+```bash
+cd "$SETUP_DIR" && SKIP_OLLAMA_PULL=1 ./setup_soulframe_ubuntu.sh
+```
+
+Restore scope note:
+
+- restore is always based on one selected backup
+- `backend_update_*` restores only the files present in that snapshot; it does not delete newer files that are not part of the backup
 
 ## Idle auto-shutdown
 
-Configurazione in `/etc/soulframe/idle.env`:
+Configuration in `/etc/soulframe/idle.env`:
 
 - `IDLE_MINUTES` (default 30)
 - `STARTUP_GRACE_MINUTES` (default 10)
 - `LOG_FILE` (default `/var/log/caddy/access.log`)
-- `LOG_TAIL_LINES` (default 20000, analisi ultime righe log JSON Caddy)
-- `TRACK_SSH_ACTIVITY` (default 1, include attività terminali `pts/*`)
+- `LOG_TAIL_LINES` (default 20000, analyzes the latest lines of the Caddy JSON log)
+- `TRACK_SSH_ACTIVITY` (default 1, includes activity on `pts/*` terminals)
 - `DRY_RUN` (default 0)
 
 `idle_shutdown.sh`:
 
-- non spegne durante i primi `STARTUP_GRACE_MINUTES` dal boot;
-- considera attività web solo su endpoint `/api/*` (ignora richieste statiche/pagine pubbliche);
-- se `TRACK_SSH_ACTIVITY=1`, considera anche l'attività SSH interattiva;
-- spegne la VM solo se supera la soglia idle.
+- does not shut down during the first `STARTUP_GRACE_MINUTES` after boot
+- only considers web activity on `/api/*` endpoints (ignores static requests and public pages)
+- if `TRACK_SSH_ACTIVITY=1`, also considers interactive SSH activity
+- shuts down the VM only after the idle threshold is exceeded
 
-Test rapido:
+Quick test:
 
 ```bash
 sudo sed -i 's/^DRY_RUN=.*/DRY_RUN=1/' /etc/soulframe/idle.env
 sudo /usr/local/bin/idle_shutdown.sh
 ```
 
-## Caddy e dominio
+## Caddy and domain
 
-Prerequisiti:
+Prerequisites:
 
-- record DNS `A` del dominio verso IP pubblico VM
-- firewall aperto TCP `80` e `443`
+- DNS `A` record pointing the domain to the VM public IP
+- firewall open on TCP `80` and `443`
 
-Comandi utili:
+Useful commands:
 
 ```bash
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl status caddy --no-pager
 ```
 
-## Deploy tipico
+## Typical deployment
 
 ```bash
-cd /percorso/dove/hai/i/file
+cd /path/where/your/files/are
 sudo ./setup_soulframe_ubuntu.sh
 sudo sfadmin
 ```
 
-### Deploy da pacchetto ZIP unico
+### Deployment from a single ZIP package
 
-Se carichi un solo file `SOULFRAME.zip`, mettilo nella stessa cartella dove esegui `setup_soulframe_ubuntu.sh`.
-Lo script estrarra `soulframe_update/` automaticamente, copiera i file in `/opt/soulframe/SOULFRAME_SETUP`,
-si rilancera da li e continuera il setup.
+If you upload a single `SOULFRAME.zip` file, place it in the same directory where you run `setup_soulframe_ubuntu.sh`.
+The script will automatically extract `soulframe_update/`, copy the files into `/opt/soulframe/SOULFRAME_SETUP`,
+relaunch itself from there, and continue the setup.
 
-## Permessi e line ending (CRLF/LF)
+## Permissions and line endings (CRLF/LF)
 
-`/opt/soulframe` e i file sotto `/opt` sono normalmente di proprieta `root`.
-Per modificare o installare file in quelle cartelle, usa `sudo`.
+`/opt/soulframe` and files under `/opt` are normally owned by `root`.
+Use `sudo` to modify or install files in those directories.
 
-Lo script prova gia a normalizzare automaticamente i line ending degli script Linux.
-Se devi forzare manualmente, usa:
+The script already tries to normalize Linux script line endings automatically.
+If you need to force it manually, use:
 
 ```bash
 sudo sed -i 's/\r$//' setup_soulframe_ubuntu.sh

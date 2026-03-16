@@ -53,7 +53,6 @@ public class AvaturnSystem : MonoBehaviour
 
     public void ShowAvaturnIframe()
     {
-#if UNITY_WEBGL && !UNITY_EDITOR
         // Usa AvaturnWebController invece dell'iframe controller originale
         var webController = FindFirstObjectByType<AvaturnWebController>();
         if (webController != null)
@@ -65,9 +64,6 @@ public class AvaturnSystem : MonoBehaviour
         {
             Debug.LogError("AvaturnWebController non trovato nella scena");
         }
-#else
-        Debug.Log("Avaturn iframe funziona solo in WebGL build");
-#endif
     }
 
     public void HideAvaturnIframe()

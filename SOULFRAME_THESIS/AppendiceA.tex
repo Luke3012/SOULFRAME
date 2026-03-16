@@ -1,0 +1,442 @@
+% !TEX root = ./main.tex
+\chapter{Servizio RAG e Logica Conversazionale}
+\label{app:rag}
+
+\section{Il servizio come snodo del sistema}
+\noindent Nel prototipo il servizio RAG concentra la parte più delicata del turno conversazionale: memoria, retrieval, routing dell'intento, controllo della risposta e ingestione di contenuti esterni convergono tutti qui. Non è soltanto il blocco ``che interroga la memoria'': è il punto in cui il progetto decide che cosa usare come contesto, come trattare un turno sociale e quando una risposta debba essere frenata o corretta.
+
+Il file \texttt{rag\_server.py} concentra cinque responsabilità principali:
+
+\par\begingroup
+\scriptsize
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Aree funzionali principali del servizio RAG.}
+\label{tab:appendix-rag-areas}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.19\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.81\textwidth-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+\textbf{Area} & \textbf{Ruolo nel servizio} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Area} & \textbf{Ruolo nel servizio} \\
+\hline
+\endhead
+Memoria persistente & Crea e gestisce uno store ChromaDB separato per \texttt{avatar\_id}, mantenendo la collezione \texttt{memory} come base riutilizzabile del profilo. \\
+\hline
+Contesto recente di sessione & Mantiene in RAM una finestra scorrevole dei turni recenti per coppia \texttt{(avatar\_id, session\_id)}, utile per riferimenti ravvicinati e continuità locale del dialogo. \\
+\hline
+Routing dell'intento & Interpreta il turno e decide se trattarlo come \texttt{memory\_qna}, \texttt{memory\_recap}, \texttt{session\_recap}, \texttt{creative\_open} o \texttt{chitchat}. \\
+\hline
+Retrieval e selezione del contesto & Combina segnali lessicali e vettoriali, prova percorsi alternativi quando il primo recupero non è sufficiente e gestisce sorgenti diverse come profilo, file e descrizioni immagine. \\
+\hline
+Controllo finale della risposta & Applica vincoli di grounding, filtri di aderenza al contesto e riscritture prudenti quando la risposta tende a deviare o a deformare il materiale recuperato. \\
+\hline
+\end{longtable}
+\par\endgroup
+
+Queste responsabilità non sono disposte in serie rigida. Nella pratica si intrecciano nello stesso turno: una chat può aprire o riusare una sessione, leggere il contesto recente, interrogare la memoria persistente, provare un percorso di retrieval mirato e poi decidere che la risposta finale vada riscritta in modo più prudente. È anche il motivo per cui il file è cresciuto molto: il servizio non ospita solo il retrieval, ma la logica con cui il prototipo cerca di tenere insieme continuità conversazionale, credibilità dell'identità e uso disciplinato delle fonti.
+
+Dal punto di vista architetturale questa concentrazione ha un vantaggio chiaro. Tenere qui le decisioni sul contesto evita che il client debba conoscere dettagli che non gli appartengono, come il bilanciamento tra memoria persistente e storico recente o i criteri con cui una risposta viene considerata abbastanza grounded. Il frontend sa bene quando un turno inizia, quando finisce e come mostrarlo; il backend RAG sa invece quali prove ha davvero a disposizione per rispondere.
+
+\section{Dal turno utente alla risposta}
+La route \texttt{/chat} è il punto in cui queste responsabilità si incontrano. Ridotto all'essenziale, il flusso segue questi passaggi:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small,breaklines=true]
+1. pulisci il testo utente
+2. verifica se il turno contiene un trigger esplicito di auto-remember
+3. inizializza o recupera la sessione conversazionale
+4. costruisci il contesto recente dalla finestra in RAM
+5. instrada l'intento del turno
+6. recupera il contesto factual coerente con intento e sorgenti
+7. prova un fast path nei casi semplici
+8. altrimenti genera la risposta con il modello chat
+9. verifica copertura, grounding e coerenza della risposta
+10. aggiorna storico recente e log di sessione
+11. restituisci testo, intent, rag_used e metadati del turno
+\end{lstlisting}
+
+La sequenza mostra dove il servizio smette di essere un semplice adattatore HTTP e diventa davvero un gestore del turno. Prima ancora di interrogare la memoria, il testo utente viene pulito, viene controllato se contenga un trigger esplicito di memorizzazione e viene ricostruito il contesto recente della sessione. Solo a quel punto il servizio decide se aprire il ramo factual, restare su una risposta sociale o tentare una correzione ulteriore.
+
+L'input atteso dal client è compatto:
+
+\begin{lstlisting}[language=json,style=sfpayload,title={POST /chat},caption={Payload tipico della route \texttt{/chat}.}]
+{
+  "avatar_id": "LOCAL_model1",
+  "user_text": "Che cosa ti ricordi di me?",
+  "top_k": 8,
+  "session_id": "20260305_235254_2bae76fa",
+  "input_mode": "voice",
+  "log_conversation": true
+}
+\end{lstlisting}
+
+Da qui si vede anche un'altra scelta di progetto: il client non passa un oggetto enorme, ma soltanto ciò che serve al turno. \texttt{avatar\_id} identifica il profilo, \texttt{session\_id} ancora la conversazione corrente, \texttt{input\_mode} aiuta a leggere il tipo di turno e \texttt{log\_conversation} decide se il servizio debba scrivere anche la traccia su file. Tutto il resto viene ricostruito lato backend.
+
+L'output non restituisce solo il testo finale:
+
+\begin{lstlisting}[language=json,style=sfpayload,title={200 OK /chat},caption={Campi principali della risposta di \texttt{/chat}.}]
+{
+  "text": "Mi ricordo che domani hai un colloquio alle 10...",
+  "rag_used": [
+    {
+      "doc": "domani ho un colloquio alle 10...",
+      "meta": {
+        "source_type": "auto_remember_voice",
+        "memory_subject": "user"
+      }
+    }
+  ],
+  "intent": "memory_qna",
+  "auto_remembered": false,
+  "conversation_logged": true,
+  "conversation_session_id": "20260305_235254_2bae76fa"
+}
+\end{lstlisting}
+
+Nel contratto del servizio questi campi restano tutti osservabili. Nel client Unity, però, l'uso operativo è più ristretto: nella UI corrente vengono consumati soprattutto \texttt{text} e \texttt{auto\_remembered}, mentre \texttt{intent}, \texttt{rag\_used} e gli altri metadati restano utili soprattutto per diagnostica, test e lettura del comportamento del backend.
+
+\paragraph{Route di supporto e contratti osservabili.}
+Accanto a \texttt{/chat}, il servizio espone alcune route che nel progetto vengono usate come estensioni naturali dello stesso flusso conversazionale:
+
+\par\begingroup
+\small
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Route complementari che completano il comportamento del servizio RAG.}
+\label{tab:appendix-rag-routes}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.27\textwidth}|>{\raggedright\arraybackslash}p{0.18\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.55\textwidth-6\tabcolsep-4\arrayrulewidth\relax}|}
+\hline
+\textbf{Route} & \textbf{Input essenziale} & \textbf{Ruolo pratico} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Route} & \textbf{Input essenziale} & \textbf{Ruolo pratico} \\
+\hline
+\endhead
+\path{/chat_session/start} & \texttt{avatar\_id} & Genera \texttt{session\_id}, apre il file di log e azzera lo storico recente della nuova sessione. \\
+\hline
+\path{/recall} & \texttt{avatar\_id}, query & Espone il retrieval in forma quasi diagnostica, utile per separare qualità del recupero e qualità della risposta finale. \\
+\hline
+\path{/ingest_file} & \texttt{avatar\_id}, file & Trasforma PDF, immagini o testo in chunk persistenti con metadati coerenti con la sorgente. \\
+\hline
+\path{/describe_image} & file, prompt, opzionale \texttt{avatar\_id} & Produce una descrizione semantica dell'immagine e, se richiesto, la salva direttamente nella memoria dell'avatar. \\
+\hline
+\end{longtable}
+\par\endgroup
+
+\begin{lstlisting}[language=json,style=sfpayload,title={POST /chat\_session/start},caption={Risposta tipica di \texttt{/chat\_session/start}.}]
+{
+  "ok": true,
+  "avatar_id": "LOCAL_model1",
+  "session_id": "20260305_235254_2bae76fa",
+  "log_file": "backend/log/Local1/20260305_235254_2bae76fa.log"
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=json,style=sfpayload,title={POST /describe\_image},caption={Esempio compatto di descrizione immagine salvata nella memoria dell'avatar.}]
+{
+  "description": "Scrivania chiara con notebook aperto e taccuino blu.",
+  "saved_to_memory": true,
+  "source_type": "image_description",
+  "avatar_id": "LOCAL_model1"
+}
+\end{lstlisting}
+
+Queste route non formano un catalogo separato: allargano il perimetro dello stesso servizio. \texttt{/chat\_session/start} apre il contenitore della conversazione; \texttt{/recall} rende osservabile il retrieval senza passare dalla generazione finale; \texttt{/ingest\_file} e \texttt{/describe\_image} arricchiscono la memoria con sorgenti esterne che poi \texttt{/chat} potrà riusare. Letti insieme, questi endpoint mostrano bene che il servizio non custodisce solo ricordi testuali, ma governa un piccolo ecosistema di fonti eterogenee.
+
+\paragraph{Piano di query e routing dell'intento.}
+
+Prima di qualunque ricerca, il servizio costruisce un \emph{query plan}: una struttura dati immutabile che raccoglie ciò che il turno sembra chiedere. Non nasce da un classificatore unico, ma da una cascata di controlli lessicali e semantici. Il servizio cerca anzitutto ancore forti --- parole come ``documento'', ``foto'', ``ti chiami'', ``cos'è'' --- e da queste ricava se la query riguardi un documento, un profilo, un contenuto visivo, una definizione o un richiamo di memoria. Da qui derivano anche la famiglia di sorgenti preferita (\texttt{file}, \texttt{image\_description}, \texttt{manual}) e il soggetto del profilo (\texttt{avatar\_self}, \texttt{user} o \texttt{ambiguous}).
+
+I campi principali del piano sono riportati qui sotto, non perché servano al lettore come riferimento API, ma perché mostrano quanto il routing sia strutturato prima ancora di interpellare il modello linguistico:
+
+\par\begingroup
+\scriptsize
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Campi principali del piano di query (\texttt{QueryPlan}).}
+\label{tab:appendix-rag-query-plan}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.29\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.71\textwidth-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+\textbf{Campo} & \textbf{Funzione nel routing} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Campo} & \textbf{Funzione nel routing} \\
+\hline
+\endhead
+\texttt{document\_query}, \texttt{profile\_query}, \texttt{visual\_query} & Flag che indicano se la query sembra puntare a un documento, a un profilo personale o a un contenuto visivo. \\
+\hline
+\texttt{definition\_query} & Vero quando la query ha forma definitoria (``cos'è X'', ``che significa Y''); attiva un percorso estrattivo abbreviato. \\
+\hline
+\texttt{normalized\_intent} & Intento finale tra \texttt{chitchat}, \texttt{session\_recap}, \texttt{memory\_recap}, \texttt{memory\_qna}, \texttt{creative\_open}. \\
+\hline
+\texttt{fallback\_intents} & Lista di intenti alternativi da provare se il primo non produce contesto utile. \\
+\hline
+\texttt{profile\_target} & Indica se il turno riguarda l'avatar (\texttt{avatar\_self}), l'utente (\texttt{user}) o è ambiguo. \\
+\hline
+\texttt{focus\_sources} & Sorgenti prioritarie (es. \texttt{image\_description}, \texttt{file}) verso cui indirizzare il retrieval. \\
+\hline
+\texttt{visual\_strength}, \texttt{source\_preference} & Forza del segnale visivo e preferenza di sorgente, usati dal reranking per pesare i candidati. \\
+\hline
+\texttt{wants\_multi\_source\_coverage} & Vero quando la query è un riepilogo\allowbreak multi-sorgente (profilo + documenti + immagini). \\
+\hline
+\end{longtable}
+\par\endgroup
+
+Il routing dell'intento segue una logica a due fasi. Nella prima, i segnali forti del piano vengono trattati direttamente: se il turno contiene un recap esplicito, una domanda di profilo, una query documentale o una forma definitoria, l'intento viene assegnato senza passare dal classificatore LLM. Quando il segnale è netto, demandare la classificazione a un modello probabilistico sarebbe più fragile che utile e aggiungerebbe solo latenza.
+
+Se non compare nessun segnale forte, il servizio invia al runtime Ollama una richiesta di classificazione strutturata. Il prompt chiede al modello di restituire un JSON con \texttt{intent} e \texttt{confidence} tra i cinque intenti ammessi. Il contesto recente e lo stato della memoria (\texttt{has\_memory}) vengono passati come input, così il modello può distinguere, per esempio, una domanda generica come ``come stai'' (chitchat) da una richiesta di riepilogo dei ricordi (memory\_recap). Se la chiamata fallisce o restituisce un intento non riconosciuto, il piano originale viene mantenuto senza modifiche.
+
+Quando l'intento finale ricade su \texttt{memory\_qna} o \texttt{memory\_recap} ma la formulazione della query è troppo vaga, il backend applica anche un \emph{query rewrite} leggero per il solo retrieval. Non riscrive la domanda da mostrare al client: produce una variante più adatta alla ricerca in memoria, costruita a partire dalla query e dal contesto recente, così da non lasciare che richiami ellittici o pronominali degradino inutilmente il recupero.
+
+Il meccanismo di \emph{fallback intent} copre un caso frequente: il primo percorso di retrieval non produce contesto sufficiente. Se il piano prevede alternative (ad esempio \texttt{session\_recap} $\rightarrow$ \texttt{memory\_recap} $\rightarrow$ \texttt{memory\_qna}), il servizio le prova in sequenza, ricostruendo ogni volta un piano coerente con il nuovo intento. Se un intent alternativo trova contesto, il turno prosegue su quel ramo. Si tratta di un recupero prudente: meglio cambiare ramo e rispondere con contenuto che restare su un percorso vuoto.
+
+\paragraph{Percorsi abbreviati.}
+
+Non tutti i turni attraversano l'intera pipeline. Il servizio mantiene un \emph{fast path} che, in alcuni casi, restituisce una risposta senza invocare la generazione LLM completa:
+\begin{itemize}
+\item se il turno è un auto-remember puro (trigger lessicale senza domanda allegata), il servizio conferma direttamente il salvataggio;
+\item se l'intento è factual ma la memoria è vuota, il servizio restituisce una risposta del tipo ``non ho ricordi affidabili'' senza generare;
+\item se la query è visiva ma non esistono hit visive coerenti, il servizio lo dichiara subito;
+\item se la query è definitoria e il contesto estrattivo basta a rispondere, il servizio produce una risposta estrattiva senza costruire un prompt completo;
+\item se un'immagine descritta è molto corta, il servizio produce una risposta frase per frase a partire dal testo recuperato.
+\end{itemize}
+Questo percorso riduce la latenza nei casi semplici e limita il rischio di risposte generate su un contesto troppo debole.
+
+\section{Come viene costruito il contesto}
+Una differenza importante rispetto a un RAG più semplice riguarda il punto in cui il retrieval viene attivato. Il servizio non assume che ogni turno richieda automaticamente il recupero di chunk factual. Prima costruisce un \emph{query plan}, cioè una traccia interna di dove valga la pena cercare, poi decide se ha senso usare contesto documentale, contesto di profilo, riferimenti visuali o se convenga restare su una risposta sociale controllata.
+
+Nel codice questa fase non è affidata a un solo meccanismo. Alcuni segnali forti vengono trattati prima ancora di interpellare il router LLM: recap espliciti, richieste su profilo, domande chiaramente documentali o definitorie. L'idea è semplice: se il piano di query contiene già indizi molto netti, demandare tutto al classificatore sarebbe più fragile che utile. Il router LLM entra soprattutto nei casi ambigui, quando il servizio deve decidere se la richiesta sia chitchat, recap, domanda di memoria o apertura creativa.
+
+La ricerca ibrida combina:
+\begin{itemize}
+\item BM25, con peso leggermente prevalente;
+\item similarità vettoriale sugli embedding;
+\item probe mirati su famiglie di sorgenti;
+\item filtri successivi su score, copertura e coerenza lessicale.
+\end{itemize}
+
+Nel codice la ricerca ibrida usa un bilanciamento 0.6/0.4 a favore di BM25, quindi del segnale più legato alle parole effettivamente presenti nella query. La scelta è coerente con il tipo di richieste osservate nel progetto, spesso ricche di nomi propri, etichette e riferimenti espliciti. Il recupero semantico resta comunque importante quando la memoria viene richiamata in forma parafrasata.
+
+La formula implementata in \texttt{rag\_server.py} è semplice:
+\[
+\mathrm{score} = 0.6 \cdot \mathrm{bm25}_{norm} + 0.4 \cdot \mathrm{vector}_{norm}.
+\]
+\sloppy Ogni candidato mantiene anche tre campi diagnostici temporanei, utili in fase di test o di lettura dei casi limite: \texttt{\_hybrid\_score}, \texttt{\_bm25\_norm} e \texttt{\_vector\_similarity}. Nel progetto aiutano a capire se un recupero ha retto per corrispondenza lessicale forte o per vicinanza semantica più morbida.
+
+Il routing non si ferma però al primo tentativo. Il comportamento generale è questo:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small,breaklines=true]
+se il turno e factual:
+  prova il retrieval sul ramo suggerito dal query plan
+  se la query e visiva ma non ci sono hit visive coerenti:
+    svuota il contesto factual
+  se il contesto resta vuoto:
+    prova intent alternativi compatibili con la query
+altrimenti:
+  resta su un ramo sociale o riassuntivo controllato
+\end{lstlisting}
+
+Qui retrieval e ranking smettono di coincidere. Prima il servizio costruisce una lista ordinata di candidati; poi decide quali meritino davvero di entrare nel contesto finale. La selezione factual applica soglie sul punteggio ibrido, controlla overlap lessicale, similarità vettoriale e alcuni segnali di sorgente più mirati, per esempio quando la query sembra puntare a un profilo, a un documento o a un contenuto visivo. Se la query è molto corta, il filtro si fa un po' più tollerante; se è referenziale ma non trova appigli esterni credibili, il servizio diventa più prudente.
+
+Un altro passaggio importante è la deduplicazione. I chunk non vengono solo ordinati: vengono anche ripuliti da ridondanze, così il prompt non si riempie di ripetizioni quasi uguali. Nelle richieste di recap, inoltre, la selezione cerca di non schiacciarsi sempre sulla stessa famiglia di sorgenti: tende a dare spazio a manual, file, descrizioni immagine e memoria automatica in modo più bilanciato, proprio perché un riepilogo utile non coincide con il primo blocco trovato.
+
+\paragraph{Strategia di recupero multi-percorso.}
+
+Nel codice il retrieval non è mai un'unica chiamata. Per un intento come \texttt{memory\_qna}, il servizio può attraversare diversi stadi in sequenza, ognuno attivato solo se i precedenti non hanno prodotto contesto sufficiente:
+\begin{enumerate}
+\item \textbf{Retrieval focalizzato}: se il piano indica sorgenti prioritarie (es. solo immagini o solo file) e la query non contiene token referenziali forti, viene lanciata una ricerca vettoriale filtrata per \texttt{source\_type}. Ogni hit riceve un boost basato su overlap lessicale e nome del file. Se trova risultati sufficienti, il flusso si ferma qui.
+\item \textbf{Retrieval profilo}: se la query riguarda identità o profilo, il servizio esegue una ricerca dedicata sulle sorgenti di tipo \texttt{manual}, \texttt{manual\_note} e \texttt{auto\_remember\_voice}, filtrata per soggetto (\texttt{avatar\_self} o \texttt{user}). I risultati vengono boostati rispetto alla baseline, così un ricordo di profilo pertinente non viene soppresso da chunk documentali con score vettoriale più alto ma meno coerente con la domanda.
+\item \textbf{Ricerca ibrida generale}: quando i percorsi precedenti non bastano, il servizio esegue una ricerca ibrida BM25\,+\,vettoriale sull'intera collezione, con pool di candidati pari a tre volte il \texttt{top\_k} richiesto. A questa si affiancano, se presenti token referenziali, una \emph{source probe} per sorgente e una \emph{external probe} che cercano corrispondenze per nome file o contenuto.
+\item \textbf{Probe documentali di fallback}: se la ricerca ibrida non produce hit e il piano segnala una query documentale, il servizio prova un'ultima ricerca vettoriale filtrata sulle sorgenti esterne (\texttt{file}, \texttt{image\_description}, \texttt{image\_ocr}) con soglie di accettazione più morbide.
+\item \textbf{Probe di memoria generica}: come ultimo tentativo, il servizio lancia probe trasversali su tutte le famiglie di sorgenti con soglie di ammissione ridotte.
+\end{enumerate}
+Questa cascata può sembrare ridondante, ma risponde a un problema pratico: una query può essere formulata in modo che non venga fuori con la ricerca ibrida standard, ma abbia corrispondenze forti nel nome di un file o nel titolo di una descrizione immagine. Avere più percorsi, attivati solo quando servono, rende il retrieval più resistente alla variabilità delle domande reali.
+
+\paragraph{Criteri di selezione dei candidati factual.}
+
+Una volta ottenuta la lista ordinata di candidati, il servizio non si limita a prendere i primi $k$: applica una selezione multi-segnale. Per ogni candidato vengono calcolati:
+\begin{itemize}
+\item lo score ibrido (BM25\,+\,vettoriale);
+\item l'overlap lessicale tra query e chunk;
+\item la similarità vettoriale pura;
+\item la presenza di segnali di sorgente (focused match, profile match, external probe);
+\item l'overlap tra i token referenziali della query e il contenuto del chunk.
+\end{itemize}
+
+Un candidato viene accettato se soddisfa almeno una tra queste condizioni: overlap lessicale forte ($\geq 0.18$ con score sopra soglia), similarità vettoriale elevata ($\geq 0.55$), match di sorgente focalizzata, match di profilo, o score alto e vicino al migliore. Per le query corte --- al massimo due token --- i criteri si allentano perché c'è meno materia lessicale su cui decidere. Se nessun candidato passa la selezione, il servizio prova un fallback sul primo risultato della lista, ma solo se supera una soglia minima più bassa.
+
+Per le sorgenti esterne (file, immagini), la selezione applica un ulteriore filtro: se la query contiene token referenziali specifici (ad esempio un nome di file o un termine tecnico), i chunk esterni che non mostrano alcuna evidenza di corrispondenza con quei token vengono esclusi. L'obiettivo è evitare che chunk generici, con score vettoriale alto ma contenuto non correlato al riferimento della query, entrino nel prompt e guidino la risposta in una direzione fuorviante.
+
+Per i chunk di sorgente esterna viene calcolata anche una penalità di rumore: se il chunk contiene poche parole uniche, marcatori tipici di boilerplate (copyright, privacy, disclaimer) o indirizzi email, il punteggio finale viene ridotto. È un filtro conservativo --- non elimina il chunk, ma ne abbassa lo score --- che serve soprattutto a contenere il rumore da documenti reali con appendici burocratiche.
+
+\paragraph{Selezione per recap e copertura multi-sorgente.}
+
+Quando l'intento è \texttt{memory\_recap}, la selezione segue una logica diversa. Invece di cercare il miglior candidato in assoluto, il servizio costruisce un paniere bilanciato tra famiglie di sorgenti. A ogni tipo viene assegnata una priorità (\texttt{manual} $>$ \texttt{file} $>$ \texttt{image\_description} $>$ \texttt{auto\_remember\_voice}); la selezione riempie prima un candidato per bucket (combinazione di \texttt{source\_type} e soggetto), poi aggiunge i rimanenti per score. Il risultato è un recap che non si schiaccia sulla sorgente dominante ma copre profilo, documenti e materiale visivo in modo più equilibrato.
+
+Per le query multi-sorgente esplicite (ad esempio ``fammi un riepilogo di profilo, documenti e immagini''), il servizio estrae delle \emph{facet}: sotto-topic con ancore lessicali e famiglia preferita. La selezione garantisce almeno un candidato per facet prima di riempire il resto. Questo meccanismo è necessario perché una ricerca ibrida standard tenderebbe a restituire più candidati dalla sorgente più ampia, ignorando le sorgenti più piccole ma comunque richieste. Il contesto factual risultante viene poi strutturato per sezioni (profilo, documento, immagine), così il prompt che arriva al modello ha già una separazione logica che facilita la generazione di un riepilogo multi-tema.
+
+\section{Memoria, sessione e tracciabilità}
+Nel servizio convivono tre livelli di memoria, che nel testo principale vengono distinti ma qui conviene esplicitare meglio:
+
+\par\begingroup
+\small
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Tre livelli distinti di memoria nel servizio RAG.}
+\label{tab:appendix-rag-memory-levels}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.22\textwidth}|>{\raggedright\arraybackslash}p{0.2\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.58\textwidth-6\tabcolsep-4\arrayrulewidth\relax}|}
+\hline
+\textbf{Livello} & \textbf{Persistenza} & \textbf{Funzione} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Livello} & \textbf{Persistenza} & \textbf{Funzione} \\
+\hline
+\endhead
+Memoria per-avatar & filesystem + ChromaDB & Conserva ricordi, note, chunk documentali e descrizioni immagine come base riutilizzabile del profilo. \\
+\hline
+Contesto recente di sessione & RAM & Tiene una finestra scorrevole dei turni recenti per evitare che ogni riferimento debba essere ricostruito da zero attraverso il retrieval. \\
+\hline
+Log conversazionale & file \texttt{.log} & Documenta la sessione in modo leggibile, utile per debugging, audit e rilettura dei casi osservati. \\
+\hline
+\end{longtable}
+\par\endgroup
+
+Il \texttt{session\_id} non crea memoria di per sé. Serve piuttosto a legare tra loro contesto recente e log della sessione, lasciando separata la memoria persistente dell'avatar. Conta perché evita di confondere il ricordo stabile del profilo con la continuità locale del dialogo.
+
+In termini di flusso, \texttt{/chat\_session/start} fa due cose concrete: apre una sessione di log e azzera lo storico recente che il servizio mantiene in RAM per quella coppia \texttt{avatar\_id}/\texttt{session\_id}. Da lì in poi ogni turno viene aggiunto sia allo storico recente, utile al turno successivo, sia al log se il client ha chiesto di registrare la conversazione. La memoria persistente, invece, non viene riscritta a ogni scambio: resta uno strato separato e più stabile.
+
+\paragraph{Auto-remember e metadati.}
+Il servizio include una forma prudente di memorizzazione automatica. Non cerca ancora di estrarre in modo aggressivo tutto ciò che potrebbe essere ``memorabile'' in un dialogo libero; riconosce invece trigger lessicali espliciti come ``ricorda che...'' e salva il contenuto in memoria con metadati dedicati.
+
+I metadati usati più spesso nel progetto sono:
+\begin{itemize}
+\item \texttt{source\_type}: origine del contenuto (\texttt{manual}, \texttt{file}, \texttt{image\_description}, \texttt{auto\_remember\_voice}, ecc.);
+\item \texttt{memory\_subject}: soggetto prevalente del ricordo (\texttt{avatar\_self}, \texttt{user}, \texttt{external}, ecc.);
+\item \texttt{memory\_role}: distinzione tra memoria fattuale e tracce di stile/persona;
+\item \texttt{source\_filename}: filename del documento o dell'immagine da cui deriva il chunk.
+\end{itemize}
+
+Questi campi non sono decorativi: permettono di restringere il retrieval, evitare contaminazioni tra sorgenti e costruire risposte più leggibili su profilo, documenti e materiali visivi.
+
+Accanto ai metadati persistenti, la route \texttt{/chat} restituisce anche una traccia leggibile del turno: \texttt{intent}, \texttt{rag\_used}, \texttt{auto\_remembered}, \texttt{conversation\_logged} e \texttt{conversation\_session\_id}. Non servono solo al debugging: fanno capire, anche dall'esterno, quale logica il servizio abbia effettivamente usato.
+
+\paragraph{Inferenza del soggetto di memoria.}
+
+Ogni chunk nella memoria persistente porta un metadato \texttt{memory\_subject} che indica se il contenuto riguarda l'avatar (\texttt{avatar\_self}), l'utente (\texttt{user}), un contenuto esterno (\texttt{external}) o se il soggetto è ambiguo. L'inferenza non è affidata al modello linguistico ma a una cascata di regole: prima viene controllato se il metadato esiste già; poi la sorgente --- file e immagini sono automaticamente \texttt{external} ---; poi si cercano espressioni esplicite (``l'utente'', ``l'avatar''); infine si contano le occorrenze di prima e seconda persona nel testo. Per i turni provenienti da auto-remember vocale, il servizio cerca anche di capire se l'utente stesse parlando di sé o dell'avatar prima di assegnare il soggetto.
+
+Questa distinzione ha un effetto concreto sul retrieval: quando la query riguarda ``il tuo nome'', i chunk marcati come \texttt{avatar\_self} vengono privilegiati rispetto a quelli marcati \texttt{user}; quando chiede ``cosa sai di me'', accade il contrario. Senza questa annotazione, il servizio potrebbe confondere i fatti dell'utente con quelli dell'avatar, producendo risposte che attribuiscono all'uno i dati dell'altro.
+
+\paragraph{Contesto recente e limiti della finestra.}
+
+Lo storico di sessione è implementato come coda circolare con un massimo di turni configurabile (default otto). Ogni turno viene troncato per evitare che una risposta particolarmente lunga monopolizzi la finestra: 800 caratteri per il turno utente, 1600 per la risposta. L'accesso è protetto da un lock perché, in un server ASGI, richieste concorrenti sullo stesso avatar possono arrivare prima che il turno precedente sia completato.
+
+Nel prompt, il contesto recente viene serializzato come coppie ``Utente: ...'' / ``Avatar: ...''; per gli intenti \texttt{memory\_qna} e \texttt{memory\_recap}, il servizio usa solo i turni dell'utente. Includere anche le risposte precedenti del modello può creare un loop in cui la generazione successiva ripete sé stessa anziché attingere dalla memoria factual: è un effetto osservato nei test con il prototipo e la scelta di filtrare nasce da quel riscontro pratico.
+
+\paragraph{Trigger di auto-remember e ciclo di salvataggio.}
+
+Il servizio riconosce trigger espliciti come ``ricorda che...'', ``memorizza...'', ``tieni a mente...'', ``non dimenticare...'', sia in italiano sia in inglese. I pattern sono compilati come regex e cercano il contenuto dopo il trigger lessicale, che diventa il testo da memorizzare. Il contenuto catturato viene pulito, verificato --- lunghezza minima, assenza di garbage, almeno due parole alfabetiche --- e, se valido, salvato con embedding nella collezione dell'avatar con \texttt{source\_type: auto\_remember\_voice}. L'utterance originale viene conservata nei metadati, così il servizio può ricostruire il contesto d'uso del ricordo anche a distanza di sessioni. Nel payload finale della \path{/chat}, questo passaggio riaffiora tramite il flag \texttt{auto\_remembered}, utile per distinguere un normale turno di memoria da un turno che ha davvero prodotto un nuovo salvataggio.
+
+Un turno che contiene un trigger di auto-remember può essere anche una domanda. Il servizio distingue il caso del ``puro ricorda'' --- dove il turno è solo una richiesta di memorizzazione, senza domanda allegata --- dal caso misto. Nel primo caso il fast path conferma direttamente il salvataggio; nel secondo il servizio memorizza il contenuto e poi prosegue con l'intera pipeline di risposta, così l'utente ottiene sia la conferma implicita sia una risposta alla sua domanda.
+
+\subsubsection*{Ingestione documentale e casi limite.}
+L'ingestione documentale usa \texttt{/ingest\_file}. Per i PDF, il servizio prova prima un'estrazione testuale con \texttt{pymupdf4llm} e ricorre all'OCR solo quando una pagina risulta vuota o quasi vuota. La linearizzazione non risolve tutti i problemi di layout, ma riduce almeno una parte della frammentazione tipica di tabelle e PDF multi-colonna.
+
+Una seconda route, \texttt{/describe\_image}, trasforma il contenuto visivo in testo descrittivo quando Gemini Vision è configurato. Nel progetto questa scelta ha un valore molto pratico: alcune immagini sono poco adatte all'OCR puro, ma diventano comunque interrogabili una volta descritte in forma testuale e salvate nella memoria per-avatar.
+
+La catena di ingestione è più articolata di quanto sembri da fuori. Nei PDF il servizio tenta prima l'estrazione strutturata e usa l'OCR come fallback; le immagini caricate via \texttt{/ingest\_file} passano invece da OCR diretto, mentre \texttt{/describe\_image} apre un ramo diverso basato su descrizione semantica; i file testuali passano da una pulizia iniziale e da controlli contro contenuti troppo vuoti o inutili. In tutti i casi il servizio cerca di non salvare materiale palesemente rumoroso: filtra il garbage, spezza il testo in chunk con overlap, evita duplicati intra-file e calcola gli embedding in batch prima di scrivere in ChromaDB.
+
+Questa prudenza non elimina i casi limite, ma li rende più leggibili. Se un PDF ha tabelle spezzate o layout poco lineari, la linearizzazione può solo attenuare il problema; se un'immagine contiene poco testo ma una struttura chiara, la descrizione visiva spesso diventa più utile dell'OCR puro; se una query punta a un riferimento molto specifico ma i chunk restano rumorosi, il servizio può comunque recuperare qualcosa senza riuscire a costruire una risposta finale davvero pulita. È uno dei motivi per cui in SOULFRAME retrieval, ranking e controllo della risposta sono rimasti strettamente collegati.
+
+\begin{lstlisting}[language=json,caption={Risposta tipica di \texttt{/ingest\_file}.}]
+{
+  "ok": true,
+  "filename": "schema.pdf",
+  "sections": 3,
+  "chunks_added": 14
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=json,caption={Campi principali restituiti da \texttt{/describe\_image}.}]
+{
+  "ok": true,
+  "filename": "diagramma.png",
+  "description": "L'immagine mostra un diagramma a blocchi...",
+  "prompt_used": "Descrivi dettagliatamente questa immagine in italiano.",
+  "saved": true,
+  "save_error": null
+}
+\end{lstlisting}
+
+\paragraph{Dettaglio della catena di estrazione.}
+
+Per i PDF, l'estrazione segue un percorso a due vie. Il primo tentativo usa \texttt{pymupdf4llm}, che produce testo Markdown strutturato pagina per pagina. Se una pagina risulta vuota o quasi --- tipico dei PDF scansionati --- il servizio passa al fallback OCR: rasterizza la pagina a 400 DPI tramite PyMuPDF, la converte in PNG e la passa a Tesseract con lingua configurabile (\texttt{ita+eng} di default). Ogni pagina estratta mantiene nei metadati sia il numero di pagina sia il metodo usato (\texttt{pymupdf4llm} o \texttt{ocr\_fallback}), così nelle fasi successive è possibile risalire alla sorgente del testo.
+
+Il chunking è configurabile ma nel progetto usa valori ragionati: chunk da 3500 caratteri con overlap di 500, taglio al confine naturale più vicino (doppio a capo, punto, a capo singolo) quando il taglio cade oltre i primi 200 caratteri della finestra. I chunk sotto i 20 caratteri vengono scartati, come pure quelli che il filtro garbage classifica come rumorosi. La deduplicazione intra-file usa un confronto esatto: se un chunk identico è già stato incontrato nello stesso file, viene saltato. La deduplicazione per similarità ($\geq 0.92$ con \texttt{SequenceMatcher}) viene applicata in fase di recall e in fase di selezione dei candidati factual, non durante l'ingestione, per non rallentare un'operazione già costosa.
+
+Per le immagini, il servizio offre due percorsi complementari. L'OCR diretto con Tesseract è utile quando l'immagine contiene testo leggibile (schermate, documenti fotografati). La descrizione semantica tramite Gemini Vision è più adatta quando l'immagine è un diagramma, una foto o un contenuto dove il testo è poco o assente: la descrizione risultante è interrogabile semanticamente, anche se non riproduce il testo originale. Il prompt di default chiede una descrizione dettagliata in italiano; il servizio converte i formati non supportati in PNG prima di inviare a Gemini.
+
+L'embedding viene calcolato in batch (blocchi da 16 chunk alla volta) tramite Ollama e l'inserimento in ChromaDB avviene a sua volta in batch configurabili per evitare problemi di dimensione delle transazioni. Ogni chunk viene salvato con metadati completi: \texttt{source\_type}, \texttt{source\_filename}, indice del chunk, timestamp e \texttt{memory\_subject: external}.
+
+\paragraph{Questa logica nel backend.}
+Spostare parte del routing nel client sarebbe stata una scelta fragile. Il frontend conosce bene stati UI e temporizzazione del turno, non la qualità del contesto recuperato né i criteri con cui una risposta può essere considerata abbastanza aderente alle fonti disponibili. Tenere questa logica nel backend rende il comportamento più leggibile e più facile da verificare tra ambienti diversi. In altri termini, la UI decide come accompagnare il turno; il servizio RAG decide con quali evidenze rispondergli.
+
+\section{Controllo e correzione della risposta}
+
+La generazione del testo non è l'ultimo passaggio del turno. Il servizio mantiene una sequenza di post-generazione che pulisce, verifica e, se necessario, riscrive la risposta prima di restituirla al client. Non si tratta di un singolo filtro, ma di controlli distinti, attivati solo quando compare un problema specifico.
+
+\paragraph{Sanitizzazione del testo generato.}
+
+Il primo passaggio è la pulizia testuale. Il modello LLM può produrre artefatti che nel contesto conversazionale di SOULFRAME non sono accettabili: prefissi da parlante (``Assistente:'', ``Avatar:''), indicazioni sceniche tra parentesi o asterischi (``*ride*'', ``(annuisce)''), filler iniziali (``Ehm'', ``Mmm'') e prefissi meta-risposta (``La risposta corretta è:''). La sanitizzazione li rimuove iterativamente, poi normalizza spazi e punteggiatura. Un ultimo passaggio assicura che la risposta termini con un segno di punteggiatura valido: se la frase è incompleta, il servizio taglia all'ultimo punto, esclamativo o interrogativo, purché la porzione restante sia abbastanza lunga da mantenere senso.
+
+Se la risposta contiene espressioni che rivelano la natura di modello linguistico (``sono un avatar'', ``sono un'IA'', ``language model''), il servizio tenta una rigenerazione con un prompt che vieta esplicitamente queste espressioni. Se anche la rigenerazione le contiene, il servizio usa un fallback statico coerente con l'intento.
+
+\paragraph{Modalità di riscrittura.}
+
+Quando la risposta generata non soddisfa i vincoli di aderenza al contesto, il servizio la riscrive usando uno dei sette profili predefiniti. Ogni profilo ha un system prompt dedicato, un numero massimo di token, un timeout e una finestra massima per il contesto factual:
+\begin{itemize}
+\item \textbf{grounded\_strict}: estrattivo e rigoroso, massimo due frasi. Usato quando la query è documentale e la risposta deve restare strettamente aderente ai blocchi recuperati.
+\item \textbf{grounded}: correttivo, massimo quattro frasi. Tratta la risposta originale come bozza potenzialmente errata e la corregge in base al contesto factual.
+\item \textbf{neutral}: breve e accogliente, senza dettagli autobiografici inventati. Usato per il chitchat quando la risposta contiene troppi token non supportati dal contesto.
+\item \textbf{profile\_avatar} e \textbf{profile\_user}: dedicati a risposte su identità e profilo, con vincoli di persona (prima o seconda) e obbligo di ammettere i fatti mancanti anziché inventarli.
+\item \textbf{visual\_grounded} e \textbf{visual\_grounded\_strict}: varianti per contenuto visivo, con vincolo di non inferire colori, identità o proprietà non esplicitamente presenti nelle descrizioni recuperate.
+\end{itemize}
+
+La scelta del profilo dipende dal tipo di intento, dalla presenza di contesto factual e dalla natura della query. La catena è semplice: se la risposta nega contesto disponibile o contiene troppi token non supportati, si prova prima un grounding; se il grounding non basta e il turno è factual, si passa a un profilo strict. Se la query è di profilo, si usa il profilo dedicato. Questa sequenza è volutamente prudente: prevede più passaggi, ma ciascuno mirato, invece di un singolo filtro molto aggressivo che rischierebbe di appiattire il tono.
+
+Nel codice corrente questo passaggio non dipende solo da una regola simbolica generica. Il gate finale combina infatti più segnali: soglia minima sul punteggio factual dei candidati recuperati, ampiezza del margine tra i primi candidati, grounding score della risposta e rilevazione di possibili contraddizioni o negazioni del contesto disponibile. In questo senso il \emph{grounding} non è soltanto un'etichetta descrittiva, ma un controllo operativo che decide quando la risposta può restare aperta e quando deve essere riportata dentro un perimetro più stretto.
+
+Il meccanismo di \emph{riscrittura con guardrail} è lo stesso per tutti i profili: il servizio costruisce un prompt con il messaggio utente, il contesto recente (troncato), il contesto factual (troncato al limite del profilo) e la risposta originale da riscrivere. Il modello riceve istruzioni esplicite su cosa correggere e cosa preservare; la risposta riscritta viene poi sottoposta alla stessa sanitizzazione del passaggio precedente.
+
+\paragraph{Riparazione della prospettiva profilo.}
+
+Un problema specifico delle risposte su profilo è la confusione di persona: il modello può rispondere in prima persona quando la domanda riguarda l'utente, o viceversa. Il servizio controlla quattro condizioni:
+\begin{enumerate}
+\item mismatch di prospettiva --- prima persona per domande sull'utente, seconda persona per domande sull'avatar;
+\item affermazioni di profilo incomplete --- ``il tuo nome è'' senza proseguire;
+\item meta-framing --- espressioni come ``secondo la memoria'' o ``dal contesto'';
+\item distorsione relazionale: se il contesto dice ``l'utente chiama \emph{specchio quieto} la postazione vicino alla finestra'', il modello non deve trasformarlo in ``tu ti chiami specchio quieto''.
+\end{enumerate}
+
+Il quarto caso merita una nota. Le query di profilo sono le più esposte a questo tipo di errore, perché il modello tende a interpretare verbi come ``chiama'' in senso identitario. Il servizio usa una regex specializzata per individuare i termini associati a relazioni nel contesto factual e verifica che la risposta non li presenti come identità personali.
+
+Per ciascun problema rilevato, il servizio tenta una riscrittura con il profilo adeguato e verifica che la riscrittura abbia effettivamente risolto il problema. Se la riparazione non migliora il testo, viene mantenuta la versione precedente.
+
+\paragraph{Verifica di copertura.}
+
+L'ultimo passaggio è una verifica di copertura: la risposta viene confrontata con i requisiti del turno. I controlli includono:
+\begin{itemize}
+\item \textbf{copertura delle facet}: per le query multi-sorgente, il servizio verifica che ogni facet richiesta compaia nella risposta. Se manca una facet, avvia una riscrittura mirata con suggerimenti specifici su cosa integrare;
+\item \textbf{contaminazione identitaria}: se la risposta attribuisce all'utente o all'avatar un nome che proviene da una sorgente esterna (un documento o un'immagine), anziché dalla memoria manuale, il servizio segnala il problema;
+\item \textbf{povertà visiva}: se la query è visiva e la risposta contiene una sola frase breve nonostante la presenza di descrizioni recuperate, il servizio richiede più dettagli;
+\item \textbf{lingua}: se la risposta è in inglese anziché in italiano, il servizio la traduce.
+\end{itemize}
+
+Tutti questi controlli hanno un unico tentativo di correzione: se la riscrittura non migliora il testo secondo le stesse metriche usate per rilevare il problema, la risposta originale viene mantenuta. L'obiettivo non è garantire una risposta perfetta --- impossibile senza una verifica umana --- ma evitare le classi di errore più comuni e più visibili per l'utente.

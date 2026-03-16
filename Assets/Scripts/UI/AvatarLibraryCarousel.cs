@@ -87,6 +87,8 @@ public class AvatarLibraryCarousel : MonoBehaviour
     private const float ResetEffectDuration = 0.6f;
     private const float ResetJumpHeight = 0.12f;
     private const float DeleteEffectDuration = 3f;
+    private const float EmpiricalGroupToggleMaxInterval = 0.55f;
+    private const float EmpiricalLocalSwitchHoldSeconds = 3f;
     private AmbientMode previousAmbientMode;
     private Color previousAmbientColor;
     private float previousAmbientIntensity;
@@ -99,6 +101,11 @@ public class AvatarLibraryCarousel : MonoBehaviour
     private float trackedTouchStartTime;
     private bool trackedTouchStartedOverUi;
     private bool trackedTouchConsumedBySwipe;
+    private int empiricalGroupToggleSpaceCount;
+    private float empiricalGroupToggleLastSpaceTime;
+    private bool empiricalLocalSwitchHoldArmed;
+    private bool empiricalLocalSwitchHoldTriggered;
+    private float empiricalLocalSwitchHoldStartedAt;
 
     public void Initialize(AvatarManager manager, UIFlowController flowController)
     {
@@ -132,6 +139,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
         }
 
         active = enabled;
+        ResetEmpiricalSpaceGestureState();
         
         // All'ingresso blocchiamo conferma/back per un intervallo breve.
         inputLockedUntil = enabled ? (Time.unscaledTime + enterLibraryInputLockSeconds) : 0f;
@@ -263,6 +271,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
 #endif
         if (moveLeftPressed)
         {
+            ResetEmpiricalSpaceGestureState();
             SetSelectedIndex(selectedIndex - 1);
         }
         else
@@ -276,8 +285,34 @@ public class AvatarLibraryCarousel : MonoBehaviour
 #endif
             if (moveRightPressed)
             {
+                ResetEmpiricalSpaceGestureState();
                 SetSelectedIndex(selectedIndex + 1);
             }
+        }
+
+        bool spacePressed = Input.GetKeyDown(KeyCode.Space);
+        bool spaceReleased = Input.GetKeyUp(KeyCode.Space);
+        bool spaceHeld = Input.GetKey(KeyCode.Space);
+#if ENABLE_INPUT_SYSTEM
+        if (!spacePressed)
+        {
+            spacePressed = IsInputSystemKeyPressed(UnityEngine.InputSystem.Key.Space);
+        }
+        if (!spaceReleased)
+        {
+            spaceReleased = IsInputSystemKeyReleased(UnityEngine.InputSystem.Key.Space);
+        }
+        if (!spaceHeld)
+        {
+            spaceHeld = IsInputSystemKeyHeld(UnityEngine.InputSystem.Key.Space);
+        }
+#endif
+        UpdateEmpiricalLocalSwitchHold(spaceHeld, spaceReleased);
+        if (spacePressed)
+        {
+            RegisterEmpiricalGroupToggleSpace();
+            BeginEmpiricalLocalSwitchHold();
+            return;
         }
 
         // Solo se non bloccati
@@ -293,6 +328,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
 #endif
             if (submitPressed)
             {
+                ResetEmpiricalSpaceGestureState();
                 ConfirmSelection();
             }
             else
@@ -306,6 +342,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
 #endif
                 if (deletePressed)
                 {
+                    ResetEmpiricalSpaceGestureState();
                     uiFlowController?.RequestDeleteSelectedAvatar();
                     return;
                 }
@@ -319,6 +356,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
 #endif
                 if (backPressed)
                 {
+                    ResetEmpiricalSpaceGestureState();
                     uiFlowController?.GoBack();
                     return;
                 }
@@ -410,6 +448,18 @@ public class AvatarLibraryCarousel : MonoBehaviour
         var keyboard = UnityEngine.InputSystem.Keyboard.current;
         return keyboard != null && keyboard[key].wasPressedThisFrame;
     }
+
+    private static bool IsInputSystemKeyReleased(UnityEngine.InputSystem.Key key)
+    {
+        var keyboard = UnityEngine.InputSystem.Keyboard.current;
+        return keyboard != null && keyboard[key].wasReleasedThisFrame;
+    }
+
+    private static bool IsInputSystemKeyHeld(UnityEngine.InputSystem.Key key)
+    {
+        var keyboard = UnityEngine.InputSystem.Keyboard.current;
+        return keyboard != null && keyboard[key].isPressed;
+    }
 #endif
 
     private void SetSelectedIndex(int index)
@@ -425,6 +475,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
             return;
         }
 
+        ResetEmpiricalSpaceGestureState();
         int previousIndex = selectedIndex;
         selectedIndex = clamped;
         if (previousIndex >= 0 && previousIndex < items.Count)
@@ -437,6 +488,87 @@ public class AvatarLibraryCarousel : MonoBehaviour
         }
         ApplySelectionVisuals();
         uiFlowController?.OnAvatarLibrarySelectionChanged();
+    }
+
+    private void RegisterEmpiricalGroupToggleSpace()
+    {
+        if (uiFlowController == null || !uiFlowController.CanCycleEmpiricalAvatarGroupFromCarousel())
+        {
+            ResetEmpiricalSpaceGestureState();
+            return;
+        }
+
+        float now = Time.unscaledTime;
+        if (now - empiricalGroupToggleLastSpaceTime > EmpiricalGroupToggleMaxInterval)
+        {
+            empiricalGroupToggleSpaceCount = 0;
+        }
+
+        empiricalGroupToggleSpaceCount++;
+        empiricalGroupToggleLastSpaceTime = now;
+
+        if (empiricalGroupToggleSpaceCount >= 3)
+        {
+            ResetEmpiricalSpaceGestureState();
+            uiFlowController.CycleEmpiricalAvatarGroupFromCarousel();
+        }
+    }
+
+    private void BeginEmpiricalLocalSwitchHold()
+    {
+        if (uiFlowController == null || !uiFlowController.CanSwitchEmpiricalLocalAvatarFromCarousel())
+        {
+            ResetEmpiricalLocalSwitchHold();
+            return;
+        }
+
+        empiricalLocalSwitchHoldArmed = true;
+        empiricalLocalSwitchHoldTriggered = false;
+        empiricalLocalSwitchHoldStartedAt = Time.unscaledTime;
+    }
+
+    private void UpdateEmpiricalLocalSwitchHold(bool spaceHeld, bool spaceReleased)
+    {
+        if (spaceReleased || !spaceHeld)
+        {
+            ResetEmpiricalLocalSwitchHold();
+            return;
+        }
+
+        if (!empiricalLocalSwitchHoldArmed || empiricalLocalSwitchHoldTriggered || uiFlowController == null)
+        {
+            return;
+        }
+
+        if (!uiFlowController.CanSwitchEmpiricalLocalAvatarFromCarousel())
+        {
+            ResetEmpiricalLocalSwitchHold();
+            return;
+        }
+
+        if (Time.unscaledTime - empiricalLocalSwitchHoldStartedAt < EmpiricalLocalSwitchHoldSeconds)
+        {
+            return;
+        }
+
+        empiricalLocalSwitchHoldTriggered = true;
+        empiricalGroupToggleSpaceCount = 0;
+        empiricalGroupToggleLastSpaceTime = 0f;
+        uiFlowController.SwitchEmpiricalLocalAvatarFromCarousel();
+    }
+
+    private void ResetEmpiricalLocalSwitchHold()
+    {
+        empiricalLocalSwitchHoldArmed = false;
+        empiricalLocalSwitchHoldTriggered = false;
+        empiricalLocalSwitchHoldStartedAt = 0f;
+    }
+
+    private void ResetEmpiricalSpaceGestureState()
+    {
+        empiricalGroupToggleSpaceCount = 0;
+        empiricalGroupToggleLastSpaceTime = 0f;
+        ResetEmpiricalLocalSwitchHold();
     }
 
     public bool TryGetSelectedAvatarData(out AvatarManager.AvatarData data)
@@ -833,17 +965,21 @@ public class AvatarLibraryCarousel : MonoBehaviour
         int generation = previewGeneration;
         SetCarouselDownloading(true);
         EnsureStagingRoot();
+        Debug.Log($"[AvatarLibraryCarousel] Inizio download preview per avatarId={item?.data?.avatarId} index={index}");
         bool started = avatarManager.DownloadPreviewToTransform(item.data, _stagingRoot, loader =>
         {
             if (!active || generation != previewGeneration)
             {
+                Debug.Log($"[AvatarLibraryCarousel] Download preview ABORTED (non attivo o generazione cambiata) per avatarId={item?.data?.avatarId} index={index}");
                 ClearLoaderChildren(loader);
                 return;
             }
 
+            Debug.Log($"[AvatarLibraryCarousel] Download preview COMPLETATO per avatarId={item?.data?.avatarId} index={index}, loader={loader}");
             bool replaced = ReplaceWithLoadedModel(item, loader);
             if (!replaced)
             {
+                Debug.LogWarning($"[AvatarLibraryCarousel] ReplaceWithLoadedModel FALLITO per avatarId={item?.data?.avatarId} index={index}");
                 HandlePreviewFailure(item, "renderer missing or load failed");
             }
             if (active)
@@ -854,6 +990,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
 
         if (!started)
         {
+            Debug.LogWarning($"[AvatarLibraryCarousel] DownloadPreviewToTransform NON AVVIATO per avatarId={item?.data?.avatarId} index={index}");
             // Evitiamo un loop infinito se i dati non sono validi.
             if (item.data != null)
             {
@@ -889,8 +1026,12 @@ public class AvatarLibraryCarousel : MonoBehaviour
     }
     private bool ReplaceWithLoadedModel(CarouselItem item, Transform loaderTransform)
     {
+
         if (loaderTransform == null || item == null)
+        {
+            Debug.LogWarning($"[AvatarLibraryCarousel] loaderTransform o item null in ReplaceWithLoadedModel. item={item}, loaderTransform={loaderTransform}");
             return false;
+        }
 
         if (!active)
         {
@@ -899,8 +1040,12 @@ public class AvatarLibraryCarousel : MonoBehaviour
         }
 
         // Rimuovi placeholder/vecchio modello
+
         if (item.modelRoot != null)
+        {
+            Debug.Log($"[AvatarLibraryCarousel] Distruggo vecchio modelRoot per avatarId={item?.data?.avatarId}");
             Destroy(item.modelRoot.gameObject);
+        }
 
         // Crea contenitore per il modello
         var containerGO = new GameObject("Model");
@@ -917,11 +1062,12 @@ public class AvatarLibraryCarousel : MonoBehaviour
         var avatarData = item.data;
         bool isLocal = avatarData != null &&
                        (avatarData.bodyId == "local" || (!string.IsNullOrEmpty(avatarData.avatarId) && avatarData.avatarId.StartsWith("LOCAL_")));
+        int movedChildren = 0;
         while (loaderTransform.childCount > 0)
         {
             var child = loaderTransform.GetChild(0);
             child.SetParent(container, false);
-
+            movedChildren++;
             // Non azzerare localPosition/localRotation/localScale: puo' rompere scostamenti/armature.
             if (isLocal)
             {
@@ -929,6 +1075,7 @@ public class AvatarLibraryCarousel : MonoBehaviour
                 FixLocalModelRendering(child);
             }
         }
+        Debug.Log($"[AvatarLibraryCarousel] Spostati {movedChildren} figli da loader a container per avatarId={item?.data?.avatarId}");
         
         // Assicura che i layer siano corretti
         SetLayerRecursively(container.gameObject, item.root.gameObject.layer);
@@ -937,19 +1084,26 @@ public class AvatarLibraryCarousel : MonoBehaviour
         ClearLoaderChildren(loaderTransform);
 
         // Attiva i GameObject dei renderer e forza enabled.
+
+        int rendererCount = 0;
+        int rendererWithMaterial = 0;
         foreach (var r in container.GetComponentsInChildren<Renderer>(true))
         {
             if (r == null) continue;
-
+            rendererCount++;
             r.gameObject.SetActive(true);
             r.enabled = true;
-
-            // Pulisce eventuali override precedenti sui materiali (puÃƒÂ² evitare tint/emission strani)
+            if (r.sharedMaterial != null)
+                rendererWithMaterial++;
+            // Pulisce eventuali override precedenti sui materiali (può evitare tint/emission strani)
             r.SetPropertyBlock(null);
         }
+        Debug.Log($"[AvatarLibraryCarousel] Renderer trovati={rendererCount}, con materiale={rendererWithMaterial} per avatarId={item?.data?.avatarId}");
+
 
         if (!HasValidRenderer(container))
         {
+            Debug.LogWarning($"[AvatarLibraryCarousel] Nessun renderer valido dopo instanziazione per avatarId={item?.data?.avatarId}");
             Destroy(containerGO);
             return false;
         }
@@ -1192,13 +1346,13 @@ public class AvatarLibraryCarousel : MonoBehaviour
         if (item.retryCount < maxPreviewRetries)
         {
             item.retryCount++;
-            Debug.LogWarning($"[AvatarLibraryCarousel] Preview failed ({reason}) retry {item.retryCount}/{maxPreviewRetries}.");
+            Debug.LogWarning($"[AvatarLibraryCarousel] Preview failed ({reason}) retry {item.retryCount}/{maxPreviewRetries} avatarId={item?.data?.avatarId}");
             StartCoroutine(EnqueueRetryAfterDelay(item));
         }
         else
         {
             item.hasError = true;
-            Debug.LogWarning($"[AvatarLibraryCarousel] Preview failed ({reason}) - giving up.");
+            Debug.LogWarning($"[AvatarLibraryCarousel] Preview failed ({reason}) - giving up. avatarId={item?.data?.avatarId}");
         }
     }
 

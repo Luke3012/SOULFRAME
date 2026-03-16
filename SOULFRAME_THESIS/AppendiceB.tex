@@ -1,0 +1,214 @@
+% !TEX root = ./main.tex
+\chapter{Altri Servizi Backend}
+\label{app:backend-services}
+
+\section{Panoramica}
+Oltre al servizio RAG, il backend di SOULFRAME si regge su tre componenti più specializzati: Whisper per la trascrizione, Coqui XTTS v2 per la sintesi vocale e Avatar Asset Server per import, cache e serving dei modelli. La loro separazione conta perché ciascuno porta con sé vincoli diversi di latenza, I/O e stato persistente.
+
+\par\begingroup
+\small
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Tre servizi backend di supporto al flusso conversazionale.}
+\label{tab:appendix-backend-overview}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.22\textwidth}|>{\raggedright\arraybackslash}p{0.14\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.64\textwidth-6\tabcolsep-4\arrayrulewidth\relax}|}
+\hline
+\textbf{Servizio} & \textbf{Porta} & \textbf{Ruolo principale} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Servizio} & \textbf{Porta} & \textbf{Ruolo principale} \\
+\hline
+\endhead
+Whisper & \texttt{8001} & Riceve audio in upload e restituisce la trascrizione. \\
+\hline
+Coqui XTTS v2 & \texttt{8004} & Gestisce voce per-avatar, wait phrases, sintesi completa e streaming. \\
+\hline
+Avatar Asset Server & \texttt{8003} & Importa modelli \texttt{.glb}, li deduplica, li conserva in cache e li serve al client. \\
+\hline
+\end{longtable}
+\par\endgroup
+
+Questi tre servizi fanno meno cose del RAG, ma non sono affatto accessori. Whisper apre il canale vocale dell'utente, Coqui chiude il turno con una voce coerente con l'avatar e l'Avatar Asset Server mantiene stabile il catalogo dei modelli tra import, cache e caricamento lato client. La loro separazione non nasce da un gusto astratto per i micro-servizi: nasce dal fatto che hanno tempi, failure mode e costi molto diversi, quindi conviene tenerli osservabili e sostituibili senza trascinare con sé tutto il resto.
+
+\section{Pipeline audio e risposta vocale}
+\subsubsection*{Whisper: trascrizione e punto di ingresso del turno.}
+Il servizio \texttt{whisper\_server.py} è volutamente compatto. Carica il modello definito in \texttt{WHISPER\_MODEL}, espone \texttt{/health} e accetta upload multipart sulla route \texttt{/transcribe}. Il file viene scritto in una posizione temporanea, trascritto e poi rimosso.
+
+Il contratto che il client usa davvero è minimale:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small,breaklines=true,caption={Campi usati da \texttt{/transcribe}.}]
+POST /transcribe
+- file: UploadFile
+- language: Form (default "it")
+\end{lstlisting}
+
+\begin{lstlisting}[language=json,caption={Risposta tipica di \texttt{/transcribe}.}]
+{
+  "text": "Domani ho un colloquio alle dieci"
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=json,caption={Risposta tipica di \texttt{/health} nel servizio Whisper.}]
+{
+  "ok": true,
+  "model": "small"
+}
+\end{lstlisting}
+
+Il servizio non fa molto altro, e questa è una scelta positiva. Whisper qui si comporta come un ingresso pulito del turno: riceve l'audio, lo trascrive e restituisce testo. I controlli sulla durata minima dell'input, sullo scarto di trascrizioni spurie e sulla gestione dell'attesa rimangono nel client, che è il punto in cui quegli errori diventano davvero percepibili. In questo modo lo STT non viene caricato di logiche che appartengono più alla UX del turno che alla trascrizione in sé.
+
+\paragraph{Coqui XTTS v2: voce per-avatar, streaming e wait phrases.}
+Il servizio \texttt{coqui\_tts\_server.py} è più articolato. Oltre alle route di sintesi, gestisce il reference vocale per-avatar, la generazione delle clip di attesa e il caricamento anticipato del modello.
+
+\paragraph{Profili vocali.}
+Il reference vocale viene salvato tramite \texttt{/set\_avatar\_voice}. Il file caricato viene letto, convertito in mono, normalizzato e rifinito prima di diventare il \texttt{reference.wav} dell'avatar.
+
+\begin{lstlisting}[basicstyle=\ttfamily\small,breaklines=true,caption={Campi essenziali usati dal client nel setup voce.}]
+POST /set_avatar_voice
+- avatar_id
+- speaker_wav
+\end{lstlisting}
+
+Questa fase conta più di quanto sembri, perché definisce la materia prima di tutto il sottosistema vocale. Una reference sporca o troppo debole non peggiora soltanto la qualità timbrica: rende instabile anche l'effetto di continuità tra avatar, wait phrases e risposta principale. Per questo il servizio pulisce il file prima di salvarlo, invece di limitarsi ad archiviarlo così com'è.
+
+\paragraph{Streaming.}
+La route \texttt{/tts\_stream} restituisce il reply come \texttt{audio/wav} progressivo. Il backend non espone al client i segmenti interni della sintesi come unità semantiche separate: prepara il reply, lo segmenta solo per gestire meglio la generazione XTTS e poi ricompone il risultato in un unico stream WAV. Il contratto reale, però, non è mono-canale. Accanto allo stream audio esiste un secondo canale logico, basato su \texttt{request\_id} e \texttt{/tts\_timing}, che fornisce snapshot temporali incrementali per il reveal del testo lato client.
+
+Dal lato client contano soprattutto due campi: \texttt{request\_id}, usato per correlare audio e timing, e \texttt{client\_platform}, che permette al backend di distinguere il percorso WebGL da quello nativo. Se il client non è WebGL e il \texttt{request\_id} è presente, il servizio apre una sessione temporale incrementale e la aggiorna man mano che i segmenti del reply vengono sintetizzati e allineati. Se invece il client è WebGL, la stessa sessione non viene attivata: il reply continua a uscire come audio progressivo, ma il canale temporale fine viene soppresso.
+
+\begin{figure}[t]
+\centering
+\resizebox{0.82\linewidth}{!}{%
+\begin{tikzpicture}[
+  >=stealth,
+  every node/.style={font=\footnotesize, align=center},
+  box/.style={draw, rounded corners, minimum height=1.1cm, text width=2.8cm, inner sep=5pt},
+  lbl/.style={font=\scriptsize, fill=white, inner sep=1.5pt}
+]
+  \node[box] (reply) at (0,0) {Reply testuale};
+  \node[box, text width=3.2cm] (seg) at (4.4,0) {Segmentazione\\progressiva XTTS};
+  \node[box, text width=3cm] (audio) at (9.2,1.55) {Stream audio\\\texttt{/tts\_stream}};
+  \node[box, text width=3cm] (timing) at (9.2,-1.55) {Timing snapshot\\\texttt{/tts\_timing}};
+  \node[box, text width=3.3cm] (native) at (14.4,1.55) {Client nativo\\reveal temporizzato};
+  \node[box, text width=3.3cm] (webgl) at (14.4,-1.55) {Client WebGL\\fallback statico};
+  \draw[->] (reply) -- node[lbl, above] {\texttt{request\_id}} (seg);
+  \draw[->] (seg) -- (audio);
+  \draw[->] (seg) -- node[lbl, above right] {snapshot cumulativi} (timing);
+  \draw[->] (audio) -- (native);
+  \draw[->] (timing) -- (native);
+  \draw[->] (audio) -- (webgl);
+  \draw[->] (timing) -- node[lbl, below] {disattivato} (webgl);
+\end{tikzpicture}
+}
+\captionsetup{width=0.92\linewidth}
+\caption{Schema concettuale del Word Flow: il reply viene segmentato per la sintesi, lo stream audio parte subito, mentre i timing incrementali restano attivi solo nel percorso nativo. In WebGL il testo non viene fatto avanzare parola per parola, ma mostrato direttamente in forma completa.}
+\label{fig:wordflow-concept}
+\end{figure}
+
+Lo stream espone alcuni header operativi utili al client:
+
+\par\begingroup
+\small
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Header operativi restituiti da \texttt{/tts\_stream}.}
+\label{tab:appendix-tts-stream-headers}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.24\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.76\textwidth-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+\textbf{Header} & \textbf{Uso nel flusso} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Header} & \textbf{Uso nel flusso} \\
+\hline
+\endhead
+\texttt{X-Avatar-Id} & Rende esplicito quale profilo vocale sia stato usato. \\
+\hline
+\texttt{X-Coqui-Lang} & Conferma la lingua effettivamente adottata nello stream. \\
+\hline
+\texttt{X-Audio-Rate} & Espone il sample rate del flusso audio. \\
+\hline
+\texttt{X-Audio-Format} & Indica che il contenuto è PCM16 dentro un contenitore WAV. \\
+\hline
+\texttt{X-Speaker-Source} & Distingue se la voce proviene da reference salvata, upload temporaneo o speaker di default. \\
+\hline
+\texttt{X-TTS-Request-Id} & Identificatore della risposta TTS, usato dal client per interrogare i tempi incrementali su \texttt{/tts\_timing}. \\
+\hline
+\end{longtable}
+\par\endgroup
+
+La logica reale del reply tiene insieme tre passaggi distinti. Prima il testo viene pulito e suddiviso in segmenti compatibili con XTTS, usando punteggiatura forte e un limite di caratteri per evitare truncation sui blocchi troppo lunghi. Poi ogni segmento viene sintetizzato in WAV e, quando disponibile, allineato parola-per-parola con \emph{forced alignment}. Infine il backend invia subito l'audio in streaming progressivo e aggiorna in parallelo una sessione di timing incrementale associata al \texttt{request\_id}. Il frontend riceve quindi un solo flusso audio da \texttt{/tts\_stream} e interroga periodicamente \texttt{/tts\_timing} per ottenere \texttt{words}, \texttt{word\_end\_ms} e \texttt{segment\_end\_ms} cumulativi. Il punto importante è che questi array sono cumulativi sull'intero reply, non riservati al singolo segmento corrente: così il client può far avanzare il testo senza ricostruire localmente una timeline alternativa.
+
+Nel contratto corrente i parametri opzionali più rilevanti lato client sono \texttt{reply\_segment\_max\_chars}, usato per limitare la lunghezza massima dei segmenti del reply prima della sintesi, e \texttt{request\_id}, usato per correlare stream audio e snapshot temporali. I riferimenti più vecchi a \texttt{split\_sentences}, \texttt{max\_chunk\_chars} e ai vecchi header temporali non descrivono più il comportamento effettivo del reply in \texttt{MainMode}.
+
+Quando l'allineamento non è disponibile, il backend continua comunque a restituire l'audio del reply. In quel caso la sessione \texttt{/tts\_timing} rimane vuota o incompleta, con eventuale campo \texttt{error}, e il client degrada a una resa testuale statica invece di ricostruire stime locali poco affidabili. In WebGL questo fallback non è occasionale ma sistematico: il \emph{word flow} temporizzato del reply è disabilitato e il testo viene mostrato direttamente in forma completa. La ragione è operativa più che estetica: nel runtime Unity WebGL le chiamate ripetute necessarie a tenere insieme audio progressivo, timing incrementale e sincronizzazione fine con il layer visivo hanno mostrato un costo eccessivo rispetto al beneficio percepito. Una soluzione più robusta richiederebbe una revisione più profonda del sottosistema di sincronizzazione.
+
+\paragraph{Wait phrases.}
+Le clip di attesa vengono preparate quando il client salva il riferimento vocale dell'avatar con \path{/set_avatar_voice}. In quella fase il backend usa lo stesso \texttt{reference.wav} appena validato per sintetizzare un piccolo insieme di file brevi (\texttt{wait\_<key>.wav}) e salvarli nella directory dell'avatar. Durante la conversazione, invece, \path{/wait_phrase} non sintetizza nulla: restituisce semplicemente una delle clip già presenti. Questa scelta tiene separate due responsabilità: il setup voce costruisce il materiale necessario, mentre il turno conversazionale si limita a richiamarlo in modo rapido e prevedibile. È utile tenerla distinta anche dalla risposta principale: le wait phrases non usano \texttt{request\_id}, non aprono una sessione \texttt{/tts\_timing} e non partecipano al \emph{word flow} del reply.
+
+\begin{lstlisting}[language=json,caption={Risposta tipica di \texttt{/set\_avatar\_voice}.}]
+{
+  "ok": true,
+  "avatar_id": "LOCAL_model1",
+  "bytes": 184320,
+  "wait_phrases_ready": true
+}
+\end{lstlisting}
+
+Qui si nota una differenza importante rispetto alla risposta principale. Le wait phrases non devono essere semanticamente ricche: devono solo riempire l'attesa senza stonare rispetto al timbro dell'avatar. Per questo stanno nello stesso servizio della TTS vera e propria, ma con una funzione diversa: non costruiscono il contenuto del turno, ne proteggono il ritmo.
+
+\section{Gestione asset avatar}
+\subsubsection*{Avatar Asset Server: import, cache e catalogo.}
+Il servizio \texttt{avatar\_asset\_server.py} costruisce il catalogo avatar lato backend. Non si limita a fare da file server: riceve URL di export, scarica il modello, deduplica l'asset tramite hash dell'URL sorgente, aggiorna il file di metadati e restituisce un \texttt{cached\_glb\_url} coerente con l'ambiente di esecuzione.
+
+\begin{lstlisting}[language=json,caption={Payload tipico della route \texttt{/avatars/import}.}]
+{
+  "avatar_id": "019c8296-1a77-75b1-9d4b-c36ff20d1a4c",
+  "url": "https://api.avaturn.me/avatars/exports/.../model",
+  "gender": "male",
+  "bodyId": "body_1",
+  "urlType": "httpURL"
+}
+\end{lstlisting}
+
+L'output tipico è il seguente:
+
+\begin{lstlisting}[language=json,caption={Campi principali restituiti da \texttt{/avatars/import}.}]
+{
+  "ok": true,
+  "avatar_id": "019c8296-1a77-75b1-9d4b-c36ff20d1a4c",
+  "cached_glb_url": "/api/avatar/avatars/019c8296-1a77-75b1-9d4b-c36ff20d1a4c/model.glb",
+  "bytes": 11983396,
+  "dedup": false
+}
+\end{lstlisting}
+
+La route \texttt{/avatars/list} unifica poi:
+\begin{itemize}
+\item modelli locali di fallback;
+\item avatar importati e mantenuti nello store;
+\item URL già normalizzati per il client.
+\end{itemize}
+
+\begin{lstlisting}[language=json,caption={Forma sintetica della risposta di \texttt{/avatars/list}.}]
+{
+  "avatars": [
+    {
+      "avatar_id": "LOCAL_model1",
+      "source": "local"
+    },
+    {
+      "avatar_id": "019c8296-1a77-75b1-9d4b-c36ff20d1a4c",
+      "source": "avaturn",
+      "cached_glb_url": "/api/avatar/avatars/019c8296-1a77-75b1-9d4b-c36ff20d1a4c/model.glb"
+    }
+  ]
+}
+\end{lstlisting}
+
+Nel codice c'è anche un aspetto poco vistoso ma utile: durante \texttt{/avatars/list}, gli elementi il cui file \texttt{.glb} non è più risolvibile vengono scartati e il file di metadati viene riallineato. Il catalogo esegue quindi una correzione automatica e limitata dei metadati\footnote{Per correzione automatica e limitata dei metadati si intende qui il riallineamento del catalogo quando esso rileva voci ormai non risolvibili.}, così il client evita di ricevere voci già rotte in partenza. Questo dettaglio conta perché la libreria avatar non è un semplice menu: è il punto in cui persistenza server, cache e stato del frontend devono restare coerenti anche dopo import ripetuti, cancellazioni o riavvii.
+
+La separazione tra questi tre servizi resta utile perché hanno costi, failure mode e tempi molto diversi. Whisper è essenzialmente un ingresso vocale con upload temporaneo; Coqui è il punto più sensibile alla latenza di risposta; l'Avatar Asset Server è soprattutto I/O e persistenza. Tenerli distinti rende più semplice il debugging e impedisce che un problema di un sottosistema renda opaco l'intero backend. Ognuno resta così abbastanza piccolo da essere leggibile, ma anche abbastanza autonomo da poter essere osservato e sostituito senza riscrivere il resto della pipeline.

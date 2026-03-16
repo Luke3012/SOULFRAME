@@ -26,6 +26,18 @@ L'idea è semplice: scegli o crei un avatar, parli, il sistema capisce la voce, 
   - creazione pacchetto `soulframe_update` per Ubuntu
 - Workflow tipico: sviluppo rapido e test funzionali in locale.
 
+### Build Unity: WebGL + Windows x64
+
+- E' disponibile il menu Unity `SOULFRAME/Build/Build WebGL` e `SOULFRAME/Build/Build Windows x64`.
+- Script editor: `Assets/Editor/SoulframeBuildMenu.cs`.
+- Output predefiniti:
+  - WebGL: cartella `Build/`
+  - Windows: `Build_Windows64/SOULFRAME.exe`
+- Supporto CLI (batchmode):
+  - `-executeMethod SoulframeBuildMenu.BuildWebGLCli`
+  - `-executeMethod SoulframeBuildMenu.BuildWindows64Cli`
+- Il menu build forza anche il target attivo corretto (`SwitchActiveBuildTarget`) prima della compilazione, per evitare mismatch di simboli editor/player.
+
 ### 2) Setup automatico su Ubuntu
 
 - Installazione e provisioning con `SOULFRAME_SETUP/setup_soulframe_ubuntu.sh`.
@@ -102,6 +114,20 @@ MainMode è la fase operativa della conversazione:
 
 Da MainMode puoi anche tornare rapidamente a setup voce/setup memoria se vuoi aggiornare il profilo.
 
+## Empirical Test Mode
+
+SOULFRAME include anche un `empirical test mode`, pensato per sessioni di prova guidate.
+
+- Dal `MainMenu` si attiva o disattiva digitando in sequenza i tasti `T-E-S-T`.
+- Quando è attivo, il frontend mostra un badge dedicato nel menu e propaga `empirical_test_mode=true` ai servizi backend.
+- La modalità usa percorsi dati separati nel backend, così sessioni di test e uso normale non si mescolano tra memoria avatar, riferimenti vocali e cache dei modelli.
+- Le conversazioni in MainMode continuano a essere loggate, ma finiscono nell'area log dell'empirical test invece che in quella standard.
+
+Nota operativa:
+
+- nel flusso empirico iniziale, il setup memoria è guidato e ingestione file/immagini è limitata;
+- anche la libreria avatar espone filtri e switch dedicati al contesto di test.
+
 ## Log Conversazioni Avatar
 
 Il backend salva un log persistente per ogni conversazione MainMode.
@@ -116,12 +142,37 @@ Esempio nome file:
 
 - `SOULFRAME_AI/backend/log/LOCAL_model1/20260303_151530_a1b2c3d4.log`
 
+Quando l'empirical test mode è attivo, la logica di sessione resta la stessa ma i file vengono scritti nell'area storage dell'empirical test, così i test restano separati dalle esecuzioni standard.
+
 ## Limitazioni WebGL (Lip Sync)
 
 Il lip sync di Unity in WebGL ha limitazioni note rispetto all'esecuzione in Play Mode/Desktop.
 
 - Sono stati applicati fix per mantenere la bocca più aperta durante la parlata.
 - Nonostante questi fix, il movimento labiale in WebGL può risultare meno preciso/naturale.
+
+## Note Runtime Piattaforma (WebGL vs Windows)
+
+- In WebGL la risposta testuale è configurata senza effetto word-by-word.
+- Le richieste TTS inviano un flag `client_platform` per differenziare la logica backend tra WebGL e build native.
+- In Windows è disponibile uno scaler runtime dedicato (`WindowsResolutionScaler`) per ridurre il carico del rendering 3D:
+  - il rapporto pixel 3D è configurabile da Inspector;
+  - l'UI/canvas resta a risoluzione piena.
+
+## Avaturn su Desktop (Windows)
+
+Su WebGL resta attivo il bridge iframe in pagina. Su Desktop/Editor e' stato aggiunto un fallback con browser esterno:
+
+- Unity apre Avaturn nel browser con URL di callback locale.
+- L'app avvia un listener locale su `http://127.0.0.1:37821/avaturn-callback`.
+- Al callback, Unity riceve il payload avatar e riusa la pipeline esistente di import/download.
+- Dopo l'export, la pagina bridge mostra una schermata finale fullscreen "Ritorna a SOULFRAME" nella stessa tab.
+- Non viene usata una chiusura forzata del browser/processo.
+
+Note pratiche:
+
+- se la porta e' occupata, il flusso callback fallisce e va cambiata la porta nel componente `AvaturnWebController`;
+- e' previsto timeout callback (default 180 secondi) con cleanup listener.
 
 ## SOULFRAME_THESIS (LaTeX)
 
@@ -144,3 +195,4 @@ Note di versionamento:
 
 - Setup Linux/Ubuntu: `SOULFRAME_SETUP/README.md`
 - Backend AI (Whisper/RAG/TTS/Avatar): `SOULFRAME_AI/README.md`
+- Script di validazione e regressione AI: `SOULFRAME_AI/tools/README.it.md`

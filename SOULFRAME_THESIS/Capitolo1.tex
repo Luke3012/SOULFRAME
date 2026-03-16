@@ -1,9 +1,10 @@
+% !TEX root = ./main.tex
 \chapter{Introduzione}\label{chapintroduzione}
 
 \section{Motivazione e contesto applicativo}\label{secmotivazione-contesto}
 In molti ambienti VR la scena regge visivamente, ma la conversazione con l'agente resta fragile o troppo rigida; inoltre l'identità dell'avatar tende a disperdersi tra una sessione e l'altra. Questa tesi propone un prototipo in cui l'utente parla con un avatar embodied, riceve una risposta vocale contestuale nella stessa scena 3D e costruisce nel tempo un profilo personale persistente.
 
-La difficoltà sta nel tenere insieme tre piani che spesso vengono trattati separatamente: interazione vocale a turni, continuità del dialogo e presenza dell'interlocutore virtuale. In VR non basta la qualità grafica: la percezione di presenza dipende anche dalla coerenza tra azioni, tempi di risposta ed eventi della scena \cite{Slater2016VR}. Quando questi elementi si disallineano, l'agente appare poco affidabile anche se il contenuto linguistico è corretto.
+La difficoltà sta nel tenere insieme tre aspetti che spesso vengono affrontati separatamente: interazione vocale a turni, continuità del dialogo e presenza dell'interlocutore virtuale. In VR non basta la qualità grafica: la percezione di presenza dipende anche dalla coerenza tra azioni, tempi di risposta ed eventi della scena \cite{Slater2016VR}. Quando questi elementi si disallineano, l'agente appare poco affidabile anche se il contenuto linguistico è corretto.
 
 Le evidenze sperimentali sugli ECA vocali indicano che STT+TTS in tempo reale può aumentare la co-presenza rispetto a soluzioni preregistrate \cite{Kan2023ECA_Training}. La letteratura in XR mostra inoltre che molti prototipi sono sviluppati in VR, spesso con Unity, e che cresce l'interesse per dialoghi più adattivi supportati da modelli neurali \cite{Yang2025ECA_XR}. SOULFRAME si inserisce in questa linea, ma in una configurazione senza HMD obbligatorio e orientata alla fruizione via browser.
 
@@ -14,22 +15,24 @@ SOULFRAME va oltre una semplice demo grafica: mette insieme pipeline vocale, mem
 \section{Perimetro e requisiti di progetto}\label{secperimetro-requisiti}
 SOULFRAME è un prototipo di interazione immersiva con ECA vocale embodied in ambiente 3D. L'obiettivo è valutarne fattibilità tecnica e qualità percepita in scenari con componente sociale, mantenendo allo stesso tempo la replicabilità del profilo avatar (aspetto, voce, memoria) alimentato da dati personali. Il lavoro resta dentro questo perimetro; restano fuori una piattaforma generale per creare mondi virtuali e una soluzione clinica certificata.
 
-Sul fondo resta il tema della solitudine e della continuità relazionale mediata. In questa sede, però, il contributo è infrastrutturale: costruire una base conversazionale embodied abbastanza stabile da sostenere in futuro studi più solidi su quel dominio, senza far dipendere i risultati da una pipeline tecnica ancora fragile.
+Il sistema, inoltre, resta orientato a un'interazione individuale per sessione: non implementa sincronizzazione multiutente né gestione concorrente di più interlocutori sullo stesso contesto conversazionale.
 
-Il perimetro resta concentrato sull'integrazione \textit{end-to-end} tra voce, memoria conversazionale e rappresentazione embodied dell'agente. Ho scelto di vincolare l'accesso alla conversazione operativa a un onboarding minimo del profilo avatar, perché senza voce e memoria l'interazione diventa rapidamente \textit{stateless} e perde coerenza identitaria tra sessioni.
+Sul fondo c'è anche il tema della solitudine e della continuità relazionale mediata. In questa sede, però, il contributo resta infrastrutturale: costruire una base conversazionale embodied abbastanza stabile su quel dominio, senza far dipendere i risultati da una pipeline tecnica ancora fragile.
 
-La conversazione segue una pipeline a turni \textit{push-to-talk}: acquisizione audio, trascrizione STT, generazione contestuale con RAG/LLM e risposta TTS. Descrizione immagini e OCR non sono moduli accessori slegati, ma modalità con cui la memoria dell'avatar può essere arricchita con materiali esterni.
+Il perimetro del lavoro resta concentrato sull'integrazione \textit{end-to-end} tra voce, memoria conversazionale e rappresentazione embodied dell'agente. Per questo l'accesso alla conversazione operativa viene subordinato a un onboarding minimo del profilo avatar: senza voce e memoria, infatti, l'interazione tende a diventare \textit{stateless} e a perdere coerenza identitaria tra sessioni.
+
+La conversazione segue una pipeline a turni di tipo \textit{push-to-talk} (premi-per-parlare): acquisizione audio, trascrizione STT, orchestrazione conversazionale con memoria e risposta TTS. Nel flusso operativo il turno può passare anche da input testuale, ma rimane legato alla stessa sessione dell'avatar. Il blocco conversazionale usa un LLM per generare la risposta a partire dal contesto del turno, non come archivio personale del personaggio: i contenuti del profilo vengono recuperati da una memoria esterna e poi passati al modello. Descrizione immagini e OCR, cioè riconoscimento ottico del testo, non sono moduli accessori slegati, ma modalità con cui la memoria dell'avatar può essere arricchita con materiali esterni.
 
 I requisiti non funzionali riguardano soprattutto latenza percepita, robustezza ai guasti parziali e modularità dei servizi. La tesi adotta quindi criteri operativi verificabili sul prototipo, evitando soglie astratte non allineate al contesto d'uso reale.
 
 \section{Obiettivi e contributi di SOULFRAME}\label{secobiettivi-contributi}
 Gli obiettivi di SOULFRAME si collocano nel filone degli ECA in XR, dove sono comuni implementazioni VR in Unity e interazioni vocali, ma con metodi di valutazione ancora eterogenei \cite{Yang2025ECA_XR}. Il progetto punta a costruire un prototipo in cui l'integrazione \textit{end-to-end} sia osservabile e discutibile con criteri espliciti, senza separare la credibilità conversazionale dalla replicabilità del profilo avatar.
 
-RQ1 riguarda la fattibilità tecnica di un'interazione vocale in tempo reale con un agente embodied in ambiente immersivo 3D. In termini operativi, la catena STT $\rightarrow$ RAG/LLM $\rightarrow$ TTS $\rightarrow$ output audiovisivo deve funzionare in modo continuo, includendo anche le capacità di supporto (descrizione immagini e OCR documentale). La valutazione considera tempi per blocco, completamento dei turni senza errori bloccanti e coerenza delle transizioni tra ascolto, elaborazione e risposta.
+RQ1 riguarda la fattibilità tecnica di un'interazione vocale in tempo reale con un agente embodied in ambiente immersivo 3D. In termini operativi, la catena STT $\rightarrow$ orchestrazione conversazionale con memoria $\rightarrow$ TTS $\rightarrow$ output audiovisivo deve funzionare in modo continuo, includendo anche le capacità di supporto (descrizione immagini e OCR documentale). La valutazione considera tempi per blocco, completamento dei turni senza errori bloccanti e coerenza delle transizioni tra ascolto, elaborazione e risposta.
 
 RQ2 riguarda la qualità percepita dell'interazione, con attenzione a co-presenza e naturalezza dialogica. SOULFRAME prevede una valutazione qualitativa guidata, affiancata quando possibile da metriche soggettive usate negli studi VR con ECA. In questa tesi, però, qualità percepita e co-presenza non vengono usate come proxy di riduzione della loneliness: servono piuttosto a capire se l'infrastruttura embodied regge abbastanza da rendere sensati studi successivi su quel piano. Studi comparativi tra agenti conversazionali e audio pre-scriptato mostrano differenze osservabili, soprattutto sulla co-presenza \cite{Kan2023ECA_Training}.
 
-RQ3 riguarda modularità e riproducibilità della pipeline. Il sistema deve permettere la sostituzione dei componenti principali senza riscrivere l'intera architettura e rendere tracciabili configurazioni, tempi e risultati delle prove; questo aspetto è parte strutturale dell'obiettivo generale, perché sostiene la replicabilità del profilo avatar tra ambienti diversi. Figura~\ref{fig:obiettivi-contributi} sintetizza la corrispondenza tra i tre obiettivi e i contributi attesi.
+RQ3 riguarda modularità e riproducibilità della pipeline. Il sistema deve permettere la sostituzione dei componenti principali senza riscrivere l'intera architettura e rendere tracciabili configurazioni, tempi e risultati delle prove; è un requisito strutturale dell'obiettivo generale, perché sostiene la replicabilità del profilo avatar tra ambienti diversi. Figura~\ref{fig:obiettivi-contributi} sintetizza questa corrispondenza, mantenendo distinti piano tecnico, valutativo e metodologico.
 
 \begin{figure}[t]
 \centering
@@ -38,20 +41,16 @@ RQ3 riguarda modularità e riproducibilità della pipeline. Il sistema deve perm
 \label{fig:obiettivi-contributi}
 \end{figure}
 
-La figura aiuta a tenere distinti i tre livelli del contributo, evitando di sovrapporre piano tecnico, valutativo e metodologico.
-
-Tecnicamente, il progetto adotta un'architettura modulare \textit{end-to-end} basata su micro-servizi (STT, RAG/LLM, TTS e memoria) con interfacce API esplicite. Sul piano sperimentale, il risultato è un \textit{proof-of-concept} verificabile con un set minimo di misure soggettive e osservazioni qualitative. Dal punto di vista metodologico resta importante documentare le scelte progettuali per sostenere replicabilità e trasferibilità del profilo avatar, in linea con il dibattito sul \textit{dialogue management} e sulla necessità di metriche più comparabili \cite{Laranjo2018CA}.
+Tecnicamente, il progetto adotta un'architettura modulare \textit{end-to-end} basata su micro-servizi (STT, RAG/LLM, TTS e memoria) con interfacce API esplicite. La verifica assume la forma di un \textit{proof-of-concept} osservabile con un set minimo di misure soggettive e osservazioni qualitative. Sul piano metodologico, la documentazione delle scelte progettuali sostiene replicabilità e trasferibilità del profilo avatar, in linea con il dibattito sul \textit{dialogue management} e sulla necessità di metriche più comparabili \cite{Laranjo2018CA}.
 
 \section{Panoramica del sistema e flusso end-to-end}\label{secpanoramica-sistema}
-SOULFRAME adotta un'architettura client--server per sostenere un dialogo vocale a turni in ambiente immersivo 3D. Il client Unity WebGL gestisce scena, avatar e interfaccia; il backend gestisce trascrizione, memoria conversazionale, generazione testuale e sintesi vocale.
+SOULFRAME adotta un'architettura client--server per sostenere un dialogo vocale a turni in ambiente immersivo 3D. Il client principale è una build Unity WebGL eseguita nel browser, affiancata durante sviluppo e verifica da una build Windows nativa dello stesso frontend; il backend gestisce trascrizione, memoria conversazionale, generazione testuale e sintesi vocale.
 
-Il flusso è lineare a livello concettuale: input vocale dell'utente, trascrizione STT, generazione contestuale con RAG/LLM, risposta TTS e playback sull'avatar. Le stesse fasi devono però restare coordinate nei tempi, perché ritardi o transizioni incoerenti compromettono la naturalezza percepita.
+Il flusso può apparire lineare: input dell'utente, trascrizione STT, costruzione della risposta contestuale, sintesi TTS e playback sull'avatar. Nel sistema reale il blocco conversazionale fa di più di un semplice retrieval seguito da generazione: interpreta il turno, instrada la richiesta e tiene insieme memoria persistente, contesto recente e risposta finale. Il RAG recupera al di fuori del modello il contesto utile e lo usa per guidare la risposta. Tutte queste fasi devono restare coordinate nel tempo, perché ritardi o transizioni incoerenti compromettono la naturalezza percepita.
 
-Ho scelto una fruizione via browser WebGL senza HMD obbligatorio per abbassare la barriera di accesso durante sviluppo e test. Allo stesso tempo ho mantenuto una pipeline modulare a micro-servizi, così da poter sostituire i blocchi principali senza riscrivere il client.
+Si è scelta una fruizione via browser WebGL senza HMD obbligatorio per abbassare la barriera di accesso durante sviluppo e test. La build Windows non rappresenta quindi un prodotto separato, ma un termine di confronto utile per isolare gli effetti del runtime: la logica applicativa resta la stessa, mentre cambiano vincoli del browser, continuità del playback audio e modalità di distribuzione. È stata comunque mantenuta una pipeline modulare a micro-servizi, così da poter sostituire i blocchi principali senza riscrivere il client.
 
-La vista d'insieme architetturale è riportata nel Capitolo~\ref{chap:architettura}, in Figura~\ref{fig:pipeline-e2e}, dove la pipeline viene ripresa con maggior dettaglio tecnico.
-
-\section{Metodo di lavoro e struttura della tesi}\label{secmetodo-struttura}
+La vista d'insieme architetturale è riportata nel Capitolo~\ref{chap:architettura}, in Figura~\ref{fig:pipeline-e2e}, dove la pipeline viene ripresa con maggior dettaglio tecnico. Anche la struttura della tesi segue questa progressione e tiene distinti fondazione teorica, definizione architetturale, implementazione e valutazione.\label{secmetodo-struttura}
 
 \begin{figure}[t]
 \centering
@@ -60,8 +59,6 @@ La vista d'insieme architetturale è riportata nel Capitolo~\ref{chap:architettu
 \label{fig:struttura-tesi}
 \end{figure}
 
-Lo sviluppo di SOULFRAME è proceduto per prototipi incrementali. Era l'approccio più adatto a un sistema che combina reattività a turni (\textit{push-to-talk}), elaborazione linguistica e rendering immersivo: prima ho validato i moduli in isolamento, poi li ho integrati nella pipeline completa e infine li ho verificati in scenari via via più complessi, mantenendo tracciabili compromessi e dipendenze.
+Lo sviluppo di SOULFRAME è proceduto per prototipi incrementali. Era l'approccio più adatto a un sistema che combina reattività a turni (\textit{push-to-talk}), elaborazione linguistica e rendering immersivo: dapprima sono stati validati i moduli in isolamento, poi essi sono stati integrati nella pipeline completa e infine verificati in scenari via via più complessi, mantenendo tracciabili compromessi e dipendenze.
 
-La tesi segue la stessa logica: dai fondamenti teorici si passa all'architettura, poi all'implementazione e infine alla valutazione del prototipo. L'ultimo passaggio raccoglie limiti emersi e sviluppi futuri, tenendo distinto il ``perché'' delle scelte dal modo in cui sono state realizzate.
-
-Figura~\ref{fig:struttura-tesi} offre una vista sintetica della struttura e della progressione logica tra capitoli. Non serve solo come indice grafico: rende più visibile il passaggio dai fondamenti alla verifica del prototipo.
+La tesi riflette la stessa logica: dai fondamenti teorici si passa all'architettura, poi all'implementazione e infine alla valutazione del prototipo. L'ultimo passaggio raccoglie limiti emersi e sviluppi futuri, tenendo distinto il ``perché'' delle scelte dal modo in cui sono state realizzate.

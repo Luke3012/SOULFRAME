@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 public class UIHintBar : MonoBehaviour
 {
-    public enum HintIcon { Arrows, Enter, Backspace, Esc, Space, Delete, Any, Ins }
+    public enum HintIcon { Arrows, Enter, Backspace, Esc, Space, Delete, Any, Ins, T }
     public enum InspectorContext
     {
         DesktopOnly,
@@ -66,6 +66,7 @@ public class UIHintBar : MonoBehaviour
     [SerializeField] private TMP_SpriteAsset deleteAsset;
     [SerializeField] private TMP_SpriteAsset anyAsset;
     [SerializeField] private TMP_SpriteAsset insAsset;
+    [SerializeField] private TMP_SpriteAsset tAsset;
 
     [Header("Touch Sprite Assets")]
     [SerializeField] private TMP_SpriteAsset touchBackAsset;
@@ -89,7 +90,7 @@ public class UIHintBar : MonoBehaviour
     private bool useHorizontalArrows = false;
 
     // Memorizziamo in cache i nomi reali negli asset (spesso finiscono con _0).
-    private string arrowsVertName, arrowsHorizName, enterName, backspaceName, escName, spaceName, spaceOutlinedName, deleteName, anyName, insName;
+    private string arrowsVertName, arrowsHorizName, enterName, backspaceName, escName, spaceName, spaceOutlinedName, deleteName, anyName, insName, tName;
     private bool spacePressed;
     private TMP_SpriteAsset touchRuntimeSpriteAsset;
     private readonly Dictionary<TMP_SpriteAsset, string> touchSpriteNameCache = new Dictionary<TMP_SpriteAsset, string>();
@@ -226,6 +227,7 @@ public class UIHintBar : MonoBehaviour
         deleteName ??= GetFirstSpriteName(deleteAsset);
         anyName ??= GetFirstSpriteName(anyAsset);
         insName ??= GetFirstSpriteName(insAsset);
+        tName ??= GetFirstSpriteName(tAsset);
     }
 
     private void EnsureTouchSpriteSetup(TouchHintItem[] items)
@@ -331,6 +333,7 @@ public class UIHintBar : MonoBehaviour
             HintIcon.Delete => deleteName,
             HintIcon.Any => anyName,
             HintIcon.Ins => insName,
+            HintIcon.T => tName,
             _ => null
         };
 

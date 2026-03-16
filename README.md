@@ -28,6 +28,20 @@ The idea is simple: pick or create an avatar, speak, the system understands your
   - creation of `soulframe_update` package for Ubuntu
 - Typical workflow: rapid development and functional testing locally.
 
+### Unity Build: WebGL + Windows x64
+
+- Unity menu supports both targets:
+  - `SOULFRAME/Build/Build WebGL`
+  - `SOULFRAME/Build/Build Windows x64`
+- Build script: `Assets/Editor/SoulframeBuildMenu.cs`.
+- Default output folders:
+  - WebGL: `Build/`
+  - Windows: `Build_Windows64/SOULFRAME.exe`
+- CLI support (batchmode):
+  - `-executeMethod SoulframeBuildMenu.BuildWebGLCli`
+  - `-executeMethod SoulframeBuildMenu.BuildWindows64Cli`
+- The build menu switches the active build target before building to avoid editor/player symbol mismatch issues.
+
 ### 2) Automated setup on Ubuntu
 
 - Installation and provisioning with `SOULFRAME_SETUP/setup_soulframe_ubuntu.sh`.
@@ -113,6 +127,20 @@ MainMode is the operational phase of conversation:
 
 From MainMode you can also quickly return to voice setup/memory setup if you want to update the profile.
 
+## Empirical Test Mode
+
+SOULFRAME also includes an `empirical test mode` designed for guided test sessions.
+
+- From `MainMenu`, type the key sequence `T-E-S-T` to toggle it.
+- When enabled, the frontend shows a dedicated badge in the menu and propagates `empirical_test_mode=true` to the backend services.
+- The mode uses isolated backend data paths so test sessions do not mix with the normal avatar memory, voice references, or cached avatar assets.
+- MainMode conversations are still logged, but they are written to the empirical test log area instead of the standard one.
+
+Operational note:
+
+- in the initial empirical flow, setup memory is guided and file/image ingestion is restricted;
+- the avatar library also exposes empirical-only filtering/switching behaviors used during test sessions.
+
 ## Avatar Conversation Logs
 
 The backend saves a persistent log for every MainMode conversation.
@@ -127,12 +155,36 @@ Example filename:
 
 - `SOULFRAME_AI/backend/log/LOCAL_model1/20260303_151530_a1b2c3d4.log`
 
+When empirical test mode is active, the same session logic is used but logs are redirected to the empirical test storage area, keeping standard runs and empirical runs separated.
+
 ## WebGL Limitations (Lip Sync)
 
 Unity's lip sync in WebGL has known limitations compared to Play Mode/Desktop execution.
 
 - Fixes have been applied to keep the mouth more open during speech.
 - Despite these fixes, lip movement in WebGL may be less precise/natural.
+
+## Platform Behavior (WebGL vs Windows)
+
+- WebGL reply rendering is configured without word-by-word text flow.
+- TTS stream requests include a client platform flag so backend behavior can differ between WebGL and native builds.
+- On Windows, the scene uses a dedicated runtime scaler (`WindowsResolutionScaler`) for 3D rendering performance tuning:
+  - 3D render scale is configurable from Inspector.
+  - UI/canvas remains full-resolution.
+
+## Avaturn on Desktop (Windows)
+
+- Desktop/Editor uses an external browser bridge with local callback listener.
+- Typical flow:
+  - Unity opens the local bridge page.
+  - Avatar export posts JSON to local callback (`/avaturn-callback`).
+  - Unity receives payload and continues the normal avatar import pipeline.
+- The post-export bridge page is now single-tab/fullscreen style ("Return to SOULFRAME") with no forced browser auto-close.
+
+Notes:
+
+- Browser auto-close cannot be guaranteed by web standards when the tab is not script-closable.
+- If callback port is occupied, change `callbackPort` in `AvaturnWebController`.
 
 ## SOULFRAME_THESIS (LaTeX)
 
@@ -155,3 +207,4 @@ Versioning notes:
 
 - Linux/Ubuntu setup: `SOULFRAME_SETUP/README.md`
 - Backend AI (Whisper/RAG/TTS/Avatar): `SOULFRAME_AI/README.md`
+- AI validation and regression scripts: `SOULFRAME_AI/tools/README.md`

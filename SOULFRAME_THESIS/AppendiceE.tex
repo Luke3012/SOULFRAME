@@ -1,0 +1,254 @@
+% !TEX root = ./main.tex
+\chapter{Script Operativi e Flussi di Deploy}
+\label{app:ops}
+
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=20pt
+
+\paragraph{Panoramica.}
+Il progetto usa strumenti distinti per ciclo locale, provisioning del server e applicazione degli aggiornamenti. Questa separazione rende ripetibile il passaggio tra sviluppo, test e deploy remoto e, per questo, ha un peso reale nell'architettura operativa del prototipo.
+
+\par\begingroup
+\scriptsize
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Aree operative coperte dagli strumenti di supporto al progetto.}
+\label{tab:appendix-ops-scripts}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.24\textwidth}|>{\raggedright\arraybackslash}p{0.14\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.62\textwidth-6\tabcolsep-4\arrayrulewidth\relax}|}
+\hline
+\textbf{Area operativa} & \textbf{Ambiente} & \textbf{Ruolo nel ciclo di vita} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Area operativa} & \textbf{Ambiente} & \textbf{Ruolo nel ciclo di vita} \\
+\hline
+\endhead
+Bootstrap dell'ambiente & Win / Ubuntu & Crea l'ambiente Python isolato e installa le dipendenze (\texttt{setup\_soulframe\_windows.bat}, \texttt{setup\_soulframe\_ubuntu.sh}). \\
+\hline
+Avvio e arresto servizi & Windows & Avvia ciascun servizio su una porta dedicata, ne verifica lo stato e gestisce l'arresto per porta (\texttt{ai\_services.cmd}). \\
+\hline
+Provisioning infrastruttura & Ubuntu & Registra unità \texttt{systemd}, configura il reverse proxy e genera helper CLI (\texttt{setup\_soulframe\_ubuntu.sh}). \\
+\hline
+Console amministrativa & Ubuntu & Governa update, backup, riavvii e manutenzione ordinaria (\texttt{sf\_admin\_ubuntu.sh} / \texttt{sfadmin}). \\
+\hline
+Confezionamento update & Windows & Prepara il pacchetto con build WebGL, file backend essenziali e script necessari al deploy remoto (\texttt{SoulframeControlCenter.bat}). \\
+\hline
+\end{longtable}
+\par\endgroup
+
+La separazione di questi compiti non è arbitraria. La fase di inizializzazione viene eseguita una volta sola (o dopo un aggiornamento strutturale), l'avvio e l'arresto sono operazioni quotidiane, il confezionamento del pacchetto di update si attiva quando il codice cambia. Mescolarli nello stesso strumento avrebbe reso più fragile ciascuna di queste fasi senza offrire vantaggi reali.
+
+\section{Flusso locale su Windows}
+Il ciclo locale è pensato per ridurre attrito e tempi morti. Si articola in due fasi distinte: la preparazione dell'ambiente, che si esegue una sola volta, e l'avvio dei servizi, che si ripete a ogni sessione di lavoro.
+
+\paragraph{Preparazione dell'ambiente.}
+La fase di inizializzazione (\texttt{setup\_soulframe\_windows.bat}) prepara l'ambiente Python del backend e installa i pacchetti richiesti, ma non si ferma qui. Prima del primo avvio controlla anche alcuni prerequisiti che incidono concretamente sulla riuscita del setup: presenza di Ollama e dei modelli attesi, disponibilità di Tesseract, FFmpeg con le DLL condivise richieste dal TTS, runtime Visual C++ e dipendenze usate da \texttt{torchcodec}. Quando trova installazioni compatibili ma non ancora esposte correttamente al sistema, prova anche a riallineare percorsi e variabili utente, così il launcher può partire senza ulteriori passaggi manuali. Rimane comunque uno script applicativo, non un installer generale della macchina: Ollama e Tesseract continuano a restare componenti esterni, con un proprio ciclo di installazione e aggiornamento.
+
+\paragraph{Avvio dei servizi.}
+L'avvio, gestito da \texttt{ai\_services.cmd}, segue una logica difensiva. Prima di lanciare ciascun processo, il launcher verifica se la porta corrispondente è già in ascolto: se lo è, il servizio viene considerato attivo e non viene duplicato. Questa scelta rende l'operazione idempotente, evitando processi orfani e permettendo di rilanciare il launcher senza arrestare tutto manualmente. Le modalità operative non sono però tutte uguali. In \emph{console mode} il launcher avvia i componenti in modo più raccolto, lasciando alla console principale il compito di mostrare stato e comandi essenziali; in \emph{background mode} apre invece finestre separate con titoli identificativi, utili quando serve più visibilità sul singolo servizio. Esiste anche una modalità \emph{debug} ridotta, pensata per lavorare solo su runtime di inferenza e RAG.
+
+Rispetto a una versione più minimale del progetto, oggi lo script governa anche la scelta del frontend locale. Il valore \texttt{FRONTEND\_MODE}, persistito in \texttt{ai\_services.mode.cfg}, consente di usare lo stesso launcher sia con la build WebGL servita in locale sia con l'eseguibile Windows nativo. In questo senso \texttt{ai\_services.cmd} non coordina soltanto i processi backend: tiene insieme il punto di ingresso del client e una parte importante della configurazione operativa.
+
+La sequenza di avvio è: Ollama, Whisper, RAG, TTS, Avatar Asset Server e infine frontend. Se il frontend scelto è WebGL, al termine un server HTTP minimale espone la build sulla porta 8000; se il frontend scelto è Windows, lo script apre direttamente \texttt{SOULFRAME.exe}. Anche qui si vede la funzione reale del launcher: non una semplice scorciatoia di avvio, ma un piccolo orchestratore locale.
+
+\begin{lstlisting}[style=sfterminal,title={Terminale Windows - console mode},caption={Esempio sintetico di avvio locale con \texttt{ai\_services.cmd}.}]
+[SOULFRAME] checking port 11434 ... already listening
+[SOULFRAME] starting whisper on port 8001
+[SOULFRAME] starting rag on port 8002
+[SOULFRAME] starting tts on port 8004
+[SOULFRAME] serving WebGL build on http://127.0.0.1:8000
+[SOULFRAME] stack ready
+\end{lstlisting}
+
+\paragraph{Arresto dei servizi.}
+L'arresto non usa un segnale generico: scorre le porte note, identifica il PID in ascolto su ciascuna e lo interrompe solo se il processo risulta essere Python. Questa prudenza evita che un arresto frettoloso chiuda accidentalmente servizi non collegati al progetto che, per coincidenza, condividono la stessa macchina. Il runtime di inferenza riceve un trattamento separato, perché non è un processo Python e il suo arresto richiede un percorso diverso.
+
+Esiste anche una modalità ridotta, pensata per il debugging: avvia solo il runtime di inferenza e il servizio RAG, senza trascrizione, sintesi vocale o catalogo avatar. Questo permette di testare il flusso conversazionale in modo isolato, senza attendere il caricamento completo dello stack.
+
+\par\begingroup
+\scriptsize
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Porte e variabili operative principali nel flusso locale Windows.}
+\label{tab:appendix-ops-windows-env}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.33\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.67\textwidth-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+\textbf{Variabile / porta} & \textbf{Ruolo nel flusso locale} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Variabile / porta} & \textbf{Ruolo nel flusso locale} \\
+\hline
+\endhead
+\texttt{WHISPER\_PORT=8001} & Trascrizione STT. \\
+\hline
+\texttt{RAG\_PORT=8002} & Orchestrazione conversazionale e memoria. \\
+\hline
+\texttt{AVATAR\_ASSET\_PORT=8003} & Catalogo e serving dei \texttt{.glb}. \\
+\hline
+\texttt{TTS\_PORT=8004} & Sintesi vocale e wait phrases. \\
+\hline
+\texttt{OLLAMA\_PORT=11434} & Runtime chat + embeddings. \\
+\hline
+\texttt{BUILD\_PORT=8000} & Serving locale della build WebGL quando \texttt{FRONTEND\_MODE=WEBGL}. \\
+\hline
+\texttt{FRONTEND\_MODE} / \texttt{ai\_services.mode.cfg} & Seleziona e persiste il frontend locale di default (\texttt{WEBGL} oppure \texttt{WINDOWS}). \\
+\hline
+\texttt{TESSDATA\_PREFIX} & Puntatore al pacchetto linguistico di Tesseract usato dal backend. \\
+\hline
+\texttt{RAG\_FACTUAL\_SCORE\_MIN}, \texttt{RAG\_FACTUAL\_MAX\_CONTEXT\_CHARS}, \texttt{COQUI\_TTS\_MODEL}, \texttt{WHISPER\_MODEL} & Esempi di variabili applicative governate direttamente dal launcher per riallineare comportamento RAG/TTS/STT nel setup locale. \\
+\hline
+\end{longtable}
+\par\endgroup
+
+\section{Provisioning, update e gestione server}
+{\setlength{\emergencystretch}{6em}\hbadness=10000\sloppy
+Sul server il flusso è più strutturato. Lo script di provisioning\allowbreak (\texttt{setup\_soulframe\_ubuntu.sh}) separa con chiarezza tre livelli: ambiente applicativo, gestione dei processi e punto di ingresso di rete. I servizi di inferenza e di supporto restano confinati dietro un service manager, il reverse proxy espone un'unica origine HTTPS al browser e la configurazione viene raccolta in un punto unico, così il deploy non dipende da avvii manuali o da host definiti staticamente in file diversi.
+\par}
+
+La scelta di fondo è proprio questa: trattare lo stack come un insieme di servizi coordinati, non come una collezione di comandi da rilanciare manualmente. In termini operativi, il provisioning prepara un ambiente applicativo dedicato, installa unità di servizio separate per i vari componenti, costruisce l'instradamento \texttt{/api/*} verso i backend interni e lascia poi alla console amministrativa il compito di governare update, backup e riavvii.
+
+\paragraph{Bootstrap e auto-rilocazione.}
+Il provisioning è progettato per funzionare anche quando viene lanciato da una posizione diversa da quella finale. Alla prima esecuzione si copia nella directory di installazione e, se rileva che la copia è più recente di se stesso, si rilancia dalla posizione canonica. In questo modo l'amministratore può eseguire il setup da una chiavetta, da una directory temporanea o direttamente dal pacchetto di update, e il risultato rimane coerente: la versione installata coincide con quella lanciata. Se lo script sorgente proveniva dalla directory di staging degli aggiornamenti, viene rimosso automaticamente dopo il rilancio, così il ciclo si chiude senza lasciare copie duplicate.
+
+\paragraph{File di configurazione centralizzato.}
+Tutta la parametrizzazione del deploy converge in un unico file di ambiente, letto sia dai servizi sia dagli helper. Al primo provisioning il setup chiede all'amministratore il dominio pubblico e l'eventuale chiave API per Gemini, poi genera il file con valori predefiniti per porte, modelli, soglie di retrieval, temperatura del modello chat e percorsi di log. Agli aggiornamenti successivi il file non viene sovrascritto: il setup aggiunge solo le chiavi eventualmente mancanti, con valori di default ragionevoli, senza toccare quelle già presenti. Questa scelta permette di evolvere la configurazione senza perdere le personalizzazioni dell'amministratore.
+
+\paragraph{Architettura dei servizi nel service manager.}
+Sul server i quattro servizi backend --- trascrizione, orchestrazione conversazionale, catalogo avatar, sintesi vocale --- e il wrapper per il runtime di inferenza vengono registrati come unità \texttt{systemd} separate, raggruppate sotto un target comune. Il target funziona come punto di avvio e di arresto collettivo: attivarlo accende tutti i componenti nell'ordine corretto delle dipendenze, disattivarlo li spegne. Ciascuna unità dichiara la propria directory di lavoro, il file di ambiente condiviso e una politica di riavvio automatico in caso di crash.
+
+L'ordine di avvio non è casuale. Il servizio RAG dichiara una dipendenza esplicita dal runtime di inferenza, perché senza embedding e modello chat non può rispondere. Gli altri servizi partono in parallelo, dato che non hanno dipendenze incrociate. Il timeout di avvio della sintesi vocale è il più generoso tra tutti, perché il caricamento del modello XTTS richiede più tempo degli altri componenti.
+
+\paragraph{Reverse proxy e routing.}
+Il reverse proxy espone un singolo dominio HTTPS al browser, gestisce automaticamente il certificato TLS e instrada le richieste verso i backend interni in base al prefisso del percorso. Ogni famiglia di endpoint (\texttt{/api/whisper/*}, \texttt{/api/rag/*}, \texttt{/api/avatar/*}, \texttt{/api/tts/*}) viene inoltrata alla porta corrispondente, mentre tutto il resto viene servito dalla directory della build WebGL. Il prefisso \texttt{/api/} viene rimosso prima di inoltrare la richiesta al backend, così i servizi non devono conoscere il percorso pubblico e possono funzionare allo stesso modo sia in locale sia dietro proxy.
+
+Questa separazione semplifica un punto concreto: il frontend non deve raggiungere porte diverse, non deve gestire protocolli misti HTTP/HTTPS e non ha bisogno di conoscere la topologia interna del server. Tutto converge su un'unica origine applicativa.
+
+\paragraph{Spegnimento automatico per inattività.}
+Il provisioning installa anche un timer periodico che controlla ogni minuto se la macchina è ancora in uso. Il controllo considera due segnali: l'ultimo accesso alle route \texttt{/api/*} nel log del reverse proxy e, facoltativamente, l'attività delle sessioni terminali SSH. Se entrambi i segnali superano una soglia di inattività configurabile, la macchina viene spenta automaticamente. Un periodo di grazia dopo il boot evita spegnimenti precoci, e una modalità di prova permette di verificare il comportamento senza effetti reali.
+
+Questo meccanismo è particolarmente sensato nel contesto di SOULFRAME, dove il server è una macchina virtuale cloud con costi orari. Senza spegnimento automatico l'amministratore dovrebbe ricordarsi di spegnere la VM a fine sessione; il timer riduce quindi il rischio di dimenticanze e di costi non necessari.
+
+\paragraph{Helper operativi.}
+Dentro questo impianto esiste anche un piccolo livello intermedio tra amministratore e servizi, utile a governare lo stack una volta completato il provisioning.
+
+\par\begingroup
+\small
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Helper CLI generati dal setup Ubuntu.}
+\label{tab:appendix-ops-helpers}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.18\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.82\textwidth-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+\textbf{Helper} & \textbf{Uso pratico} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Helper} & \textbf{Uso pratico} \\
+\hline
+\endhead
+\texttt{sfctl} & Wrapper di \texttt{systemctl} per \texttt{start}, \texttt{stop}, \texttt{restart}, \texttt{status} e \texttt{logs}. \\
+\hline
+\texttt{sfurl} & Stampa gli URL pubblici di health-check e può aprirli nel browser. \\
+\hline
+\texttt{sfadmin} & Entry point alla console amministrativa che governa update, backup e manutenzione. \\
+\hline
+\end{longtable}
+\par\endgroup
+
+\begin{lstlisting}[style=sfterminal,title={Console Ubuntu - diagnosi rapida},caption={Sequenza minima di diagnosi nel deploy Ubuntu.}]
+sfctl status
+sfurl
+sfctl logs rag
+sfctl restart rag
+\end{lstlisting}
+
+\begin{lstlisting}[style=sfterminal,title={Console Ubuntu - sfctl status},caption={Esempio compatto di stato dei servizi dopo il provisioning.}]
+UNIT                STATE    PORT
+whisper             active   8001
+rag                 active   8002
+avatar_asset        active   8003
+tts                 active   8004
+ollama-wrapper      active   11434
+\end{lstlisting}
+
+La presenza di questi helper aiuta soprattutto per una ragione: riduce l'onere operativo della manutenzione quotidiana. In un prototipo distribuito il problema non è solo avere i servizi accesi, ma capire rapidamente se un guasto dipenda dal processo, dall'instradamento delle richieste o da uno stato intermedio del deploy. Ricondurre questa diagnosi a pochi ingressi coerenti riduce il ricorso a procedure improvvisate.
+
+\subsubsection*{Pacchetto di update.}
+Dal lato della macchina di sviluppo, \texttt{SoulframeControlCenter.bat} prepara una directory di update che contiene:
+\begin{itemize}
+\item l'archivio compresso della build WebGL;
+\item i componenti backend essenziali (i quattro server Python e il file \texttt{requirements.txt}, usato per riallineare l'ambiente Python sul server);
+\item gli script di provisioning e di amministrazione, necessari se il setup stesso è cambiato.
+\end{itemize}
+
+La preparazione del pacchetto non è lasciata all'iniziativa dell'operatore: il launcher la espone come voce di menu, verifica l'esistenza della build, comprime l'archivio scegliendo automaticamente lo strumento disponibile sulla macchina e copia i file nella directory di staging. Il risultato non è un insieme indiscriminato dei file di progetto, ma un pacchetto mirato agli artefatti che il deploy sa davvero gestire.
+
+Dal lato server, la console amministrativa (\texttt{sf\_admin\_ubuntu.sh}) rileva automaticamente gli artefatti presenti nella directory di staging. Non cerca tutti i file: riconosce solo un insieme ristretto di nomi noti, cioè i componenti che il sistema sa come installare e dove collocare. Questo elenco ristretto non è una limitazione casuale, ma una scelta prudente: evita aggiornamenti indiscriminati e rende più leggibile il riepilogo che la console presenta prima di procedere.
+
+\sfpanel{Console amministrativa - staging riconosciuta}{
+\begin{tabularx}{\linewidth}{@{}>{\ttfamily}p{0.42\linewidth}@{\hspace{1.2em}}>{\raggedleft\arraybackslash}X@{}}
+Build.zip & archivio build pronto \\
+rag\_server.py & aggiornamento backend \\
+tts\_server.py & aggiornamento backend \\
+requirements.txt & dipendenze Python \\
+setup\_soulframe\_ubuntu.sh & provisioning leggero \\
+sf\_admin\_ubuntu.sh & console amministrativa
+\end{tabularx}
+}
+
+La sequenza di update vera e propria segue alcuni passaggi precisi:
+\begin{itemize}
+\item cerca l'archivio della build nella staging area e, solo se manca, ripiega sull'ultimo pacchetto compatibile disponibile;
+\item arresta tutti i servizi prima di toccare qualsiasi file;
+\item crea backup separati per la build WebGL e per il backend, così un rollback è sempre possibile;
+\item aggiorna solo i file riconosciuti, collocandoli nella posizione corretta e normalizzando i fine riga;
+\item se tra i file aggiornati ci sono gli script di provisioning o di amministrazione, rilancia il setup in modalità leggera --- senza scaricare di nuovo i modelli di inferenza --- così le eventuali modifiche all'infrastruttura di servizio vengono applicate immediatamente;
+\item al termine, offre la pulizia della staging area e il riavvio controllato dei servizi.
+\end{itemize}
+
+L'intera operazione può essere eseguita anche in modalità completamente automatica, senza conferme intermedie. Questo è utile quando l'aggiornamento viene preparato a monte e l'amministratore vuole applicarlo in un solo passaggio, ma la modalità interattiva resta quella predefinita proprio perché permette di verificare il riepilogo prima di procedere.
+
+Questo modello ha un pregio semplice ma importante: tratta frontend WebGL, backend e script di supporto come parti dello stesso rilascio, evitando quei deploy parziali in cui un lato viene aggiornato e l'altro resta indietro. È una forma di disciplina operativa più che un'infrastruttura complessa, ma nel perimetro di SOULFRAME questa disciplina fa davvero la differenza.
+
+\section{Differenze ambientali e limiti del setup}
+Le differenze tra il flusso locale Windows e il deploy su Ubuntu non sono solo di superficie. Lo stack applicativo è lo stesso, ma cambia il modo in cui viene gestito. Su Windows i servizi partono come processi utente, controllati soprattutto per porta e pensati per uno sviluppo rapido; se un processo cade, non c'è un supervisore che lo rimetta in piedi da solo. Su Ubuntu gli stessi componenti vengono registrati come unità \texttt{systemd}, con restart automatico, dipendenze esplicite e log centralizzato. Le API restano quindi le stesse, mentre cambia il livello di governo operativo.
+
+Anche il punto di ingresso di rete cambia radicalmente. In locale non c'è reverse proxy: ogni servizio è raggiungibile direttamente sulla propria porta, il che semplifica il debugging ma non offre HTTPS né instradamento unificato. Sul server Caddy assorbe tutta questa complessità, e il frontend vede un'unica origine con prefissi coerenti.
+
+La configurazione segue lo stesso principio in forma diversa: in locale le variabili di ambiente vengono impostate direttamente nel launcher, sul server convergono in un file centralizzato che viene letto sia dai servizi sia dagli helper. Con il file esterno l'amministratore può modificare soglie, modelli e percorsi senza toccare il codice; in cambio si aggiunge un livello di indirezione che in locale non serve.
+
+Queste differenze non sono un difetto del progetto: riflettono il fatto che sviluppo locale e deploy remoto hanno esigenze diverse. In locale servono velocità di iterazione e visibilità diretta; sul server servono stabilità, isolamento e manutenibilità a distanza. Tenere i due flussi separati, anziché forzarli in un unico strumento, rende ciascuno più leggibile e più adatto al proprio contesto.
+
+\vspace{0.4em}
+
+\sfpanel{Confronto operativo rapido}{
+\begin{tabularx}{\linewidth}{@{}>{\bfseries}p{0.28\linewidth}@{\hspace{1.2em}}X@{}}
+Windows locale & processi utente, controllo per porta, debug immediato \\
+Ubuntu deploy & unit\`a \texttt{systemd}, reverse proxy, helper CLI \\
+Frontend & stesso stack WebGL, punto di ingresso diverso \\
+Obiettivo & iterazione veloce in locale, continuit\`a di servizio in deploy
+\end{tabularx}
+}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\textwidth]{usecase_locale_deploy.png}
+\caption{Due cicli operativi dello stesso stack: uso locale su Windows e gestione remota nel deploy Ubuntu.}
+\label{fig:usecase-locale-deploy}
+\end{figure}
+
+\paragraph{Limiti prototipali del setup.}
+Il setup operativo descritto in questa appendice funziona e viene usato regolarmente, ma ha alcuni limiti che conviene rendere espliciti.
+
+Il punto più evidente è la scalabilità. Tutti i servizi girano sulla stessa macchina, sulle stesse risorse fisiche: non c'è bilanciamento di carico e non c'è ridondanza. Se il server si spegne o un servizio non riparte, il sistema si ferma. In un contesto prototipale questo è accettabile, ma non lo sarebbe in un deploy pensato per più utenti concorrenti.
+
+Un secondo limite è il monitoraggio. I log esistono, gli health check sono esposti e gli helper CLI rendono la diagnosi abbastanza rapida, ma manca un sistema di alerting strutturato. Se un servizio smette di rispondere durante la notte, nessuno viene avvisato automaticamente. Lo spegnimento automatico per inattività protegge dai costi di una macchina dimenticata accesa, ma non copre le interruzioni di servizio.
+
+Resta poi la portabilita' del pacchetto di update. Il meccanismo funziona bene con aggiornamenti incrementali, come nuove versioni dei server Python o una nuova build WebGL. Non gestisce invece migrazioni piu' strutturali: cambi di schema nello store ChromaDB, aggiornamenti di Ollama o del modello di inferenza, modifiche alla configurazione del reverse proxy. In questi casi l'amministratore deve ancora intervenire manualmente, e il setup non offre strumenti dedicati.
+
+Infine, il provisioning assume una macchina Ubuntu con accesso root e rete funzionante. Non gestisce ambienti containerizzati, non supporta distribuzioni diverse e non prevede scenari multi-nodo. Sono vincoli ragionevoli per un prototipo di tesi, ma sarebbero tra i primi punti da affrontare in una possibile evoluzione del progetto.

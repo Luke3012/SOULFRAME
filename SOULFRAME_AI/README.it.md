@@ -139,6 +139,14 @@ uvicorn avatar_asset_server:app --host 127.0.0.1 --port 8003
 - **Ollama**: http://127.0.0.1:11434
 - **Build Server**: http://localhost:8000
 
+## Strumenti di validazione e regressione
+
+La cartella `tools/` contiene le batterie PowerShell usate per rendere più affidabile il setup piccolo `llama3:8b-instruct-q4_K_M` contro i problemi che contano in questo progetto: retrieval mancati, riepiloghi multi-sorgente deboli, derive identitarie e incoerenze di persona.
+
+- Panoramica e uso: `tools/README.it.md`
+- Script principali: `run_extreme_stress_test.ps1`, `run_text_coherence_identity_test.ps1`, `run_complex_deficit_case_study.ps1`
+- Output tipico: report Markdown scritti sul Desktop con sintesi pass/fail ed esempi dettagliati
+
 ## Endpoint in produzione (Linux + Caddy)
 
 Se il frontend WebGL gira dietro Caddy su dominio pubblico, usa i path proxy:
@@ -240,6 +248,20 @@ curl -X POST http://127.0.0.1:8002/chat \
 I log sono salvati in `backend/log/<avatar_id_sanitized>/<session_id>.log`.
 I flussi tecnici (es. `setup_voice_generator`) non vengono loggati come conversazione MainMode.
 
+### Empirical test mode
+
+Il frontend può avviare una sessione empirica digitando `T-E-S-T` nel `MainMenu`.
+Quando succede, le richieste ai servizi backend includono `empirical_test_mode=true`.
+
+Sul backend questo mantiene separate le esecuzioni empiriche da quelle normali:
+
+- la memoria RAG usa `backend/empirical_test/rag_store/`
+- i log conversazione RAG usano di default `backend/empirical_test/log/`, oppure `EMPIRICAL_RAG_LOG_DIR` se configurata
+- voci avatar e wait phrases del TTS usano la root empirica dedicata
+- l'Avatar Asset Server usa `backend/empirical_test/avatar_store/`
+
+Anche in questa modalità il logging conversazionale funziona come in MainMode standard: un file per sessione, ma scritto sotto l'area storage empirica.
+
 ### TTS (Text-to-Speech)
 
 ```python
@@ -310,7 +332,7 @@ Per cambiare i parametri su Windows modifica direttamente `ai_services.cmd`.
 ## Warmup Coqui al boot
 
 Dopo l'avvio del servizio TTS, il backend esegue una inizializzazione/warmup del modello Coqui
-usando una frase breve (`"ciao"`). Questa e' in genere la fase piu lenta del primo startup.
+usando una frase breve (`"ciao"`). Questa è in genere la fase più lenta del primo startup.
 
 ## Warmup RAG/Ollama al boot
 
@@ -319,7 +341,7 @@ All'avvio del servizio RAG, `rag_server` esegue un warmup best-effort di Ollama:
 - step embedding su `/api/embed` (modello `EMBED_MODEL`);
 - step chat su `/api/chat` (modello `CHAT_MODEL`, con `num_predict` ridotto).
 
-Se Ollama non e' raggiungibile in quel momento, il warmup viene loggato come warning ma
+Se Ollama non è raggiungibile in quel momento, il warmup viene loggato come warning ma
 `rag_server` resta attivo (nessun crash di startup).
 
 Nel bootstrap Unity viene atteso anche `RAG /health` (oltre a `TTS /health`) prima di

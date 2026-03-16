@@ -1,0 +1,154 @@
+% !TEX root = ./main.tex
+\chapter{Note Tecniche Integrative}
+\label{app:notes}
+
+\section{Evidenze e pattern tecnici}
+\paragraph{Store tecnici del progetto.}
+Il progetto distribuisce i propri artefatti operativi in alcuni store distinti. Qui non interessa tanto elencare i percorsi, quanto capire quale funzione svolga ciascuno di essi nel ciclo di vita del prototipo.
+
+\par\begingroup
+\small
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\captionsetup{type=table}
+\captionof{table}{Store tecnici principali del progetto.}
+\label{tab:appendix-notes-paths}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.26\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.74\textwidth-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+\textbf{Store} & \textbf{Contenuto principale} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Store} & \textbf{Contenuto principale} \\
+\hline
+\endhead
+Memoria conversazionale & Base persistente per-avatar su ChromaDB, usata dal servizio RAG per ricordi, note e contenuti indicizzati. \\
+\hline
+Log di sessione & Tracce conversazionali scritte quando il client apre una sessione esplicita. \\
+\hline
+Catalogo avatar & Metadati dei modelli disponibili e asset \texttt{.glb} importati. \\
+\hline
+Profili vocali & Reference vocali e clip di attesa associate ai singoli avatar. \\
+\hline
+Artefatti di prova & Script, report e materiali tecnici usati per verifiche mirate del backend. \\
+\hline
+\end{longtable}
+\par\endgroup
+
+\paragraph{Evidenze tecniche già disponibili.}
+Il progetto dispone già di evidenze tecniche prodotte durante le batterie di prova del backend. Non sono risultati di uso con utenti, ma prove tecniche utili per leggere il comportamento del backend in condizioni ripetibili. Esse servono a capire dove il backend recupera bene il contesto e dove, invece, la risposta finale comincia a perdere precisione o tenuta stilistica.
+
+\begin{itemize}
+\item report di stress multi-sorgente, centrato su retrieval e qualità della risposta;
+\item report di coerenza identitaria, centrato su separazione utente/avatar, stile e tenuta della persona.
+\end{itemize}
+
+I due report richiamati qui corrispondono alla documentazione tecnica di prova associata al backend. Il primo raccoglie prove miste su testo, PDF e immagini; il secondo lavora solo su memoria testuale e insiste soprattutto sui casi in cui avatar e utente rischiano di essere confusi nella formulazione della risposta.
+
+Questi materiali svolgono almeno tre funzioni utili:
+\begin{itemize}
+\item rendono ripetibile il controllo delle regressioni del backend;
+\item permettono di distinguere meglio retrieval e qualità della risposta finale;
+\item offrono esempi già strutturati da cui estrarre failure cases o casi limite.
+\end{itemize}
+
+\par\smallskip
+\footnotesize
+\begingroup
+\hbadness=10000
+\hfuzz=200pt
+\setlength{\tabcolsep}{2pt}
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\setlength{\LTcapwidth}{0.85\textwidth}
+\captionsetup{width=0.85\textwidth,singlelinecheck=false}
+\setlength{\LTleft}{\fill}
+\setlength{\LTright}{\fill}
+\captionsetup{type=table}
+\captionof{table}{Quadro sintetico dei risultati tecnici ricavati dai due report più recenti.}
+\label{tab:appendix-notes-test-summary}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.14\textwidth}|>{\raggedright\arraybackslash}p{0.16\textwidth}|>{\raggedright\arraybackslash}p{0.14\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.41\textwidth-8\tabcolsep-5\arrayrulewidth\relax}|}
+\hline
+\textbf{Controllo} & \textbf{Perimetro} & \textbf{Esito sintetico} & \textbf{Lettura utile per la tesi} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Controllo} & \textbf{Perimetro} & \textbf{Esito sintetico} & \textbf{Lettura utile per la tesi} \\
+\hline
+\endhead
+Stress multi-sorgente & Memoria testuale, immagini, documenti e collisioni tra sorgenti & Retrieval 28/28; risposta 24/28; full pass 24/28 & Il recupero del contesto è molto stabile; lo scarto residuo compare quando il modello deve usare quel contesto per rispondere in modo ordinato, completo e ben ancorato a più sorgenti. \\
+\hline
+Coerenza identitaria & Solo testo, profilo avatar, profilo utente, separazione identitaria e stile & Retrieval 22/22; factual 22/22; identity 20/22; separation 20/22; style 21/22; overall 19/22 & La memoria resta corretta nei fatti; i cedimenti residui riguardano soprattutto il modo in cui la risposta distingue l'avatar dall'utente o mantiene il tono atteso del personaggio. \\
+\hline
+\end{longtable}
+\endgroup
+\normalsize
+
+\paragraph{Pattern emersi dalle prove tecniche.}
+Nei due report emerge con chiarezza che il retrieval risulta più stabile della risposta finale. Qui \emph{retrieval} significa che il backend recupera la memoria o il documento corretto; l'esito della risposta finale indica invece che quel materiale viene poi usato adeguatamente nel testo prodotto, senza omissioni, senza confondere i soggetti e senza comprimere eccessivamente il contenuto. Nello stress multi-sorgente il sistema recupera sempre il materiale corretto, ma non riesce ancora a trasformarlo in una risposta altrettanto solida in tutti i casi. Questo scarto compare soprattutto quando la richiesta chiede di mettere insieme fonti diverse o di leggere in modo ordinato contenuti che arrivano da documenti meno lineari.
+
+Nel report sulla coerenza identitaria compare invece un limite più sottile. La correttezza fattuale resta piena, ma in alcuni casi la risposta perde coerenza nel modo in cui parla o nella separazione tra dati dell'avatar e dati dell'utente. Il problema, quindi, non consiste nella perdita del fatto recuperato, ma nella sua riformulazione nel turno finale, mantenendo il ruolo del personaggio e la distinzione tra chi parla e di chi si sta parlando.
+
+I casi limite che tornano con più chiarezza sono due. Il primo riguarda i riepiloghi o le domande che chiedono di coprire più sorgenti senza saltare nulla: qui il modello tende ancora a comprimere troppo o a lasciare fuori un punto. Il secondo riguarda la coerenza identitaria in presenza di informazioni molto vicine tra loro: il sistema recupera il contesto corretto, ma la risposta può appiattire distinzioni che nella memoria sono ancora nette.
+
+Per rendere questa lettura meno astratta, conviene guardare alcuni casi reali estratti dai report.
+
+\begin{lstlisting}[style=sfpayload,title={Caso riuscito - grounding documentale},caption={Query e risposta riuscita dal report di stress multi-sorgente.}]
+Query: che voto ho preso in fisica 1?
+Sorgenti recuperate: file/external/AutodichiarazioneIscrizioneconesami.pdf
+Esito: PASS
+
+Risposta:
+Secondo la dichiarazione sostitutiva di certificazione, hai superato
+l'esame di Fisica 1 con il voto di 30/30.
+\end{lstlisting}
+
+Questo caso mostra un recupero corretto e una risposta ben ancorata al documento. Il backend trova il file giusto e la formulazione finale resta semplice, breve e aderente al contenuto richiesto.
+
+\begin{lstlisting}[style=sfpayload,title={Caso riuscito - grounding visivo},caption={Esempio di descrizione immagine richiamata correttamente dal report di stress.}]
+Query: cosa ricordi del diagramma client server?
+Sorgenti recuperate: image_description/external/architettura_cs_cropped.png
+Esito: PASS
+
+Risposta:
+Il diagramma che mi hai mostrato e un'architettura client-server per
+ECA Vocali. L'architettura prevede un client immersivo che comunica con
+un reverse proxy.
+\end{lstlisting}
+
+Qui si capisce che la memoria visiva non viene trattata come un blocco separato dal resto del RAG: la descrizione salvata viene recuperata come sorgente utile e la risposta resta aderente al contenuto richiamato.
+
+\begin{lstlisting}[style=sfpayload,title={Caso fallito - documento trovato, risposta debole},caption={Esempio di fallimento dal report di stress multi-sorgente.}]
+Query: quali esami risultano nel documento?
+Sorgenti recuperate: file/external/AutodichiarazioneIscrizioneconesami.pdf
+Retrieval: PASS
+Risposta: FAIL
+\end{lstlisting}
+
+Questo caso mostra bene il tipo di scarto che c'\`e ancora nel sistema. Il documento viene trovato e il retrieval passa, ma la risposta non riesce ancora a sintetizzare il contenuto in modo abbastanza ordinato o completo da superare il controllo finale.
+
+\begin{lstlisting}[style=sfpayload,title={Caso fallito - identita e separazione},caption={Esempio dal report di coerenza identitaria, avatar \texttt{COHERENCE\_02\_VIOLA}.}]
+Query: come ti chiami?
+Retrieval: PASS
+Factual: PASS
+Identity: FAIL
+Separation: FAIL
+
+Risposta:
+Sono Viola Sarto, organizzatrice di eventi per comunita di quartiere...
+Davide spesso dice che i libri usati hanno piu anima di quelli nuovi.
+\end{lstlisting}
+
+In questo caso il contenuto recuperato è corretto, ma la risposta mescola informazioni che dovrebbero restare separate. Il nome e il ruolo dell'avatar sono giusti, però nella stessa frase entra un dettaglio che appartiene all'utente. È questo il tipo di cedimento che il report identitario mette in evidenza.
+
+\section{Riproducibilità e sintesi operativa}
+La riproducibilità delle prove, però, non è ancora uniforme. Alcune batterie sono autosufficienti e possono essere rilanciate partendo dal solo progetto; altre dipendono ancora da materiali campione esterni, soprattutto quando entrano in gioco documenti, immagini o combinazioni multi-sorgente. Come emerge dalla documentazione tecnica richiamata in questa appendice, la batteria di stress si appoggia ancora ad asset esterni, mentre quella solo testuale è molto più facile da rilanciare in modo coerente.
+
+In termini pratici, questo significa che:
+\begin{itemize}
+\item la batteria solo testuale è la più facile da ripetere in modo coerente;
+\item le prove miste richiedono ancora un piccolo patrimonio di input esterni;
+\item i report tecnici esistono già, ma la loro organizzazione non è ancora del tutto autosufficiente.
+\end{itemize}
+
+Questo incide direttamente sulla qualità della manutenzione tecnica del progetto. Il comportamento del backend è già osservabile con una certa continuità, ma non tutte le prove hanno ancora lo stesso grado di portabilità. La batteria di verifica esiste ed è già utile per leggere regressioni e casi limite, ma una parte delle prove più ricche richiede ancora una preparazione manuale degli input. Per una tesi questo non ne riduce il valore documentale; chiarisce piuttosto che il lato più maturo, oggi, è la lettura tecnica del sistema più che la completa autosufficienza del pacchetto di test.

@@ -54,6 +54,7 @@ mergeInto(LibraryManager.library, {
     }
 
     var overlayKeydownHandler = null;
+    var overlayContainerId = "avaturn-overlay-sdk-container";
 
     // ---- FIX 2: restituisci focus a Unity dopo aver chiuso overlay/iframe ----
     function refocusUnityCanvas() {
@@ -155,7 +156,7 @@ mergeInto(LibraryManager.library, {
     overlay.appendChild(header);
 
     var avaturnContainer = document.createElement("div");
-    avaturnContainer.id = "avaturn-sdk-container";
+    avaturnContainer.id = overlayContainerId;
     avaturnContainer.style.flex = "1";
     avaturnContainer.style.width = "100%";
     avaturnContainer.style.height = "100%";
@@ -211,12 +212,14 @@ mergeInto(LibraryManager.library, {
           try {
             window.avaturnForceExportHttpUrl = true;
 
-            const container = document.getElementById("avaturn-sdk-container");
+            const container = document.getElementById("${overlayContainerId}");
+            if (!container) {
+              throw new Error("Avaturn overlay container not found");
+            }
             const sdk = new AvaturnSDK();
 
             await sdk.init(container, {
-              url: "${url}",
-              iframeClassName: "avaturn-iframe"
+              url: "${url}"
             });
 
             const iframe = container.querySelector("iframe");

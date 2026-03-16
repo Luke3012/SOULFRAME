@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 ROOT_DIR = Path(__file__).resolve().parent
+EMPIRICAL_TEST_ROOT = ROOT_DIR / "empirical_test"
 STORE_DIR = ROOT_DIR / "avatar_store"
 MODELS_DIR = STORE_DIR / "models"
 META_PATH = STORE_DIR / "avatars.json"
@@ -48,26 +49,42 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def ensure_store() -> None:
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    if not META_PATH.exists():
-        META_PATH.write_text(json.dumps({"avatars": []}, indent=2), encoding="utf-8")
+def _is_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-def load_metadata() -> Dict[str, Any]:
-    ensure_store()
+def _storage_paths(empirical_test_mode: bool) -> tuple[Path, Path, Path]:
+    store_dir = (EMPIRICAL_TEST_ROOT / "avatar_store") if empirical_test_mode else STORE_DIR
+    return store_dir, store_dir / "models", store_dir / "avatars.json"
+
+
+def ensure_store(empirical_test_mode: bool = False) -> None:
+    _, models_dir, meta_path = _storage_paths(empirical_test_mode)
+    models_dir.mkdir(parents=True, exist_ok=True)
+    if not meta_path.exists():
+        meta_path.write_text(json.dumps({"avatars": []}, indent=2), encoding="utf-8")
+
+
+def load_metadata(empirical_test_mode: bool = False) -> Dict[str, Any]:
+    ensure_store(empirical_test_mode)
+    _, _, meta_path = _storage_paths(empirical_test_mode)
     try:
-        with META_PATH.open("r", encoding="utf-8") as handle:
+        with meta_path.open("r", encoding="utf-8") as handle:
             return json.load(handle)
     except (json.JSONDecodeError, OSError):
         return {"avatars": []}
 
 
-def save_metadata(data: Dict[str, Any]) -> None:
-    ensure_store()
-    temp_path = META_PATH.with_suffix(".json.tmp")
+def save_metadata(data: Dict[str, Any], empirical_test_mode: bool = False) -> None:
+    ensure_store(empirical_test_mode)
+    _, _, meta_path = _storage_paths(empirical_test_mode)
+    temp_path = meta_path.with_suffix(".json.tmp")
     temp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    temp_path.replace(META_PATH)
+    temp_path.replace(meta_path)
 
 
 def is_valid_http_url(url: str) -> bool:
@@ -82,8 +99,11 @@ def compute_hash(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
-def cached_glb_url(public_base: str, avatar_id: str) -> str:
-    return f"{public_base}/avatars/{avatar_id}/model.glb"
+def cached_glb_url(public_base: str, avatar_id: str, empirical_test_mode: bool = False) -> str:
+    url = f"{public_base}/avatars/{avatar_id}/model.glb"
+    if empirical_test_mode:
+        url = f"{url}?empirical_test_mode=true"
+    return url
 
 
 def remove_avatar_entry(data: Dict[str, Any], avatar_id: str) -> None:
@@ -110,30 +130,37 @@ def get_avatar_by_hash(data: Dict[str, Any], url_hash: str) -> Optional[Dict[str
     return None
 
 
-def resolve_avatar_file_path(item: Dict[str, Any]) -> Optional[Path]:
+def resolve_avatar_file_path(item: Dict[str, Any], empirical_test_mode: bool = False) -> Optional[Path]:
+    _, models_dir, _ = _storage_paths(empirical_test_mode)
     raw_path = str(item.get("file_path", "")).strip()
     if raw_path:
         p = Path(raw_path)
         if p.exists():
             return p
         if not p.is_absolute():
-            rel = MODELS_DIR / p
+            rel = models_dir / p
             if rel.exists():
                 return rel
 
     avatar_id = str(item.get("avatar_id", "")).strip()
     if avatar_id:
-        candidates = sorted(MODELS_DIR.glob(f"*_{avatar_id}.glb"), key=lambda x: x.stat().st_mtime, reverse=True)
+        candidates = sorted(models_dir.glob(f"*_{avatar_id}.glb"), key=lambda x: x.stat().st_mtime, reverse=True)
         if candidates:
             return candidates[0]
 
     url_hash = str(item.get("url_hash", "")).strip()
     if url_hash:
-        candidates = sorted(MODELS_DIR.glob(f"{url_hash}_*.glb"), key=lambda x: x.stat().st_mtime, reverse=True)
+        candidates = sorted(models_dir.glob(f"{url_hash}_*.glb"), key=lambda x: x.stat().st_mtime, reverse=True)
         if candidates:
             return candidates[0]
 
     return None
+
+
+def _local_models(empirical_test_mode: bool) -> List[Dict[str, Any]]:
+    if empirical_test_mode:
+        return [dict(LOCAL_MODELS[0])]
+    return [dict(item) for item in LOCAL_MODELS]
 
 
 def build_public_base_url(request: Request, default_prefix: str = "/api/avatar") -> str:
@@ -189,31 +216,35 @@ class ImportRequest(BaseModel):
     bodyId: Optional[str] = None
     urlType: Optional[str] = None
     display_name: Optional[str] = None
+    empirical_test_mode: bool = False
 
 
 @app.get("/health")
-def health() -> Dict[str, Any]:
-    data = load_metadata()
+def health(empirical_test_mode: bool = False) -> Dict[str, Any]:
+    data = load_metadata(empirical_test_mode)
+    store_dir, models_dir, _ = _storage_paths(empirical_test_mode)
     return {
         "status": "ok",
-        "store_dir": str(STORE_DIR),
-        "models_dir": str(MODELS_DIR),
+        "store_dir": str(store_dir),
+        "models_dir": str(models_dir),
+        "empirical_test_mode": empirical_test_mode,
         "count": len(data.get("avatars", [])),
     }
 
 
 @app.get("/avatars/list")
 def list_avatars(request: Request) -> Dict[str, Any]:
-    data = load_metadata()
+    empirical_test_mode = _is_truthy(request.query_params.get("empirical_test_mode"))
+    data = load_metadata(empirical_test_mode)
     public_base = build_public_base_url(request)
 
     items: List[Dict[str, Any]] = []
-    items.extend(LOCAL_MODELS)
+    items.extend(_local_models(empirical_test_mode))
     metadata_changed = False
     valid_entries: List[Dict[str, Any]] = []
 
     for item in data.get("avatars", []):
-        resolved = resolve_avatar_file_path(item)
+        resolved = resolve_avatar_file_path(item, empirical_test_mode)
         if resolved is None:
             metadata_changed = True
             continue
@@ -221,7 +252,7 @@ def list_avatars(request: Request) -> Dict[str, Any]:
             item["file_path"] = str(resolved)
             metadata_changed = True
 
-        cached_url = cached_glb_url(public_base, item["avatar_id"])
+        cached_url = cached_glb_url(public_base, item["avatar_id"], empirical_test_mode)
         item_copy = dict(item)
         item_copy["cached_glb_url"] = cached_url
         items.append(item_copy)
@@ -229,7 +260,7 @@ def list_avatars(request: Request) -> Dict[str, Any]:
 
     if metadata_changed:
         data["avatars"] = valid_entries
-        save_metadata(data)
+        save_metadata(data, empirical_test_mode)
 
     return {"avatars": items}
 
@@ -239,19 +270,20 @@ def import_avatar(payload: ImportRequest, request: Request) -> Dict[str, Any]:
     if not is_valid_http_url(payload.url):
         raise HTTPException(status_code=400, detail="Invalid url (http/https required)")
 
+    empirical_test_mode = bool(payload.empirical_test_mode)
     public_base = build_public_base_url(request)
-    data = load_metadata()
+    data = load_metadata(empirical_test_mode)
     url_hash = compute_hash(payload.url)
     existing = get_avatar_by_hash(data, url_hash)
     if existing:
-        existing_path = resolve_avatar_file_path(existing)
+        existing_path = resolve_avatar_file_path(existing, empirical_test_mode)
         if existing_path is not None:
             touch_avatar_access(existing, existing_path)
-            save_metadata(data)
+            save_metadata(data, empirical_test_mode)
             return {
                 "ok": True,
                 "avatar_id": existing["avatar_id"],
-                "cached_glb_url": cached_glb_url(public_base, existing["avatar_id"]),
+                "cached_glb_url": cached_glb_url(public_base, existing["avatar_id"], empirical_test_mode),
                 "bytes": existing.get("bytes", 0),
                 "dedup": True,
             }
@@ -261,7 +293,8 @@ def import_avatar(payload: ImportRequest, request: Request) -> Dict[str, Any]:
     avatar_id = next_unique_avatar_id(data, avatar_id)
 
     filename = f"{url_hash}_{avatar_id}.glb"
-    target_path = MODELS_DIR / filename
+    _, models_dir, _ = _storage_paths(empirical_test_mode)
+    target_path = models_dir / filename
 
     bytes_written = download_file(payload.url, target_path)
 
@@ -281,46 +314,46 @@ def import_avatar(payload: ImportRequest, request: Request) -> Dict[str, Any]:
     }
 
     data.setdefault("avatars", []).insert(0, record)
-    save_metadata(data)
+    save_metadata(data, empirical_test_mode)
 
     return {
         "ok": True,
         "avatar_id": avatar_id,
-        "cached_glb_url": cached_glb_url(public_base, avatar_id),
+        "cached_glb_url": cached_glb_url(public_base, avatar_id, empirical_test_mode),
         "bytes": bytes_written,
         "dedup": False,
     }
 
 
 @app.get("/avatars/{avatar_id}/model.glb")
-def get_avatar_model(avatar_id: str) -> FileResponse:
-    data = load_metadata()
+def get_avatar_model(avatar_id: str, empirical_test_mode: bool = False) -> FileResponse:
+    data = load_metadata(empirical_test_mode)
     item = get_avatar_by_id(data, avatar_id)
     if not item:
         raise HTTPException(status_code=404, detail="Avatar not found")
 
-    path = resolve_avatar_file_path(item)
+    path = resolve_avatar_file_path(item, empirical_test_mode)
     if path is None:
         remove_avatar_entry(data, avatar_id)
-        save_metadata(data)
+        save_metadata(data, empirical_test_mode)
         raise HTTPException(status_code=404, detail="File missing")
 
     touch_avatar_access(item, path)
-    save_metadata(data)
+    save_metadata(data, empirical_test_mode)
 
     return FileResponse(path, media_type="model/gltf-binary", filename=path.name)
 
 
 @app.delete("/avatars/{avatar_id}")
-def delete_avatar(avatar_id: str) -> Dict[str, Any]:
-    data = load_metadata()
+def delete_avatar(avatar_id: str, empirical_test_mode: bool = False) -> Dict[str, Any]:
+    data = load_metadata(empirical_test_mode)
     item = get_avatar_by_id(data, avatar_id)
     if not item:
         raise HTTPException(status_code=404, detail="Avatar not found")
 
     file_path = Path(item.get("file_path", ""))
     remove_avatar_entry(data, avatar_id)
-    save_metadata(data)
+    save_metadata(data, empirical_test_mode)
 
     if file_path.exists():
         file_path.unlink(missing_ok=True)

@@ -96,31 +96,11 @@ if [[ "$RUNTIME_USER" != "root" ]] && id -u "$RUNTIME_USER" >/dev/null 2>&1; the
   chown "$RUNTIME_USER:$update_group" "$UPDATE_DIR" || true
 fi
 
-ALL_UNITS=(
-  soulframe-whisper.service
-  soulframe-rag.service
-  soulframe-avatar.service
-  soulframe-tts.service
-  soulframe-ollama.service
-)
-
 sf_all() {
   local action="$1"
   case "$action" in
-    start)
-      systemctl start soulframe.target
-      systemctl start caddy
-      ;;
-    stop)
-      systemctl stop "${ALL_UNITS[@]}"
-      systemctl stop caddy
-      ;;
-    restart)
-      systemctl restart "${ALL_UNITS[@]}"
-      systemctl restart caddy
-      ;;
-    status)
-      systemctl status "${ALL_UNITS[@]}" caddy --no-pager
+    start|stop|restart|status)
+      sfctl "$action" all
       ;;
     *)
       echo "[ERR] Azione non supportata: $action"
@@ -237,7 +217,7 @@ configure_rag_log_dir() {
 
   read -r -p "Riavviare i servizi ora? [s/N]: " yn
   if is_yes "$yn"; then
-    sf_all restart
+    sfctl restart all
   fi
 }
 
@@ -276,6 +256,87 @@ load_backup_paths() {
   )
 }
 
+backup_type_label() {
+  local path="$1"
+  case "$path" in
+    "$INSTALL_DIR"/webgl_backup_*)
+      echo "build"
+      ;;
+    "$BACKUPS_DIR"/backend_update_*)
+      echo "backend/setup"
+      ;;
+    *)
+      echo "sconosciuto"
+      ;;
+  esac
+}
+
+backup_target_label() {
+  local path="$1"
+  case "$(backup_type_label "$path")" in
+    build)
+      echo "$BUILD_DIR"
+      ;;
+    backend/setup)
+      echo "$INSTALL_DIR"
+      ;;
+    *)
+      echo "target sconosciuto"
+      ;;
+  esac
+}
+
+backup_size_label() {
+  local path="$1"
+  local size=""
+
+  size="$(du -sh "$path" 2>/dev/null | awk '{print $1}' || true)"
+  if [[ -z "$size" ]]; then
+    size="?"
+  fi
+  echo "$size"
+}
+
+print_backup_catalog() {
+  local count="${#BACKUP_PATHS[@]}"
+  local i path label size
+
+  if [[ "$count" -eq 0 ]]; then
+    echo "[INFO] Nessun backup presente."
+    return 1
+  fi
+
+  echo "[CATALOGO BACKUP]"
+  for i in "${!BACKUP_PATHS[@]}"; do
+    path="${BACKUP_PATHS[$i]}"
+    label="$(backup_type_label "$path")"
+    size="$(backup_size_label "$path")"
+    printf '[%d] [%s] %s (%s)\n' "$((i + 1))" "$label" "$path" "$size"
+  done
+}
+
+select_backup_from_catalog() {
+  local prompt="${1:-Numero backup: }"
+  local count="${#BACKUP_PATHS[@]}"
+  local idx=""
+
+  if [[ "$count" -eq 0 ]]; then
+    echo "[INFO] Nessun backup disponibile."
+    return 1
+  fi
+
+  echo
+  print_backup_catalog || return 1
+  read -r -p "$prompt" idx
+  if ! [[ "$idx" =~ ^[0-9]+$ ]] || (( idx < 1 || idx > count )); then
+    echo "[INFO] Indice non valido."
+    return 1
+  fi
+
+  SELECTED_BACKUP_PATH="${BACKUP_PATHS[$((idx - 1))]}"
+  return 0
+}
+
 delete_backup_path() {
   local target="$1"
   if ! is_managed_backup_path "$target"; then
@@ -290,6 +351,148 @@ delete_backup_path() {
   echo "[OK] Eliminato backup: $target"
 }
 
+restore_build_backup() {
+  local backup_path="$1"
+  local safety_backup="$2"
+
+  mkdir -p "$BUILD_DIR" || return 1
+  mkdir -p "$safety_backup" || return 1
+  if [[ -n "$(ls -A "$BUILD_DIR" 2>/dev/null || true)" ]]; then
+    cp -a "$BUILD_DIR"/. "$safety_backup"/ || return 1
+  fi
+
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$backup_path"/ "$BUILD_DIR"/ || return 1
+  else
+    find "$BUILD_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + || return 1
+    cp -a "$backup_path"/. "$BUILD_DIR"/ || return 1
+  fi
+
+  echo "[OK] Build ripristinata in: $BUILD_DIR"
+  echo "[INFO] Backup di sicurezza creato: $safety_backup"
+}
+
+restore_backend_backup() {
+  local backup_path="$1"
+  local safety_backup="$2"
+  local restored_setup_script=0
+  local restored_admin_script=0
+  local found_any=0
+  local src_file=""
+  local rel=""
+  local target_file=""
+  local safety_file=""
+  local base_name=""
+
+  mkdir -p "$safety_backup" || return 1
+
+  while IFS= read -r -d '' src_file; do
+    found_any=1
+    rel="${src_file#"$backup_path"/}"
+    target_file="$INSTALL_DIR/$rel"
+    safety_file="$safety_backup/$rel"
+
+    mkdir -p "$(dirname "$safety_file")" || return 1
+    if [[ -f "$target_file" ]]; then
+      cp -a "$target_file" "$safety_file" || return 1
+    fi
+
+    mkdir -p "$(dirname "$target_file")" || return 1
+    cp -a "$src_file" "$target_file" || return 1
+
+    case "$target_file" in
+      *.sh|*.py)
+        normalize_lf_file "$target_file"
+        ;;
+    esac
+
+    base_name="$(basename "$src_file")"
+    case "$base_name" in
+      setup_soulframe_ubuntu.sh)
+        restored_setup_script=1
+        ;;
+      sf_admin_ubuntu.sh)
+        restored_admin_script=1
+        ;;
+    esac
+  done < <(find "$backup_path" -type f -print0 2>/dev/null)
+
+  if [[ "$found_any" -eq 0 ]]; then
+    echo "[ERR] Backup backend vuoto o non valido: $backup_path"
+    return 1
+  fi
+
+  if [[ "$restored_setup_script" -eq 1 || "$restored_admin_script" -eq 1 ]]; then
+    if [[ -f "$SETUP_DIR/sf_admin_ubuntu.sh" ]]; then
+      install -m 755 "$SETUP_DIR/sf_admin_ubuntu.sh" /usr/local/bin/sfadmin || return 1
+      normalize_lf_file /usr/local/bin/sfadmin
+      echo "[INFO] sfadmin reinstallato in /usr/local/bin/sfadmin"
+    fi
+
+    echo "[INFO] Rigenero helper e unit con setup (SKIP_OLLAMA_PULL=1)..."
+    (
+      cd "$SETUP_DIR" &&
+      SKIP_OLLAMA_PULL=1 ./setup_soulframe_ubuntu.sh
+    ) || return 1
+  fi
+
+  echo "[OK] Backend/setup ripristinato in: $INSTALL_DIR"
+  echo "[INFO] Backup di sicurezza creato: $safety_backup"
+}
+
+restore_backup_path() {
+  local backup_path="$1"
+  local label=""
+  local restore_target=""
+  local safety_backup=""
+
+  if ! is_managed_backup_path "$backup_path"; then
+    echo "[ERR] Backup non gestito: $backup_path"
+    return 1
+  fi
+
+  label="$(backup_type_label "$backup_path")"
+  restore_target="$(backup_target_label "$backup_path")"
+
+  echo
+  echo "--------- Ripristino Backup ---------"
+  echo "Tipo: $label"
+  echo "Origine: $backup_path"
+  echo "Target: $restore_target"
+  read -r -p "Confermi ripristino? [s/N]: " yn
+  if ! is_yes "$yn"; then
+    echo "[INFO] Ripristino annullato."
+    return 0
+  fi
+
+  echo "[INFO] Stop servizi..."
+  sfctl stop all || return 1
+
+  case "$label" in
+    build)
+      safety_backup="$(dirname "$BUILD_DIR")/webgl_backup_$(date +%Y%m%d_%H%M%S)"
+      if ! restore_build_backup "$backup_path" "$safety_backup"; then
+        echo "[ERR] Ripristino build fallito. Backup di sicurezza: $safety_backup"
+        return 1
+      fi
+      ;;
+    backend/setup)
+      safety_backup="$BACKUPS_DIR/backend_update_$(date +%Y%m%d_%H%M%S)"
+      if ! restore_backend_backup "$backup_path" "$safety_backup"; then
+        echo "[ERR] Ripristino backend/setup fallito. Backup di sicurezza: $safety_backup"
+        return 1
+      fi
+      ;;
+    *)
+      echo "[ERR] Tipo backup non supportato: $label"
+      return 1
+      ;;
+  esac
+
+  echo "[INFO] Riavvio servizi..."
+  sfctl restart all || return 1
+}
+
 manage_backups() {
   while true; do
     load_backup_paths
@@ -301,42 +504,49 @@ manage_backups() {
     echo "Totale backup trovati: $count"
 
     if [[ "$count" -gt 0 ]]; then
-      du -sh "${BACKUP_PATHS[@]}" 2>/dev/null || true
+      print_backup_catalog || true
     else
       echo "[INFO] Nessun backup presente."
     fi
 
     echo
-    echo "[1] Elimina un backup specifico"
-    echo "[2] Elimina tutti i backup"
-    echo "[3] Mantieni solo gli ultimi N backup"
+    echo "[1] Ripristina un backup"
+    echo "[2] Elimina un backup specifico"
+    echo "[3] Elimina tutti i backup"
+    echo "[4] Mantieni solo gli ultimi N backup"
     echo "[0] Indietro"
     read -r -p "> " choice
 
     case "$choice" in
       1)
         if [[ "$count" -eq 0 ]]; then
+          echo "[INFO] Nessun backup da ripristinare."
+          continue
+        fi
+        if ! select_backup_from_catalog "Numero backup da ripristinare: "; then
+          continue
+        fi
+        if ! restore_backup_path "$SELECTED_BACKUP_PATH"; then
+          echo "[WARN] Ripristino non completato."
+        fi
+        ;;
+      2)
+        if [[ "$count" -eq 0 ]]; then
           echo "[INFO] Nessun backup da eliminare."
           continue
         fi
-        echo
-        for i in "${!BACKUP_PATHS[@]}"; do
-          printf '[%d] %s\n' "$((i + 1))" "${BACKUP_PATHS[$i]}"
-        done
-        read -r -p "Numero backup da eliminare: " idx
-        if ! [[ "$idx" =~ ^[0-9]+$ ]] || (( idx < 1 || idx > count )); then
-          echo "[INFO] Indice non valido."
+        if ! select_backup_from_catalog "Numero backup da eliminare: "; then
           continue
         fi
-        local target="${BACKUP_PATHS[$((idx - 1))]}"
-        read -r -p "Confermi eliminazione? [s/N]: " yn
+        local target="$SELECTED_BACKUP_PATH"
+        read -r -p "Confermi eliminazione del backup selezionato? [s/N]: " yn
         if is_yes "$yn"; then
           delete_backup_path "$target"
         else
           echo "[INFO] Operazione annullata."
         fi
         ;;
-      2)
+      3)
         if [[ "$count" -eq 0 ]]; then
           echo "[INFO] Nessun backup da eliminare."
           continue
@@ -350,7 +560,7 @@ manage_backups() {
           delete_backup_path "$target"
         done
         ;;
-      3)
+      4)
         if [[ "$count" -eq 0 ]]; then
           echo "[INFO] Nessun backup presente."
           continue
@@ -724,7 +934,7 @@ update_build() {
   if [[ "$ask_restart" == "1" ]]; then
     read -r -p "Riavviare i servizi ora? [s/N]: " yn
     if is_yes "$yn"; then
-      sf_all start
+      sfctl restart all
     fi
   fi
 }
@@ -866,8 +1076,7 @@ update_backend() {
   if [[ "$ask_restart" == "1" ]]; then
     read -r -p "Riavviare i servizi ora? [s/N]: " yn
     if is_yes "$yn"; then
-      systemctl daemon-reload
-      sf_all start
+      sfctl restart all
     fi
   fi
 }
@@ -959,13 +1168,11 @@ update_all() {
 
   if [[ "$force_all" -eq 1 ]]; then
     echo "[INFO] Riavvio servizi automatico (modalità ALL)..."
-    systemctl daemon-reload
-    sf_all start
+    sfctl restart all
   else
     read -r -p "Riavviare i servizi ora? [s/N]: " yn
     if is_yes "$yn"; then
-      systemctl daemon-reload
-      sf_all start
+      sfctl restart all
     fi
   fi
 }
@@ -992,7 +1199,7 @@ edit_params() {
 
   read -r -p "Riavviare i servizi ora? [s/N]: " yn
   if is_yes "$yn"; then
-    sf_all restart
+    sfctl restart all
   fi
 }
 
@@ -1015,10 +1222,10 @@ while true; do
 
   case "$choice" in
     1) update_all ;;
-    2) sf_all stop ;;
-    3) sf_all restart ;;
+    2) sfctl stop all ;;
+    3) sfctl restart all ;;
     4) edit_params ;;
-    5) sf_all start ;;
+    5) sfctl start all ;;
     6) shutdown_vm ;;
     7) manage_backups ;;
     8) configure_rag_log_dir ;;

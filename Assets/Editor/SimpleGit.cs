@@ -18,20 +18,20 @@ public class GitWindow : EditorWindow
     const string DIR_ACTIVE = ".git";
     const string PREF_MODE = "VCS_Storage_Slot";
 
-    [MenuItem("Github/Quick Push")]
+    [MenuItem("SOULFRAME/GitHub/Quick Push")]
     public static void QuickPush()
     {
         PerformGitPush("update");
     }
 
-    [MenuItem("Github/Quick Pull")]
+    [MenuItem("SOULFRAME/GitHub/Quick Pull")]
     public static void QuickPull()
     {
         UnityEngine.Debug.Log("[VCS] Avvio Quick Pull...");
         RunCmd("/C git pull");
     }
 
-    [MenuItem("Github/Dashboard")]
+    [MenuItem("SOULFRAME/GitHub/Dashboard")]
     public static void ShowWindow()
     {
         GetWindow<GitWindow>("VCS Dashboard");

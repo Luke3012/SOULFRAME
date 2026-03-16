@@ -124,6 +124,11 @@ public class UINavigator : MonoBehaviour
             return;
         }
 
+        if (uiFlowController != null && uiFlowController.IsMainModeExitRestoreInProgress)
+        {
+            return;
+        }
+
         // Qui gestiamo Indietro/Uscita prima del controllo elementi, cosi' Backspace funziona anche senza elementi selezionabili.
         if (HandleBack())
         {
@@ -164,6 +169,11 @@ public class UINavigator : MonoBehaviour
         if (!submitPressed)
         {
             return false;
+        }
+
+        if (uiFlowController != null && uiFlowController.ConsumeExitConfirmForNavInput())
+        {
+            return true;
         }
 
         var selectable = GetCurrentSelectable();
@@ -299,6 +309,11 @@ public class UINavigator : MonoBehaviour
         }
 
         if (direction == 0)
+        {
+            return;
+        }
+
+        if (uiFlowController != null && uiFlowController.ConsumeExitConfirmForNavInput())
         {
             return;
         }

@@ -135,7 +135,7 @@ Menu:
 - `[4]` Modifica parametri (`/etc/soulframe/soulframe.env`, `/etc/soulframe/idle.env`)
 - `[5]` Avvia server
 - `[6]` Spegni VM (shutdown macchina)
-- `[7]` Gestisci backup (elimina singolo/tutti o mantieni ultimi `N`)
+- `[7]` Gestisci backup (ripristina, elimina singolo/tutti o mantieni ultimi `N`)
 - `[8]` Configura path log RAG (`RAG_LOG_DIR`)
 - `[0]` Esci
 
@@ -191,6 +191,44 @@ La pulizia:
 
 - chiede sempre conferma esplicita (`[s/N]`);
 - elimina solo file dentro `UPDATE_DIR`.
+
+### Gestione Backup (opzione `[7]`)
+
+`Gestione Backup` mostra un catalogo unico ordinato dal più recente per:
+
+- `webgl_backup_*` (snapshot della build WebGL)
+- `backend_update_*` (snapshot backend/setup)
+
+Per ogni voce, `sfadmin` mostra:
+
+- tipo backup
+- path completo
+- dimensione leggibile quando disponibile
+
+Azioni disponibili nel submenu:
+
+- ripristino di un backup selezionato
+- eliminazione di un backup selezionato
+- eliminazione di tutti i backup
+- mantenimento dei soli ultimi `N` backup
+
+Comportamento del ripristino:
+
+- selezionando un backup `webgl_backup_*` viene ripristinata solo `/opt/soulframe/webgl`
+- selezionando un backup `backend_update_*` vengono ripristinati solo i file contenuti in quello snapshot sotto `/opt/soulframe`
+- prima del ripristino, `sfadmin` ferma lo stack con `sfctl stop all`
+- prima di sovrascrivere file o build, `sfadmin` crea un backup di sicurezza usando le stesse convenzioni di naming
+- dopo un ripristino riuscito, `sfadmin` riavvia automaticamente lo stack con `sfctl restart all`
+- se lo snapshot backend ripristinato contiene `setup_soulframe_ubuntu.sh` e/o `sf_admin_ubuntu.sh`, `sfadmin` reinstalla l'helper e riesegue:
+
+```bash
+cd "$SETUP_DIR" && SKIP_OLLAMA_PULL=1 ./setup_soulframe_ubuntu.sh
+```
+
+Nota sullo scope del ripristino:
+
+- il restore avviene sempre a partire da un singolo backup selezionato
+- `backend_update_*` ripristina solo i file presenti nello snapshot; non elimina file più nuovi/non inclusi nel backup
 
 ## Idle auto-shutdown
 

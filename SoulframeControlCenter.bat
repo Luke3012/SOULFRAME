@@ -47,6 +47,7 @@ call :PauseScreen
 goto MAIN_MENU
 
 :MENU_SERVER_START
+cls
 call :RunAiServices 1
 goto END
 
@@ -56,10 +57,10 @@ goto END
 
 :MENU_SERVER_RESTART
 call :RunAiServices 3
-call :PauseScreen
-goto MAIN_MENU
+goto END
 
 :MENU_SERVER_DEBUG
+cls
 call :RunAiServices debug
 goto END
 
@@ -162,9 +163,9 @@ echo  Stream attivo: %STATUS_LABEL%
 echo  Slot A: %A_STATUS%   ^|   Slot B: %B_STATUS%
 echo ------------------------------------------------------------
 echo  SERVER AI/WEBGL
-echo   [s] Avvia server
+echo   [s] Avvia server (console mode)
 echo   [c] Chiudi server
-echo   [r] Riavvia server
+echo   [r] Restart server (background mode)
 echo ------------------------------------------------------------
 echo  GIT E DEPLOY
 echo  [1]  Carica stream A (STANDARD)
@@ -283,7 +284,7 @@ if not exist "%AI_SERVICES_CMD%" (
 )
 
 if "%~1"=="1" (
-    echo [INFO] Avvio servizi con:
+    echo [INFO] Avvio servizi in console mode con:
     echo        "%AI_SERVICES_CMD%" 1
 )
 if "%~1"=="2" (
@@ -291,11 +292,11 @@ if "%~1"=="2" (
     echo        "%AI_SERVICES_CMD%" 2
 )
 if "%~1"=="3" (
-    echo [INFO] Riavvio servizi con:
+    echo [INFO] Restart servizi in background mode con:
     echo        "%AI_SERVICES_CMD%" 3
 )
 if /I "%~1"=="debug" (
-    echo [INFO] Avvio servizi debug con:
+    echo [INFO] Avvio servizi debug in console mode con:
     echo        "%AI_SERVICES_CMD%" debug
 )
 

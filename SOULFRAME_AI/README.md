@@ -141,6 +141,14 @@ uvicorn avatar_asset_server:app --host 127.0.0.1 --port 8003
 - **Ollama**: http://127.0.0.1:11434
 - **Build Server**: http://localhost:8000
 
+## Validation and regression tools
+
+The `tools/` folder contains the PowerShell test batteries used to harden the small `llama3:8b-instruct-q4_K_M` setup against the issues that matter in this project: missed retrieval, weak multi-source recap, identity drift, and persona inconsistency.
+
+- Overview and usage: `tools/README.md`
+- Main scripts: `run_extreme_stress_test.ps1`, `run_text_coherence_identity_test.ps1`, `run_complex_deficit_case_study.ps1`
+- Typical output: Markdown reports written to Desktop with pass/fail summaries and detailed examples
+
 ## Production Endpoints (Linux + Caddy)
 
 If the WebGL frontend runs behind Caddy on a public domain, use proxy paths:
@@ -242,6 +250,20 @@ curl -X POST http://127.0.0.1:8002/chat \
 Logs are saved in `backend/log/<avatar_id_sanitized>/<session_id>.log`.
 Technical flows (e.g., `setup_voice_generator`) are not logged as MainMode conversations.
 
+### Empirical test mode
+
+The frontend can enable an empirical test session by typing `T-E-S-T` in `MainMenu`.
+When that happens, requests sent to backend services include `empirical_test_mode=true`.
+
+On the backend this keeps empirical runs isolated from normal runs:
+
+- RAG memory uses `backend/empirical_test/rag_store/`
+- RAG conversation logs use `backend/empirical_test/log/` by default, or `EMPIRICAL_RAG_LOG_DIR` if configured
+- TTS avatar voices and wait phrases use the empirical voice root
+- Avatar Asset Server uses `backend/empirical_test/avatar_store/`
+
+Conversation logging still works in the same way as standard MainMode sessions: one session file per conversation, but written under the empirical storage area.
+
 ### TTS (Text-to-Speech)
 
 ```python
@@ -307,114 +329,115 @@ set BUILD_DIR=C:\Path\To\Build
 ai_services.cmd 1
 ```
 
-Per cambiare i parametri su Windows modifica direttamente `ai_services.cmd`.
+To change Windows-side parameters, edit `ai_services.cmd` directly.
 
-## Note
+## Notes
 
-- **Primo avvio TTS**: il download del modello XTTS v2 richiede ~2GB e può richiedere alcuni minuti
-- **GPU**: TTS utilizzerà automaticamente CUDA se disponibile (molto più veloce)
-- **OCR**: configurato per italiano+inglese, modificabile con env `RAG_OCR_LANG`
-- **Memoria RAG**: i database per avatar sono salvati in `backend/rag_store/`
-- **Log conversazioni**: salvati per avatar in `backend/log/` (una sessione MainMode = un file `.log`)
+- **First TTS startup**: downloading the XTTS v2 model requires about 2GB and may take a few minutes
+- **GPU**: TTS will automatically use CUDA if available, which is much faster
+- **OCR**: configured for Italian + English by default, adjustable with the `RAG_OCR_LANG` environment variable
+- **RAG memory**: per-avatar databases are stored in `backend/rag_store/`
+- **Conversation logs**: stored per avatar in `backend/log/` (one MainMode session = one `.log` file)
+- **Empirical test logs**: stored separately under the empirical storage root, so guided test runs do not pollute standard avatar history
 
-### Warmup Coqui al boot
+### Coqui warmup at boot
 
-Dopo l'avvio del servizio TTS, il backend esegue una inizializzazione/warmup del modello Coqui
-usando una frase breve (`"ciao"`). Questa e' in genere la fase piu lenta del primo startup.
+After the TTS service starts, the backend performs a short Coqui warmup
+using a brief phrase (`"ciao"`). This is usually the slowest phase of the first startup.
 
-Nel frontend Unity, durante questa fase viene mostrato lo stato di inizializzazione (loading panel
-e animazioni dedicate), e l'interfaccia completa viene resa disponibile quando il TTS risulta pronto.
+In the Unity frontend, this phase is represented by a dedicated initialization state
+(loading panel and related animations), and the full interface becomes available only when TTS is ready.
 
-### Warmup RAG/Ollama al boot
+### RAG/Ollama warmup at boot
 
-All'avvio del servizio RAG, `rag_server` esegue un warmup best-effort di Ollama:
+When the RAG service starts, `rag_server` performs a best-effort warmup of Ollama:
 
-- step embedding su `/api/embed` (modello `EMBED_MODEL`);
-- step chat su `/api/chat` (modello `CHAT_MODEL`, con `num_predict` ridotto).
+- embedding step on `/api/embed` (model `EMBED_MODEL`)
+- chat step on `/api/chat` (model `CHAT_MODEL`, with reduced `num_predict`)
 
-Se Ollama non e' raggiungibile in quel momento, il warmup viene loggato come warning ma
-`rag_server` resta attivo (nessun crash di startup).
+If Ollama is not reachable at that moment, the warmup is logged as a warning but
+`rag_server` stays up and does not crash during startup.
 
-Nel bootstrap Unity viene atteso anche `RAG /health` (oltre a `TTS /health`) prima di
-considerare il sistema completamente pronto.
+During Unity bootstrap, `RAG /health` is also awaited, together with `TTS /health`,
+before the system is considered fully ready.
 
 ## Troubleshooting
 
-### "Ollama non raggiungibile"
-Verifica che Ollama sia avviato: `ollama serve`
+### "Ollama not reachable"
+Verify that Ollama is running: `ollama serve`
 
-### "OCR non disponibile"
-Installa Tesseract e verifica il percorso in `rag_server.py` (`TESSERACT_CMD`)
+### "OCR not available"
+Install Tesseract and verify the path in `rag_server.py` (`TESSERACT_CMD`)
 
 ### "CUDA out of memory"
-Usa CPU per TTS: `set COQUI_TTS_DEVICE=cpu` prima di avviare
+Use CPU for TTS: `set COQUI_TTS_DEVICE=cpu` before starting the service
 
-### Conflitto porte
-Modifica le porte in `ai_services.cmd` o termina i processi esistenti
+### Port conflict
+Change the ports in `ai_services.cmd` or stop the existing processes
 
-### "Errore TTS: HTTP 500" su `/api/tts/tts_stream`
+### "TTS error: HTTP 500" on `/api/tts/tts_stream`
 
-1. Verifica stato servizio:
+1. Verify the service status:
    ```bash
    sudo systemctl status soulframe-tts --no-pager
    sudo journalctl -u soulframe-tts -n 200 --no-pager
    ```
-2. Verifica presenza voce default:
+2. Check that the default voice file exists:
    ```bash
    ls -lh /opt/soulframe/backend/voices/default.wav
    ```
-3. Se nei log trovi:
-   `ImportError: cannot import name 'isin_mps_friendly' from transformers.pytorch_utils`
-   forza il set compatibile:
+3. If the logs contain:
+  `ImportError: cannot import name 'isin_mps_friendly' from transformers.pytorch_utils`
+  force the compatible package set:
    ```bash
    /opt/soulframe/.venv/bin/pip install --upgrade "transformers==4.57.1" "tokenizers==0.22.1"
    sudo systemctl restart soulframe-tts
    ```
-4. Se nei log trovi:
-   `From Pytorch 2.9, the torchcodec library is required for audio IO`
-   installa codec:
+4. If the logs contain:
+  `From Pytorch 2.9, the torchcodec library is required for audio IO`
+  install the required codec packages:
    ```bash
    sudo /opt/soulframe/.venv/bin/pip install --upgrade "coqui-tts[codec]==0.27.5" "torchcodec>=0.8.0"
    sudo systemctl restart soulframe-tts
    ```
-5. Se nei log trovi prompt licenza Coqui con `EOFError: EOF when reading a line`, imposta:
+5. If the logs show the Coqui license prompt with `EOFError: EOF when reading a line`, set:
    ```bash
    echo 'COQUI_TOS_AGREED=1' | sudo tee -a /etc/soulframe/soulframe.env
    sudo systemctl restart soulframe-tts
    ```
-   (Usa questa opzione solo se accetti i termini CPML/licenza commerciale Coqui.)
-6. Se `pip` fallisce con `Permission denied` su `/opt/soulframe/.venv/...`, usa `sudo` davanti al comando `pip`.
-7. Aggiorna `coqui_tts_server.py` all'ultima versione e riavvia il servizio.
+  (Use this only if you accept the CPML / commercial Coqui license terms.)
+6. If `pip` fails with `Permission denied` on `/opt/soulframe/.venv/...`, run the `pip` command with `sudo`.
+7. Update `coqui_tts_server.py` to the latest version and restart the service.
 
 ### "wait_phrase ... 404 Not Found"
 
-Le versioni recenti del backend provano a rigenerare automaticamente la frase di attesa. Se persiste:
-1. Verifica endpoint:
+Recent backend versions try to regenerate the wait phrase automatically. If the issue persists:
+1. Check the endpoint:
    ```bash
-   curl -I "https://<dominio>/api/tts/wait_phrase?avatar_id=LOCAL_model1&name=un_secondo"
+  curl -I "https://<domain>/api/tts/wait_phrase?avatar_id=LOCAL_model1&name=un_secondo"
    ```
-2. Genera esplicitamente le wait phrases:
+2. Explicitly generate the wait phrases:
    ```bash
-   curl -X POST https://<dominio>/api/tts/generate_wait_phrases \
+   curl -X POST https://<domain>/api/tts/generate_wait_phrases \
      -F "avatar_id=LOCAL_model1" -F "language=it"
    ```
-3. Riavvia `soulframe-tts`.
+3. Restart `soulframe-tts`.
 
-### Setup voce (frase lunga)
+### Voice setup (long phrase)
 
-Il flusso recente usa una frase di configurazione più ricca (target >= 50 parole) per migliorare la qualità del profilo vocale locale.
+The current flow uses a richer setup sentence (target >= 50 words) to improve the quality of the local voice profile.
 
 ### "Download glb failed: 404 Not Found"
 
-Se il frontend riceve 404 su `/avatars/{id}/model.glb`:
+If the frontend receives a 404 on `/avatars/{id}/model.glb`:
 
-1. Verifica health/list del servizio avatar:
+1. Check the health/list endpoints of the avatar service:
    ```bash
    curl http://127.0.0.1:8003/health
    curl http://127.0.0.1:8003/avatars/list
    ```
-2. Aggiorna `avatar_asset_server.py` all'ultima versione e riavvia il servizio:
+2. Update `avatar_asset_server.py` to the latest version and restart the service:
    ```bash
    sudo systemctl restart soulframe-avatar.service
    ```
-3. In produzione dietro Caddy verifica di chiamare `/api/avatar/...` e non `127.0.0.1` dal browser.
+3. In production behind Caddy, make sure the browser calls `/api/avatar/...` and not `127.0.0.1` directly.
