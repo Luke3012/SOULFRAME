@@ -4,7 +4,7 @@
 
 ---
 
-SOULFRAME is a WebGL platform with interactive avatars and AI backend.
+SOULFRAME is a cross-platform experience for interactive avatars with AI backend, currently maintained for both WebGL and Windows.
 The idea is simple: pick or create an avatar, speak, the system understands your voice, reasons with contextual memory, and responds in audio.
 
 ## What it does
@@ -41,6 +41,7 @@ The idea is simple: pick or create an avatar, speak, the system understands your
   - `-executeMethod SoulframeBuildMenu.BuildWebGLCli`
   - `-executeMethod SoulframeBuildMenu.BuildWindows64Cli`
 - The build menu switches the active build target before building to avoid editor/player symbol mismatch issues.
+- WebGL builds are emitted with clean build cache, hashed filenames, and browser data caching disabled to reduce stale-cache/runtime mismatch issues between consecutive builds.
 
 ### 2) Automated setup on Ubuntu
 
@@ -168,9 +169,19 @@ Unity's lip sync in WebGL has known limitations compared to Play Mode/Desktop ex
 
 - WebGL reply rendering is configured without word-by-word text flow.
 - TTS stream requests include a client platform flag so backend behavior can differ between WebGL and native builds.
+- File/image memory ingestion uses the native OS picker on Windows and a dedicated browser file picker bridge on WebGL.
 - On Windows, the scene uses a dedicated runtime scaler (`WindowsResolutionScaler`) for 3D rendering performance tuning:
   - 3D render scale is configurable from Inspector.
   - UI/canvas remains full-resolution.
+
+## Local Frontend Modes on Windows
+
+When running locally through `SOULFRAME_AI/ai_services.cmd`, the frontend can be started in two modes:
+
+- WebGL: starts the static build server from `Build/` and opens the browser on `http://127.0.0.1:8000`
+- Windows: launches `Build_Windows64/SOULFRAME.exe`
+
+The selected mode is persisted in `SOULFRAME_AI/ai_services.mode.cfg` and can be changed from the script menu.
 
 ## Avaturn on Desktop (Windows)
 

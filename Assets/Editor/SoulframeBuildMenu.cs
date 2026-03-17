@@ -38,7 +38,8 @@ public static class SoulframeBuildMenu
 
     private static void BuildWebGL()
     {
-        BuildForTarget(BuildTarget.WebGL, WebGLOutputPath, BuildOptions.None);
+        ConfigureWebGLBuildSafety();
+        BuildForTarget(BuildTarget.WebGL, WebGLOutputPath, BuildOptions.CleanBuildCache);
     }
 
     private static void BuildWindows64()
@@ -122,6 +123,17 @@ public static class SoulframeBuildMenu
         {
             throw new Exception($"[Build] Impossibile cambiare Active Build Target a {target}.");
         }
+    }
+
+    private static void ConfigureWebGLBuildSafety()
+    {
+        // Evita mix di asset/metadata tra build diverse nel browser.
+        // I nomi hashati riducono il rischio di file JS/WASM/DATA incoerenti.
+        PlayerSettings.WebGL.nameFilesAsHashes = true;
+
+        // Disabilitiamo la data caching browser-side per prevenire mismatch di layout
+        // quando le classi serializzate cambiano tra build ravvicinate.
+        PlayerSettings.WebGL.dataCaching = false;
     }
 }
 #endif

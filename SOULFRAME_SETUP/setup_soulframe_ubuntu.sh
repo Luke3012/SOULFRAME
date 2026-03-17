@@ -710,6 +710,7 @@ cat <<'UNIT' > /etc/systemd/system/soulframe-rag.service
 Description=SOULFRAME RAG Server
 After=network.target ollama.service soulframe-ollama.service
 Requires=ollama.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -719,6 +720,8 @@ ExecStart=/opt/soulframe/.venv/bin/uvicorn rag_server:app --host 127.0.0.1 --por
 Restart=always
 RestartSec=5
 TimeoutStartSec=180
+TimeoutStopSec=30
+KillMode=mixed
 
 [Install]
 WantedBy=soulframe.target

@@ -89,17 +89,21 @@ ai_services.cmd 1
 ```
 
 Il menu ti permette di:
-- **[1] Start servizi** - avvia Ollama, Whisper, RAG, TTS e Build del Progetto
+- **[1] Start servizi** - avvia Ollama, Whisper, RAG, TTS e il frontend configurato
 - **[2] Stop servizi** - termina tutti i processi
 - **[3] Restart servizi** - stop + start in sequenza
+- **[4] Debug console** - avvia i servizi backend in modalita' console/debug
+- **[5] Configura frontend default** - scegli WebGL o eseguibile Windows
 
 **Cosa fa ai_services.cmd:**
 - Rileva automaticamente l'ambiente virtuale Python (`backend\venv` o `backend\.venv`)
 - Verifica se le porte sono già in uso (evita duplicati)
-- Avvia ogni servizio in una finestra separata minimizzata
+- Puo' lavorare sia in console mode sia in background mode a seconda dell'azione scelta
 - Configura le variabili d'ambiente necessarie per Whisper/RAG/TTS
 - Fornisce link diretti alle UI Swagger (`/docs`)
-- Avvia il Build Server in `..\Build` (o `BUILD_DIR` se impostata) e apre `http://localhost:8000`
+- In modalita' WebGL avvia il Build Server in `..\Build` (o `SOULFRAME_WEBGL_BUILD_DIR`) e apre `http://localhost:8000`
+- In modalita' Windows lancia `..\Build_Windows64\SOULFRAME.exe` (o `SOULFRAME_WINDOWS_EXE`)
+- Salva la modalita' frontend scelta in `ai_services.mode.cfg`
 
 ### Metodo Manuale
 
@@ -138,6 +142,11 @@ uvicorn avatar_asset_server:app --host 127.0.0.1 --port 8003
 - **Avatar Asset**: http://127.0.0.1:8003/docs
 - **Ollama**: http://127.0.0.1:11434
 - **Build Server**: http://localhost:8000
+
+Note:
+
+- L'endpoint Build Server vale solo quando il frontend selezionato e' WebGL.
+- In modalita' Windows viene avviato l'eseguibile nativo invece della build browser.
 
 ## Strumenti di validazione e regressione
 
@@ -320,14 +329,19 @@ curl http://127.0.0.1:8003/avatars/list
 
 ## Build Server
 
-Se non esiste `..\Build`, imposta la variabile ambiente `BUILD_DIR` con il path completo:
+Se non esiste `..\Build`, imposta la variabile ambiente `SOULFRAME_WEBGL_BUILD_DIR` con il path completo:
 
 ```powershell
-set BUILD_DIR=C:\Path\To\Build
+set SOULFRAME_WEBGL_BUILD_DIR=C:\Path\To\Build
 ai_services.cmd 1
 ```
 
-Per cambiare i parametri su Windows modifica direttamente `ai_services.cmd`.
+Variabili equivalenti attualmente supportate da `ai_services.cmd`:
+
+- `SOULFRAME_WEBGL_BUILD_DIR` per la cartella build WebGL
+- `SOULFRAME_WINDOWS_EXE` per il path dell'eseguibile Windows
+
+Per cambiare gli altri parametri su Windows modifica direttamente `ai_services.cmd`.
 
 ## Warmup Coqui al boot
 

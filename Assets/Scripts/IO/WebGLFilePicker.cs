@@ -22,7 +22,9 @@ public class WebGLFilePicker : MonoBehaviour, IFilePickerWebGL
 
 #if UNITY_WEBGL && !UNITY_EDITOR
     private bool waiting;
+    private bool resolved;
     private FilePickResult result;
+    private float pickTimeoutSeconds = 20f;
 #endif
 
     public bool IsSupported
@@ -48,10 +50,19 @@ public class WebGLFilePicker : MonoBehaviour, IFilePickerWebGL
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
         waiting = true;
+        resolved = false;
         result = new FilePickResult();
+        float timeoutAt = Time.realtimeSinceStartup + Mathf.Max(1f, pickTimeoutSeconds);
         WebGLFilePicker_PickFile(acceptExtensions ?? string.Empty, gameObject.name, nameof(OnWebGLFilePicked));
         while (waiting)
         {
+            if (Time.realtimeSinceStartup >= timeoutAt)
+            {
+                waiting = false;
+                resolved = true;
+                Debug.LogWarning("[WebGLFilePicker] Timeout attesa selezione file. Tratto come CANCEL.");
+                break;
+            }
             yield return null;
         }
         onPicked?.Invoke(result);
@@ -64,16 +75,22 @@ public class WebGLFilePicker : MonoBehaviour, IFilePickerWebGL
 #if UNITY_WEBGL && !UNITY_EDITOR
     public void OnWebGLFilePicked(string payload)
     {
-        waiting = false;
-        result = new FilePickResult();
+        if (resolved)
+        {
+            return;
+        }
 
         if (string.IsNullOrEmpty(payload) || payload == "CANCEL")
         {
+            waiting = false;
+            resolved = true;
             return;
         }
 
         if (payload.StartsWith("ERR:"))
         {
+            waiting = false;
+            resolved = true;
             Debug.LogWarning("[WebGLFilePicker] " + payload);
             return;
         }
@@ -83,14 +100,20 @@ public class WebGLFilePicker : MonoBehaviour, IFilePickerWebGL
             var data = JsonUtility.FromJson<FilePayload>(payload);
             if (data == null || string.IsNullOrEmpty(data.data))
             {
+                waiting = false;
+                resolved = true;
                 return;
             }
 
             result.FileName = string.IsNullOrEmpty(data.name) ? "file" : data.name;
             result.Bytes = Convert.FromBase64String(data.data);
+            waiting = false;
+            resolved = true;
         }
         catch (Exception e)
         {
+            waiting = false;
+            resolved = true;
             Debug.LogWarning("[WebGLFilePicker] Parse error: " + e.Message);
         }
     }

@@ -352,7 +352,7 @@ public class AvatarManager : MonoBehaviour
 
         uiFlowController?.UpdateDebugText($"Avatar ricevuto ({avatarInfo.Gender}) - elaborazione...");
 
-#if UNITY_WEBGL || UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR || UNITY_STANDALONE_WIN
         var avatarData = new AvatarData
         {
             avatarId = avatarInfo.AvatarId,
@@ -362,7 +362,7 @@ public class AvatarManager : MonoBehaviour
             bodyId = avatarInfo.BodyId,
             gender = avatarInfo.Gender,
             source = "avaturn",
-            isWebGL = true
+            isWebGL = Application.platform == RuntimePlatform.WebGLPlayer
         };
 
         StartImportAndLoadMainWebGL(avatarData);
@@ -953,7 +953,7 @@ public class AvatarManager : MonoBehaviour
 
             uiFlowController?.NotifyMainAvatarLoadRequested();
 
-#if UNITY_WEBGL || UNITY_EDITOR
+#if UNITY_WEBGL || UNITY_EDITOR || UNITY_STANDALONE_WIN
             var avatarData = new AvatarData
             {
                 avatarId = string.IsNullOrEmpty(jsonData.avatarId) ? Guid.NewGuid().ToString() : jsonData.avatarId,
@@ -963,7 +963,7 @@ public class AvatarManager : MonoBehaviour
                 bodyId = string.IsNullOrEmpty(jsonData.bodyId) ? "default" : jsonData.bodyId,
                 gender = string.IsNullOrEmpty(jsonData.gender) ? "unknown" : jsonData.gender,
                 source = "avaturn",
-                isWebGL = true
+                isWebGL = Application.platform == RuntimePlatform.WebGLPlayer
             };
 
             StartImportAndLoadMainWebGL(avatarData);

@@ -108,6 +108,7 @@ title SOULFRAME AI Services - Console Mode
 echo.
 echo Avvio servizi in console mode...
 call :CHOOSE_FRONTEND_MODE
+set "FORCE_HIDDEN_MODE=1"
 set "CONSOLE_KIND=FULL"
 set "SERVICE_MODE=CONSOLE"
 call :RESET_HOME_SUMMARY
@@ -119,6 +120,7 @@ goto CONSOLE_LOOP
 title SOULFRAME AI Services - Debug Console
 echo.
 echo Avvio servizi AI in debug console...
+set "FORCE_HIDDEN_MODE=1"
 set "CONSOLE_KIND=DEBUG"
 set "SERVICE_MODE=CONSOLE"
 call :RESET_HOME_SUMMARY
@@ -130,6 +132,7 @@ title SOULFRAME AI Services - Background Mode
 echo.
 echo Restart servizi in background mode...
 call :CHOOSE_FRONTEND_MODE
+set "FORCE_HIDDEN_MODE="
 set "SERVICE_MODE=BACKGROUND"
 set "BACKGROUND_RESTARTING=1"
 set "CONSOLE_KIND="
@@ -154,8 +157,8 @@ if /I "%CONSOLE_CMD%"=="help" goto CONSOLE_HELP
 if /I "%CONSOLE_CMD%"=="status" goto CONSOLE_STATUS
 if /I "%CONSOLE_CMD%"=="r" goto CONSOLE_REBOOT
 if /I "%CONSOLE_CMD%"=="reboot" goto CONSOLE_REBOOT
-if /I "%CONSOLE_CMD%"=="s" goto CONSOLE_START_PAGE
-if /I "%CONSOLE_CMD%"=="start" goto CONSOLE_START_PAGE
+if /I "%CONSOLE_CMD%"=="s" call :CONSOLE_START_PAGE & goto CONSOLE_LOOP
+if /I "%CONSOLE_CMD%"=="start" call :CONSOLE_START_PAGE & goto CONSOLE_LOOP
 
 echo [WARN] Comando non riconosciuto: %CONSOLE_CMD%
 goto CONSOLE_REFRESH_PAUSE
@@ -182,7 +185,7 @@ goto CONSOLE_REFRESH_PAUSE
 :CONSOLE_START_PAGE
 if /I not "%CONSOLE_KIND%"=="FULL" (
   echo [WARN] La pagina web non e' disponibile in debug console.
-  goto CONSOLE_REFRESH
+  exit /b 0
 )
 
 if /I "%FRONTEND_MODE%"=="WEBGL" (
@@ -190,10 +193,15 @@ if /I "%FRONTEND_MODE%"=="WEBGL" (
   start "" "%URL%"
 ) else (
   call :RESOLVE_WINDOWS_EXE
-  if errorlevel 1 goto CONSOLE_REFRESH
+  if errorlevel 1 exit /b 1
   start "SOULFRAME_WINDOWS" "%RESOLVED_WINDOWS_EXE%"
 )
-goto CONSOLE_REFRESH
+
+REM Manteniamo esplicitamente la console attiva dopo il comando start.
+set "SERVICE_MODE=CONSOLE"
+set "CONSOLE_KIND=FULL"
+set "INTERNAL_CLOSE="
+exit /b 0
 
 :CONSOLE_REBOOT
 set "PREV_CONSOLE_KIND=%CONSOLE_KIND%"
@@ -206,6 +214,7 @@ if /I "%PREV_CONSOLE_KIND%"=="DEBUG" (
 )
 call :RESET_HOME_SUMMARY
 call :STOP
+set "FORCE_HIDDEN_MODE=1"
 set "SERVICE_MODE=CONSOLE"
 set "CONSOLE_KIND=%PREV_CONSOLE_KIND%"
 if /I "%CONSOLE_KIND%"=="DEBUG" (
@@ -482,7 +491,25 @@ exit /b 0
 set "SP_WORKDIR=%~1"
 set "SP_EXE=%~2"
 set "SP_ARGS=%~3"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$wd = [System.IO.Path]::GetFullPath($env:SP_WORKDIR); $exe = $env:SP_EXE; $args = $env:SP_ARGS; Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $wd -WindowStyle Hidden | Out-Null"
+if not defined SP_WORKDIR (
+  echo [ERRORE] WorkingDirectory mancante per il processo nascosto: %SP_EXE%
+  exit /b 1
+)
+if not defined SP_EXE (
+  echo [ERRORE] Executable mancante per il processo nascosto.
+  exit /b 1
+)
+set "SP_PS_WORKDIR=%SP_WORKDIR%"
+set "SP_PS_EXE=%SP_EXE%"
+set "SP_PS_ARGS=%SP_ARGS%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $wd = $env:SP_PS_WORKDIR; $exe = $env:SP_PS_EXE; $argLine = $env:SP_PS_ARGS; if ([string]::IsNullOrWhiteSpace($wd)) { throw 'SP_WORKDIR vuoto o non definito.' }; if ([string]::IsNullOrWhiteSpace($exe)) { throw 'SP_EXE vuoto o non definito.' }; $resolvedWd = [System.IO.Path]::GetFullPath($wd); if (-not (Test-Path -LiteralPath $resolvedWd -PathType Container)) { throw ('WorkingDirectory non trovata: ' + $resolvedWd) }; Start-Process -FilePath $exe -ArgumentList $argLine -WorkingDirectory $resolvedWd -WindowStyle Hidden | Out-Null"
+if errorlevel 1 (
+  echo [ERRORE] Avvio processo nascosto fallito.
+  echo         EXE: %SP_EXE%
+  echo         WD:  %SP_WORKDIR%
+  echo         ARG: %SP_ARGS%
+  exit /b 1
+)
 exit /b 0
 
 :START_WINDOW_PROCESS
@@ -568,6 +595,8 @@ if "!LISTENING!"=="1" (
 exit /b 0
 
 :START_TTS_WINDOW
+if /I "%FORCE_HIDDEN_MODE%"=="1" exit /b 0
+if defined CONSOLE_KIND exit /b 0
 if /I not "%SERVICE_MODE%"=="BACKGROUND" exit /b 0
 call :PORT_IS_LISTENING %TTS_PORT%
 if "!LISTENING!"=="1" (
@@ -605,6 +634,7 @@ echo Avvio Build Server...
 set "HOME_MSG_BUILD_1=   Avvio Build Server..."
 call :RESOLVE_BUILD_DIR
 if errorlevel 1 exit /b 1
+call :EWC_PREP
 call :PORT_IS_LISTENING %BUILD_PORT%
 if "!LISTENING!"=="1" (
   echo    Build server gia' attivo su %BUILD_PORT%
@@ -622,6 +652,7 @@ echo.
 echo Avvio Build Server...
 call :RESOLVE_BUILD_DIR
 if errorlevel 1 exit /b 1
+call :EWC_PREP
 call :PORT_IS_LISTENING %BUILD_PORT%
 if "!LISTENING!"=="1" (
   echo    Build server gia' attivo su %BUILD_PORT%
@@ -651,6 +682,45 @@ if not exist "%RESOLVED_BUILD_DIR%" (
   exit /b 1
 )
 echo    Build dir: %RESOLVED_BUILD_DIR%
+exit /b 0
+
+:EWC_PREP
+if /I not "%FRONTEND_MODE%"=="WEBGL" exit /b 0
+set "WEBGL_BUILD_DIR=%RESOLVED_BUILD_DIR%\Build"
+if not exist "%WEBGL_BUILD_DIR%\" (
+  echo [WARN] Cartella Build WebGL non trovata: %WEBGL_BUILD_DIR%
+  exit /b 0
+)
+
+call :EWC_FILE "%WEBGL_BUILD_DIR%" "*.data" "Build.data"
+call :EWC_FILE "%WEBGL_BUILD_DIR%" "*.framework.js" "Build.framework.js"
+call :EWC_FILE "%WEBGL_BUILD_DIR%" "*.wasm" "Build.wasm"
+call :EWC_FILE "%WEBGL_BUILD_DIR%" "*.loader.js" "Build.loader.js"
+exit /b 0
+
+:EWC_FILE
+set "EWC_DIR=%~1"
+set "EWC_PATTERN=%~2"
+set "EWC_TARGET=%~3"
+
+if exist "%EWC_DIR%\%EWC_TARGET%" exit /b 0
+
+set "EWC_SOURCE="
+for /f "delims=" %%F in ('dir /b /a:-d "%EWC_DIR%\%EWC_PATTERN%" 2^>nul') do (
+  if /I not "%%~nxF"=="%EWC_TARGET%" if not defined EWC_SOURCE set "EWC_SOURCE=%%~nxF"
+)
+
+if not defined EWC_SOURCE (
+  echo [WARN] Nessun file sorgente trovato per %EWC_TARGET% in %EWC_DIR%
+  exit /b 0
+)
+
+copy /Y "%EWC_DIR%\!EWC_SOURCE!" "%EWC_DIR%\%EWC_TARGET%" >nul
+if errorlevel 1 (
+  echo [WARN] Impossibile creare alias %EWC_TARGET% da !EWC_SOURCE!
+) else (
+  echo    Alias WebGL creato: %EWC_TARGET% ^<= !EWC_SOURCE!
+)
 exit /b 0
 
 :RESOLVE_WINDOWS_EXE

@@ -4547,10 +4547,15 @@ public class UIFlowController : MonoBehaviour
         else if (!uiBlockActive)
         {
             uiInputLocked = false;
-            if (navigator != null)
+            // Nessun blocco precedente: evita di ripristinare uno stato navigator obsoleto.
+            // Questa condizione capita, ad esempio, quando il file picker viene annullato
+            // prima di entrare in ShowRingsForOperation().
+            if (navigator != null && !navigator.enabled)
             {
-                navigator.enabled = navigatorWasEnabled;
+                navigator.enabled = true;
             }
+
+            ConfigureNavigatorForState(currentState, false);
             yield break;
         }
 
@@ -4610,6 +4615,10 @@ public class UIFlowController : MonoBehaviour
             {
                 navigator.enabled = navigatorWasEnabled;
             }
+
+            // I dialog file nativi su Windows possono azzerare il selected object
+            // dell'EventSystem; riallineiamo il navigator allo stato corrente.
+            ConfigureNavigatorForState(currentState, false);
 
             uiBlockActive = false;
 
@@ -6354,11 +6363,11 @@ public class UIFlowController : MonoBehaviour
 
 #if UNITY_WEBGL && !UNITY_EDITOR
             FilePickResult pickResult = default;
-            yield return StartCoroutine(MinimalFilePicker.PickFileWebGL("png,jpg,jpeg", result => pickResult = result));
+            yield return StartCoroutine(MinimalFilePicker.PickFileWebGL("png,jpg,jpeg,webp", result => pickResult = result));
             bytes = pickResult.Bytes;
             filename = pickResult.FileName;
 #else
-            string path = MinimalFilePicker.OpenFilePanel("Seleziona immagine", "", "png,jpg,jpeg");
+            string path = MinimalFilePicker.OpenFilePanel("Seleziona immagine", "", "png,jpg,jpeg,webp");
             if (!string.IsNullOrEmpty(path))
             {
                 bytes = System.IO.File.ReadAllBytes(path);
@@ -6394,7 +6403,7 @@ public class UIFlowController : MonoBehaviour
 
                 if (request.result != UnityWebRequest.Result.Success)
                 {
-                    string error = request.error ?? "Network error";
+                    string error = BuildHttpError(request, "Describe image network error");
                     ReportServiceError("RAG", error);
                     UpdateSetupMemoryLog($"Errore describe: {error}");
                     UpdateDebugText($"Describe image: errore - {error}");
@@ -6423,8 +6432,13 @@ public class UIFlowController : MonoBehaviour
                     yield break;
                 }
 
-                UpdateSetupMemoryLog("Descrizione ok. Salvataggio...");
-                UpdateDebugText($"Describe image: {response.description.Substring(0, Mathf.Min(50, response.description.Length))}...");
+                string trimmedDescription = response.description.Trim();
+                UpdateSetupMemoryLog($"Descrizione immagine:\n{trimmedDescription}", append: false);
+                UpdateDebugText($"Describe image: {trimmedDescription.Substring(0, Mathf.Min(120, trimmedDescription.Length))}");
+
+                yield return null;
+
+                UpdateSetupMemoryLog($"Descrizione immagine:\n{trimmedDescription}\n\nSalvataggio...", append: false);
                 bool rememberOk = response.saved;
                 if (!rememberOk)
                 {
@@ -6434,7 +6448,7 @@ public class UIFlowController : MonoBehaviour
                         UpdateSetupMemoryLog($"Errore salvataggio backend: {response.save_error}");
                     }
                     
-                    yield return StartCoroutine(RememberText(response.description, new RememberMeta
+                    yield return StartCoroutine(RememberText(trimmedDescription, new RememberMeta
                     {
                         source_type = "image_description",
                         filename = response.filename

@@ -2407,7 +2407,11 @@ def _safe_collection_count(col: Any) -> int:
     except Exception:
         return 0
 
-def describe_image_with_gemini(image_bytes: bytes, prompt: str = "Descrivi dettagliatamente questa immagine in italiano.") -> str:
+def describe_image_with_gemini(
+    image_bytes: bytes,
+    prompt: str = "Descrivi dettagliatamente questa immagine in italiano.",
+    mime_type: str = "image/png",
+) -> str:
     """Usa Gemini Vision per descrivere un'immagine."""
     if _gemini_client is None or not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="Gemini non configurato. Imposta GEMINI_API_KEY.")
@@ -2421,7 +2425,7 @@ def describe_image_with_gemini(image_bytes: bytes, prompt: str = "Descrivi detta
 
         parts = [
             prompt,
-            gt.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+            gt.Part.from_bytes(data=image_bytes, mime_type=mime_type),
         ]
 
         response = _gemini_client.models.generate_content(
@@ -4549,7 +4553,16 @@ async def describe_image(
     if not raw:
         raise HTTPException(status_code=400, detail="File vuoto.")
 
+    mime_type = (file.content_type or "").strip().lower()
     ext = filename.lower().split(".")[-1]
+    if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+        if ext == "png":
+            mime_type = "image/png"
+        elif ext in ["jpg", "jpeg"]:
+            mime_type = "image/jpeg"
+        elif ext == "webp":
+            mime_type = "image/webp"
+
     if ext not in ["png", "jpg", "jpeg", "webp"]:
         if Image is None:
             raise HTTPException(status_code=400, detail="Formato non supportato. Installa pillow.")
@@ -4558,10 +4571,11 @@ async def describe_image(
             png_buf = io.BytesIO()
             img.save(png_buf, format="PNG")
             raw = png_buf.getvalue()
+            mime_type = "image/png"
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Errore conversione immagine: {e}")
 
-    description = describe_image_with_gemini(raw, prompt)
+    description = describe_image_with_gemini(raw, prompt, mime_type)
 
     saved = False
     save_error = None

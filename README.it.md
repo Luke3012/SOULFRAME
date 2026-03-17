@@ -2,7 +2,7 @@
 
 # SOULFRAME
 
-SOULFRAME è una piattaforma WebGL con avatar interattivi e backend AI.
+SOULFRAME è un'esperienza multipiattaforma con avatar interattivi e backend AI, attualmente mantenuta sia per WebGL sia per Windows.
 L'idea è semplice: scegli o crei un avatar, parli, il sistema capisce la voce, ragiona con memoria contestuale e risponde in audio.
 
 ## Cosa fa, in pratica
@@ -37,6 +37,7 @@ L'idea è semplice: scegli o crei un avatar, parli, il sistema capisce la voce, 
   - `-executeMethod SoulframeBuildMenu.BuildWebGLCli`
   - `-executeMethod SoulframeBuildMenu.BuildWindows64Cli`
 - Il menu build forza anche il target attivo corretto (`SwitchActiveBuildTarget`) prima della compilazione, per evitare mismatch di simboli editor/player.
+- Le build WebGL vengono generate con cache build pulita, nomi file hashati e data caching browser disabilitato, così si riducono i mismatch runtime dovuti a file vecchi in cache.
 
 ### 2) Setup automatico su Ubuntu
 
@@ -155,9 +156,19 @@ Il lip sync di Unity in WebGL ha limitazioni note rispetto all'esecuzione in Pla
 
 - In WebGL la risposta testuale è configurata senza effetto word-by-word.
 - Le richieste TTS inviano un flag `client_platform` per differenziare la logica backend tra WebGL e build native.
+- L'ingestione memoria da file/immagine usa il file picker nativo su Windows e un bridge dedicato nel browser su WebGL.
 - In Windows è disponibile uno scaler runtime dedicato (`WindowsResolutionScaler`) per ridurre il carico del rendering 3D:
   - il rapporto pixel 3D è configurabile da Inspector;
   - l'UI/canvas resta a risoluzione piena.
+
+## Modalità frontend locale su Windows
+
+Quando esegui in locale tramite `SOULFRAME_AI/ai_services.cmd`, il frontend può partire in due modalità:
+
+- WebGL: avvia il server statico dalla cartella `Build/` e apre il browser su `http://127.0.0.1:8000`
+- Windows: lancia `Build_Windows64/SOULFRAME.exe`
+
+La modalità scelta viene salvata in `SOULFRAME_AI/ai_services.mode.cfg` e può essere cambiata dal menu dello script.
 
 ## Avaturn su Desktop (Windows)
 

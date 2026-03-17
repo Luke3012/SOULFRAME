@@ -91,17 +91,21 @@ ai_services.cmd 1
 ```
 
 The menu allows you to:
-- **[1] Start services** - starts Ollama, Whisper, RAG, TTS and Project Build
+- **[1] Start services** - starts Ollama, Whisper, RAG, TTS and the configured frontend
 - **[2] Stop services** - terminates all processes
 - **[3] Restart services** - stop + start in sequence
+- **[4] Debug console** - starts backend services in console/debug mode
+- **[5] Configure frontend default** - choose WebGL or Windows executable
 
 **What ai_services.cmd does:**
 - Automatically detects Python virtual environment (`backend\venv` or `backend\.venv`)
 - Checks if ports are already in use (avoids duplicates)
-- Starts each service in a separate minimized window
+- Can run either in console mode or background mode depending on menu/action
 - Configures environment variables needed for Whisper/RAG/TTS
 - Provides direct links to Swagger UIs (`/docs`)
-- Starts Build Server in `..\Build` (or `BUILD_DIR` if set) and opens `http://localhost:8000`
+- In WebGL mode, starts Build Server in `..\Build` (or `SOULFRAME_WEBGL_BUILD_DIR`) and opens `http://localhost:8000`
+- In Windows mode, launches `..\Build_Windows64\SOULFRAME.exe` (or `SOULFRAME_WINDOWS_EXE`)
+- Persists the selected frontend mode in `ai_services.mode.cfg`
 
 ### Manual Method
 
@@ -140,6 +144,11 @@ uvicorn avatar_asset_server:app --host 127.0.0.1 --port 8003
 - **Avatar Asset**: http://127.0.0.1:8003/docs
 - **Ollama**: http://127.0.0.1:11434
 - **Build Server**: http://localhost:8000
+
+Notes:
+
+- The Build Server endpoint is relevant only when the selected frontend mode is WebGL.
+- In Windows frontend mode, the native executable is launched instead of the browser build.
 
 ## Validation and regression tools
 
@@ -322,14 +331,19 @@ curl http://127.0.0.1:8003/avatars/list
 
 ## Build Server
 
-If `..\Build` doesn't exist, set the `BUILD_DIR` environment variable with the full path:
+If `..\Build` doesn't exist, set the `SOULFRAME_WEBGL_BUILD_DIR` environment variable with the full path:
 
 ```powershell
-set BUILD_DIR=C:\Path\To\Build
+set SOULFRAME_WEBGL_BUILD_DIR=C:\Path\To\Build
 ai_services.cmd 1
 ```
 
-To change Windows-side parameters, edit `ai_services.cmd` directly.
+Equivalent variables currently supported by `ai_services.cmd`:
+
+- `SOULFRAME_WEBGL_BUILD_DIR` for the WebGL build directory
+- `SOULFRAME_WINDOWS_EXE` for the Windows executable path
+
+To change other Windows-side parameters, edit `ai_services.cmd` directly.
 
 ## Notes
 
