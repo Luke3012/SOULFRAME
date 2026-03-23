@@ -34,12 +34,12 @@ Nel frontend, la centralità di \texttt{UIFlowController} non significa che tutt
 \end{longtable}
 \par\endgroup
 
-Letta così, la tabella rischia di sembrare una semplice mappa di classi. In realtà mostra una divisione del lavoro abbastanza netta: \texttt{UIFlowController} tiene insieme il ciclo applicativo, \texttt{AvatarManager} si occupa del profilo embodied e del suo caricamento, mentre i componenti più specifici entrano in gioco solo quando quel profilo deve diventare un avatar davvero usabile in scena. Il frontend funziona perché questi livelli restano distinti senza diventare scollegati.
+Letta così, la tabella rischia di sembrare una semplice mappa di classi. In realtà mostra una divisione del lavoro abbastanza netta: \texttt{UIFlowController} tiene insieme il ciclo applicativo, \texttt{AvatarManager} si occupa del profilo embodied e del suo caricamento, mentre i componenti più specifici entrano in gioco solo quando quel profilo deve diventare un avatar davvero usabile in scena.
 
 \paragraph{Macchina a stati e gating del profilo.}
 Il client si muove attorno a sei stati: \texttt{Boot}, \texttt{MainMenu}, \texttt{AvatarLibrary}, \texttt{SetupVoice}, \texttt{SetupMemory}, \texttt{MainMode}. Il punto più importante non è il numero degli stati, ma la logica di gating:
 
-Questo disegno evita che l'utente entri direttamente in conversazione con un profilo ancora incompleto. Nel progetto questa scelta vale più di molte ottimizzazioni minori, perché trasforma onboarding e bootstrap in una parte reale del sistema, non in un prologo separato.
+Questo disegno evita che l'utente entri direttamente in conversazione con un profilo ancora incompleto. In questo modo onboarding e bootstrap restano parte reale del sistema, non un prologo separato.
 
 \begin{lstlisting}[style=sfcode,language={[Sharp]C},caption={Estratto adattato da \texttt{UIFlowController.cs}: scelta dello stato dopo i controlli di boot.}]
 if (!coquiReady || !ragReady)
@@ -106,7 +106,7 @@ Il cuore del controllo è \texttt{CalculateSimilarity}. Dopo una normalizzazione
 \[
 s = \mathrm{clip}_{[0,1]}\big(0.6 \cdot s_{\mathrm{seq}} + 0.4 \cdot s_{\mathrm{word}}\big),
 \]
-dove \(s_{\mathrm{seq}}\) deriva dalla distanza di Levenshtein normalizzata e \(s_{\mathrm{word}}\) dall'overlap lessicale tra i token. La soglia usata nel progetto è \texttt{setupVoiceMinSimilarity = 0.7f}. Questa scelta non pretende di certificare l'identità del parlante: serve a scartare reference vocali troppo corte, troppo rumorose o troppo lontane dalla frase proposta.
+dove \(s_{\mathrm{seq}}\) deriva dalla distanza di Levenshtein normalizzata e \(s_{\mathrm{word}}\) dall'overlap lessicale tra i token. La soglia usata nel progetto è \texttt{setupVoiceMinSimilarity = 0.7f}. Non serve a certificare l'identità del parlante: serve a scartare reference vocali troppo corte, troppo rumorose o troppo lontane dalla frase proposta.
 
 \begin{lstlisting}[style=sfterminal,title={Esito tipico della validazione voce},caption={Il feedback che la UI costruisce prima di inviare il campione a Coqui.}]
 frase attesa: "Mi chiamo Luca e oggi sto provando la mia voce."
@@ -118,7 +118,7 @@ esito: upload verso /set_avatar_voice
 
 \sloppy Un altro punto concreto riguarda la robustezza della coroutine. Il flag \texttt{setupVoiceCancelling} viene controllato dopo stop recording, trascrizione, match e upload, così il setup può essere interrotto senza lasciare richieste attive o side effect tardivi. Nel flusso reale questo incide parecchio sulla qualità percepita, perché evita onboarding ``appesi'' o messaggi incoerenti quando l'utente torna indietro a metà operazione.
 
-\section{MainMode lato client}
+\section{MainMode lato client e comportamento embodied}
 \texttt{MainMode} tiene insieme stato UI, microfono, sessione conversazionale, playback e comportamento embodied. Letto in modo lineare, il flusso è questo:
 
 \begin{lstlisting}[basicstyle=\ttfamily\small,breaklines=true]
@@ -139,13 +139,21 @@ Dal lato client la sessione non è un metadato secondario. Serve a tenere insiem
 
 Anche la differenza tra desktop e touch va letta così. I due ambienti cambiano gesture, hint e comandi, ma non aprono due flussi diversi: PTT e tastiera sono soltanto due modi di entrare nella stessa conversazione.
 
-\section{Comportamento embodied}
-Due componenti rendono l'avatar meno ``piatto'' nei turni:
+Da qui entrano in gioco anche i componenti che rendono l'avatar meno ``piatto'' durante i turni. In SOULFRAME il comportamento embodied non sta a lato di \texttt{MainMode}: resta agganciato allo stesso ciclo conversazionale e ne segue gli stati.
 
 {\subsectionfont{\upshape}\paragraph{\normalfont\texttt{AvaturnULipSyncBinder}.}}
-Il binder non assume un naming unico dei blendshape. Cerca invece a runtime candidati compatibili per i visemi principali e aggiorna i pesi in \texttt{LateUpdate}. Questo è un dettaglio molto pratico: gli avatar non sono tutti uguali, quindi un mapping statico sarebbe troppo fragile.
+Il binder non assume un naming unico dei blendshape. Cerca invece a runtime candidati compatibili per i visemi principali e aggiorna i pesi in \texttt{LateUpdate}. Il motivo è pratico: gli avatar non sono tutti uguali, quindi un mapping statico sarebbe troppo fragile.
 
 {\subsectionfont{\upshape}\paragraph{\normalfont\texttt{AvaturnIdleLookAndBlink}.}}
 Lo sguardo e il blink non vengono trattati come animazioni decorative. Il controller cambia comportamento in base allo stato del turno: idle, listening, speaking, focus esterno. In questo modo il volto dell'avatar non resta neutro proprio nei momenti in cui l'utente si aspetta un segnale di presenza.
 
 Guardando i componenti, le scelte descritte nel capitolo implementativo prendono una forma più concreta: qui si vedono i passaggi con cui stati, onboarding, avatar e comportamento embodied vengono davvero tenuti insieme nel client Unity.
+
+Un esempio utile del comportamento di \texttt{SetupVoice} compare quando la frase attesa non viene pronunciata in modo abbastanza aderente. In quel caso la registrazione non viene accettata e il client mostra esplicitamente che la similarità è insufficiente, invitando a riprovare.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\textwidth]{Risorse/ui_setupvoice_similarity_fail.png}
+    \caption{Schermata di \texttt{SetupVoice} con validazione fallita: la frase pronunciata non raggiunge la soglia minima di similarità, quindi il campione vocale non viene registrato.}
+    \label{fig:appendix-setupvoice-fail}
+\end{figure}

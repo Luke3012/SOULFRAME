@@ -4,7 +4,7 @@
 
 \section{Evidenze e pattern tecnici}
 \paragraph{Store tecnici del progetto.}
-Il progetto distribuisce i propri artefatti operativi in alcuni store distinti. Qui non interessa tanto elencare i percorsi, quanto capire quale funzione svolga ciascuno di essi nel ciclo di vita del prototipo.
+Gli artefatti operativi del prototipo sono distribuiti in alcuni store distinti. Più che elencare i percorsi, qui conta capire quale funzione svolga ciascuno di essi nel ciclo di vita del prototipo.
 
 \par\begingroup
 \small
@@ -36,14 +36,14 @@ Artefatti di prova & Script, report e materiali tecnici usati per verifiche mira
 \par\endgroup
 
 \paragraph{Evidenze tecniche già disponibili.}
-Il progetto dispone già di evidenze tecniche prodotte durante le batterie di prova del backend. Non sono risultati di uso con utenti, ma prove tecniche utili per leggere il comportamento del backend in condizioni ripetibili. Esse servono a capire dove il backend recupera bene il contesto e dove, invece, la risposta finale comincia a perdere precisione o tenuta stilistica.
+Sono già disponibili evidenze tecniche prodotte durante le batterie di prova del backend. Non sono risultati di uso con utenti, ma prove utili per leggere il comportamento del backend in condizioni ripetibili. Servono a capire dove il backend recupera bene il contesto e dove, invece, la risposta finale comincia a perdere precisione o tenuta stilistica.
 
 \begin{itemize}
 \item report di stress multi-sorgente, centrato su retrieval e qualità della risposta;
 \item report di coerenza identitaria, centrato su separazione utente/avatar, stile e tenuta della persona.
 \end{itemize}
 
-I due report richiamati qui corrispondono alla documentazione tecnica di prova associata al backend. Il primo raccoglie prove miste su testo, PDF e immagini; il secondo lavora solo su memoria testuale e insiste soprattutto sui casi in cui avatar e utente rischiano di essere confusi nella formulazione della risposta.
+I due report richiamati qui corrispondono alla documentazione tecnica di prova associata al backend. In particolare, i conteggi riportati in questa appendice riprendono i report \texttt{SOULFRAME\_extreme\_stress\_report\_20260309\_151154.md} e \texttt{SOULFRAME\_text\_coherence\_report\_20260309\_151808.md}. Il primo raccoglie prove miste su testo, PDF e immagini; il secondo lavora solo su memoria testuale e insiste soprattutto sui casi in cui avatar e utente rischiano di essere confusi nella formulazione della risposta.
 
 Questi materiali svolgono almeno tre funzioni utili:
 \begin{itemize}
@@ -85,13 +85,13 @@ Coerenza identitaria & Solo testo, profilo avatar, profilo utente, separazione i
 \normalsize
 
 \paragraph{Pattern emersi dalle prove tecniche.}
-Nei due report emerge con chiarezza che il retrieval risulta più stabile della risposta finale. Qui \emph{retrieval} significa che il backend recupera la memoria o il documento corretto; l'esito della risposta finale indica invece che quel materiale viene poi usato adeguatamente nel testo prodotto, senza omissioni, senza confondere i soggetti e senza comprimere eccessivamente il contenuto. Nello stress multi-sorgente il sistema recupera sempre il materiale corretto, ma non riesce ancora a trasformarlo in una risposta altrettanto solida in tutti i casi. Questo scarto compare soprattutto quando la richiesta chiede di mettere insieme fonti diverse o di leggere in modo ordinato contenuti che arrivano da documenti meno lineari.
+Nei due report emerge con chiarezza che il retrieval risulta più stabile della risposta finale. Qui \emph{retrieval} significa che il backend recupera la memoria o il documento corretto; l'esito della risposta finale indica invece che quel materiale viene poi usato adeguatamente nel testo prodotto, senza omissioni, senza confondere i soggetti e senza comprimere eccessivamente il contenuto. Nello stress multi-sorgente il sistema recupera sempre il materiale corretto, ma in quattro casi non riesce ancora a trasformarlo in una risposta altrettanto solida. Lo scarto compare soprattutto quando la richiesta chiede di mettere insieme fonti diverse o di leggere in modo ordinato contenuti che arrivano da documenti meno lineari.
 
-Nel report sulla coerenza identitaria compare invece un limite più sottile. La correttezza fattuale resta piena, ma in alcuni casi la risposta perde coerenza nel modo in cui parla o nella separazione tra dati dell'avatar e dati dell'utente. Il problema, quindi, non consiste nella perdita del fatto recuperato, ma nella sua riformulazione nel turno finale, mantenendo il ruolo del personaggio e la distinzione tra chi parla e di chi si sta parlando.
+Nel report sulla coerenza identitaria compare invece un limite più sottile. La correttezza fattuale resta piena, ma in alcuni casi la risposta perde coerenza nel modo in cui parla o nella separazione tra dati dell'avatar e dati dell'utente. Il problema non sta nella perdita del fatto recuperato, ma nella sua riformulazione nel turno finale, mantenendo il ruolo del personaggio e la distinzione tra chi parla e di chi si sta parlando.
 
 I casi limite che tornano con più chiarezza sono due. Il primo riguarda i riepiloghi o le domande che chiedono di coprire più sorgenti senza saltare nulla: qui il modello tende ancora a comprimere troppo o a lasciare fuori un punto. Il secondo riguarda la coerenza identitaria in presenza di informazioni molto vicine tra loro: il sistema recupera il contesto corretto, ma la risposta può appiattire distinzioni che nella memoria sono ancora nette.
 
-Per rendere questa lettura meno astratta, conviene guardare alcuni casi reali estratti dai report.
+Alcuni casi reali estratti dai report aiutano a leggere meglio questo scarto.
 
 \begin{lstlisting}[style=sfpayload,title={Caso riuscito - grounding documentale},caption={Query e risposta riuscita dal report di stress multi-sorgente.}]
 Query: che voto ho preso in fisica 1?
@@ -125,7 +125,7 @@ Retrieval: PASS
 Risposta: FAIL
 \end{lstlisting}
 
-Questo caso mostra bene il tipo di scarto che c'\`e ancora nel sistema. Il documento viene trovato e il retrieval passa, ma la risposta non riesce ancora a sintetizzare il contenuto in modo abbastanza ordinato o completo da superare il controllo finale.
+Questo caso mostra bene il tipo di scarto che c'è ancora nel sistema. Il documento viene trovato e il retrieval passa, ma la risposta non riesce ancora a sintetizzare il contenuto in modo abbastanza ordinato o completo da superare il controllo finale.
 
 \begin{lstlisting}[style=sfpayload,title={Caso fallito - identita e separazione},caption={Esempio dal report di coerenza identitaria, avatar \texttt{COHERENCE\_02\_VIOLA}.}]
 Query: come ti chiami?
@@ -142,7 +142,7 @@ Davide spesso dice che i libri usati hanno piu anima di quelli nuovi.
 In questo caso il contenuto recuperato è corretto, ma la risposta mescola informazioni che dovrebbero restare separate. Il nome e il ruolo dell'avatar sono giusti, però nella stessa frase entra un dettaglio che appartiene all'utente. È questo il tipo di cedimento che il report identitario mette in evidenza.
 
 \section{Riproducibilità e sintesi operativa}
-La riproducibilità delle prove, però, non è ancora uniforme. Alcune batterie sono autosufficienti e possono essere rilanciate partendo dal solo progetto; altre dipendono ancora da materiali campione esterni, soprattutto quando entrano in gioco documenti, immagini o combinazioni multi-sorgente. Come emerge dalla documentazione tecnica richiamata in questa appendice, la batteria di stress si appoggia ancora ad asset esterni, mentre quella solo testuale è molto più facile da rilanciare in modo coerente.
+La riproducibilità delle prove, però, non è ancora uniforme. Alcune batterie sono autosufficienti e possono essere rilanciate partendo dal solo progetto; altre dipendono ancora da materiali campione esterni, soprattutto quando entrano in gioco documenti, immagini o combinazioni multi-sorgente. La batteria di stress si appoggia ancora ad asset esterni, mentre quella solo testuale è molto più facile da rilanciare in modo coerente.
 
 In termini pratici, questo significa che:
 \begin{itemize}
@@ -151,4 +151,4 @@ In termini pratici, questo significa che:
 \item i report tecnici esistono già, ma la loro organizzazione non è ancora del tutto autosufficiente.
 \end{itemize}
 
-Questo incide direttamente sulla qualità della manutenzione tecnica del progetto. Il comportamento del backend è già osservabile con una certa continuità, ma non tutte le prove hanno ancora lo stesso grado di portabilità. La batteria di verifica esiste ed è già utile per leggere regressioni e casi limite, ma una parte delle prove più ricche richiede ancora una preparazione manuale degli input. Per una tesi questo non ne riduce il valore documentale; chiarisce piuttosto che il lato più maturo, oggi, è la lettura tecnica del sistema più che la completa autosufficienza del pacchetto di test.
+Anche la manutenzione tecnica resta un po' disomogenea. Il comportamento del backend è già osservabile con una certa continuità, ma non tutte le prove hanno ancora lo stesso grado di portabilità. La batteria di verifica aiuta a leggere regressioni e casi limite, però una parte delle prove più ricche richiede ancora una preparazione manuale degli input. Oggi questi test servono soprattutto a capire dove il sistema regge e dove no, più che a offrire un pacchetto già autosufficiente da rilanciare ovunque senza preparazione.

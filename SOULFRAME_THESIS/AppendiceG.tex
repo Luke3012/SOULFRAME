@@ -4,110 +4,115 @@
 
 \begingroup
 \small
-\captionsetup{type=table}
-\captionof{table}{Termini tecnici ricorrenti usati nella tesi.}
-\label{tab:appendix-glossary}
-\begin{longtable}{|>{\raggedright\arraybackslash}p{0.24\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.76\textwidth-4\tabcolsep-3\arrayrulewidth\relax}|}
-\hline
-\textbf{Termine} & \textbf{Significato nel progetto} \\
-\hline
-\texttt{API} & Interfaccia applicativa con cui un servizio espone endpoint e contratti dati riusabili da altri componenti del sistema. \\
-\hline
-\texttt{ASGI} & Interfaccia server asincrona usata dall'ecosistema Python Web moderno; qui spiega il comportamento concorrente dei servizi FastAPI. \\
-\hline
-\texttt{avatar\_id} & Identificatore stabile del profilo avatar; serve a separare voce, memoria e asset di un personaggio dagli altri. \\
-\hline
-\texttt{CLI} & Interfaccia a riga di comando usata per helper amministrativi come \texttt{sfctl}, \texttt{sfurl} e \texttt{sfadmin}. \\
-\hline
-\texttt{ChromaDB} & Store vettoriale usato nel progetto per conservare ricordi, chunk documentali e metadati separati per avatar. \\
-\hline
-\texttt{CORS} & Meccanismo del browser che regola quali origini Web possano chiamare un'API; nel progetto incide soprattutto nel passaggio tra client WebGL e backend. \\
-\hline
-\texttt{DPI} & Misura della risoluzione di rasterizzazione; nel progetto compare per indicare la qualità con cui alcune pagine PDF vengono convertite in immagini per OCR. \\
-\hline
-\texttt{DOM} & Struttura documentale della pagina Web su cui il bridge browser interviene per overlay, iframe e controllo del focus. \\
-\hline
-\texttt{FSM} & Sigla di Finite State Machine: modello a stati finiti con cui il frontend governa onboarding, menu e modalità conversazionali. \\
-\hline
-\texttt{GPU} & Unità di calcolo parallelo usata per accelerare inferenza e sintesi, soprattutto nei servizi AI più costosi del progetto. \\
-\hline
-\texttt{OpenAPI} & Specifica formale delle API HTTP usata da FastAPI per descrivere route, payload e modelli in modo leggibile e verificabile. \\
-\hline
-Affordance & Segnale visivo o interattivo che fa capire come usare un controllo, per esempio un'icona, un gesto suggerito o un pulsante che invita a una certa azione. \\
-\hline
-Auto-remember & Memorizzazione automatica molto prudente, attivata solo quando il turno contiene segnali espliciti che autorizzano il salvataggio. \\
-\hline
-Blendshape & Deformazione facciale predefinita di un modello 3D, usata per espressioni o movimento della bocca. \\
-\hline
-BM25 & Metodo di ranking lessicale che pesa la presenza dei termini nella query e nel testo recuperato. \\
-\hline
-Bridge WebGL & Collegamento tra codice Unity WebGL e funzioni del browser, usato per esempio per microfono, overlay DOM o scambio file. \\
-\hline
-Chunk & Frammento breve di contenuto usato come unità operativa. Nel progetto il termine compare sia per i blocchi testuali della memoria documentale, sia per blocchi tecnici di trasporto o buffering audio; nel reply TTS, però, il sincronismo del testo segue soprattutto parole e segmenti temporizzati, non i micro-blocchi di rete. \\
-\hline
-Contesto recente & Finestra dei turni più vicini nel tempo, mantenuta per conservare continuità locale senza interrogare ogni volta tutta la memoria. \\
-\hline
-Controllo finale della risposta & Fase conclusiva in cui il testo viene ripulito o riformulato se il tono devia, il contesto è debole o la risposta sembra troppo libera. \\
-\hline
-Deduplicazione & Rimozione o accorpamento di duplicati logici, utile per evitare asset ripetuti o chunk quasi identici nel contesto. \\
-\hline
-Fallback & Percorso di ripiego usato quando quello principale non basta o fallisce, così da non interrompere del tutto il turno. \\
-\hline
-Grounding & Vincolo per cui la risposta deve restare aderente ai contenuti effettivamente recuperati, evitando dettagli non supportati. \\
-\hline
-HTTPS & Versione cifrata di HTTP; in produzione permette al browser di raggiungere SOULFRAME tramite un solo origin sicuro. \\
-\hline
-Ingestione & Trasformazione di note, documenti o immagini in contenuti che la memoria del sistema può salvare, indicizzare e poi interrogare. \\
-\hline
-OCR & Riconoscimento ottico del testo presente in immagini o PDF non già disponibili come testo lineare. \\
-\hline
-\texttt{JSON} & Formato testuale strutturato usato nella tesi per rappresentare payload, risposte dei servizi e piccoli contratti di scambio dati. \\
-\hline
-Lip sync & Sincronizzazione tra audio e movimento della bocca dell'avatar durante la risposta vocale. \\
-\hline
-Loopback & Indirizzo locale della stessa macchina, usato per far comunicare i servizi senza esporli direttamente all'esterno. \\
-\hline
-Memoria factual & Parte della memoria orientata ai fatti sul profilo o sui contenuti ingestiti, distinta dalle sole tracce di stile o dal contesto recente. \\
-\hline
-Memoria persistente & Parte della memoria che resta disponibile oltre il singolo turno e può essere riusata anche in sessioni successive. \\
-\hline
-Payload & Insieme dei dati trasmessi in una richiesta o in una risposta HTTP, per esempio testo, file, metadati o campi JSON. \\
-\hline
-Pipeline & Sequenza di passaggi con cui il sistema trasforma un input in un risultato, per esempio dall'audio dell'utente alla risposta vocale finale. \\
-\hline
-\texttt{PTT} & Sigla di Push-To-Talk: modalità di interazione in cui l'utente tiene premuto un comando per parlare e rilascia per inviare il turno. \\
-\hline
-Query plan & Traccia interna con cui il servizio decide dove cercare, quali sorgenti privilegiare e quale tipo di turno sta gestendo. \\
-\hline
-Ranking & Ordinamento dei candidati recuperati, usato per capire quali passaggi meritino davvero di entrare nel contesto finale. \\
-\hline
-Retrieval & Recupero dei contenuti che il sistema considera più pertinenti rispetto a una domanda, prima della generazione della risposta. \\
-\hline
-Routing dell'intento & Scelta del ramo conversazionale più adatto al turno, ad esempio domanda fattuale, recap o risposta sociale. \\
-\hline
-\texttt{session\_id} & Identificatore della singola conversazione; tiene distinti contesto recente, log e riferimenti locali di quel dialogo. \\
-\hline
-\texttt{SSH} & Protocollo di accesso remoto usato per amministrare il server Ubuntu e svolgere operazioni di deploy o manutenzione. \\
-\hline
-\texttt{STT} & Sigla di Speech-to-Text: trasforma l'audio dell'utente in testo, nel progetto tramite il servizio Whisper. \\
-\hline
-Similarità vettoriale & Misura di vicinanza tra embedding, usata per trovare contenuti semanticamente affini anche senza parole identiche. \\
-\hline
-Store vettoriale & Archivio interrogabile tramite embedding, usato per recuperare contenuti vicini sul piano semantico. \\
-\hline
-\texttt{TLS} & Protocollo crittografico che protegge il canale HTTPS tra browser e server, evitando traffico in chiaro verso l'esterno. \\
-\hline
-\texttt{TTS} & Sigla di Text-to-Speech: trasforma il testo della risposta in audio, nel progetto tramite Coqui XTTS v2. \\
-\hline
-Viseme & Forma visiva della bocca associata a un suono del parlato, utile per sincronizzare voce e volto. \\
-\hline
-Voice cloning & Generazione di una voce sintetica che riprende le caratteristiche principali di un breve campione vocale di riferimento. \\
-\hline
-\texttt{VM} & Macchina virtuale cloud o locale su cui il prototipo può essere distribuito e gestito come stack di servizi separati. \\
-\hline
-\texttt{WebAssembly} & Formato binario eseguito dal browser che permette alla build Unity WebGL di girare come applicazione interattiva lato client. \\
-\hline
-Zero-shot & Uso di un modello su un compito o su un parlante senza un addestramento dedicato per quel caso specifico. \\
-\hline
-\end{longtable}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.65em}
+
+Questo glossario raccoglie i termini che ricorrono pi\`u spesso nella tesi e nelle appendici tecniche. Le voci sono ordinate alfabeticamente; per gli acronimi pi\`u usati viene indicata anche l'espansione estesa.
+
+\textbf{Affordance.} Insieme di segnali percettivi che fanno capire a un utente come un oggetto o un'interfaccia possa essere usato.
+
+\textbf{API (\emph{Application Programming Interface}).} Interfaccia con cui un componente software espone funzioni, dati o servizi ad altri componenti.
+
+\textbf{ASGI (\emph{Asynchronous Server Gateway Interface}).} Standard usato in Python per applicazioni web asincrone; nel progetto fa da base ai micro-servizi FastAPI.
+
+\textbf{Auto-remember.} Meccanismo che consente al sistema di salvare in memoria informazioni ricorrenti o rilevanti emerse durante la conversazione.
+
+\textbf{Blendshape.} Tecnica di animazione facciale che modifica la mesh 3D per ottenere espressioni, movimenti labiali o transizioni del volto.
+
+\textbf{BM25 (\emph{Best Matching 25}).} Algoritmo di ranking lessicale usato nel retrieval per stimare quanto un testo sia pertinente rispetto a una query.
+
+\textbf{Bridge WebGL.} Collegamento tra la pagina web che ospita il client Unity WebGL e il runtime del prototipo, usato per scambiare eventi e dati.
+
+\textbf{ChromaDB.} Database vettoriale usato nel progetto per conservare memoria testuale, embedding e metadati associati agli avatar.
+
+\textbf{Chunk.} Porzione di testo ottenuta dalla suddivisione di un documento pi\`u grande, cos\`\i da renderne possibile l'indicizzazione e il recupero.
+
+\textbf{CLI (\emph{Command-Line Interface}).} Interfaccia a riga di comando usata per avvio, diagnostica o manutenzione dei servizi.
+
+\textbf{Contesto recente.} Insieme degli ultimi turni dialogici o dei riferimenti immediati che il sistema usa per mantenere coerenza nel turno corrente.
+
+\textbf{Controllo finale della risposta.} Verifica conclusiva applicata alla risposta generata, utile per bloccare o correggere output incoerenti con il profilo dell'avatar o con il materiale recuperato.
+
+\textbf{CORS (\emph{Cross-Origin Resource Sharing}).} Meccanismo del browser che regola quali risorse possono essere richieste tra origini diverse; nel prototipo incide sulle chiamate tra WebGL, proxy e backend.
+
+\textbf{Deduplicazione.} Processo con cui si evitano copie ripetute dello stesso contenuto durante ingestione, memoria o recupero documentale.
+
+\textbf{DOM (\emph{Document Object Model}).} Struttura ad albero con cui il browser rappresenta una pagina HTML e ne rende manipolabili gli elementi.
+
+\textbf{DPI (\emph{Dots Per Inch}).} Misura della densit\`a di punti usata per descrivere la risoluzione di immagini o acquisizioni scannerizzate.
+
+\textbf{Fallback.} Comportamento di riserva adottato quando il percorso principale non pu\`o essere completato o non restituisce un risultato affidabile.
+
+\textbf{FSM (\emph{Finite State Machine}).} Modello a stati finiti utile per descrivere il passaggio ordinato tra fasi operative diverse, come ascolto, elaborazione e risposta.
+
+\textbf{GPU (\emph{Graphics Processing Unit}).} Unita di calcolo parallelo impiegata per accelerare inferenza, elaborazione di modelli e, in generale, carichi computazionali intensivi.
+
+\textbf{Grounding.} Ancoraggio della risposta a fonti, memoria o input reali, in modo da ridurre invenzioni e mantenere coerenza col contesto.
+
+\textbf{HTTPS (\emph{HyperText Transfer Protocol Secure}).} Versione cifrata del protocollo HTTP, usata per proteggere la comunicazione tra client e server.
+
+\textbf{Ingestione.} Fase in cui documenti, immagini o altri contenuti vengono acquisiti, puliti, segmentati e preparati per il retrieval.
+
+\textbf{JSON (\emph{JavaScript Object Notation}).} Formato testuale leggero usato per scambiare dati strutturati tra client, proxy e micro-servizi.
+
+\textbf{Lip sync.} Sincronizzazione tra audio e movimento delle labbra di un avatar, cos\`\i da rendere la resa vocale pi\`u credibile.
+
+\textbf{LLM (\emph{Large Language Model}).} Modello linguistico di grandi dimensioni impiegato per comprendere il contesto e generare risposte in linguaggio naturale.
+
+\textbf{Memoria factual.} Parte della memoria che conserva fatti, informazioni biografiche o dati stabili sull'avatar e sull'utente.
+
+\textbf{Memoria persistente.} Memoria che rimane disponibile anche dopo la chiusura della sessione, a differenza del solo contesto temporaneo del turno.
+
+\textbf{OCR (\emph{Optical Character Recognition}).} Tecnica usata per estrarre testo da immagini o PDF scannerizzati, cos\`\i da renderli interrogabili nel pipeline RAG.
+
+\textbf{OpenAPI.} Specifica usata per descrivere endpoint, parametri e risposte di un servizio web in modo standardizzato.
+
+\textbf{Payload.} Contenuto effettivo di una richiesta o di una risposta, al netto di intestazioni e metadati di trasporto.
+
+\textbf{Pipeline.} Sequenza ordinata di fasi o moduli che trasformano un input in un output, per esempio da voce a testo, da retrieval a risposta, o da testo a voce.
+
+\textbf{PTT (\emph{Push-To-Talk}).} Modalit\`a di interazione in cui la cattura audio parte solo quando l'utente tiene premuto un comando dedicato.
+
+\textbf{Query plan.} Strategia con cui il sistema decide come interpretare una query, quali sorgenti consultare e in quale ordine.
+
+\textbf{RAG (\emph{Retrieval-Augmented Generation}).} Approccio che combina recupero di contenuti pertinenti e generazione testuale, cos\`\i da produrre risposte pi\`u ancorate al contesto.
+
+\textbf{Ranking.} Ordinamento dei risultati recuperati in base alla loro pertinenza rispetto alla richiesta dell'utente.
+
+\textbf{Retrieval.} Fase di recupero di documenti, chunk o memorie rilevanti da usare nella generazione della risposta.
+
+\textbf{Routing dell'intento.} Scelta del percorso operativo pi\`u adatto in base a ci\`o che l'utente sta chiedendo, ad esempio memoria, documento, immagine o risposta diretta.
+
+\textbf{SDK (\emph{Software Development Kit}).} Insieme di librerie, strumenti e documentazione che facilita l'integrazione di una piattaforma o di un servizio.
+
+\textbf{Similarit\`a vettoriale.} Misura della vicinanza tra embedding usata per trovare contenuti semanticamente affini a una query.
+
+\textbf{SSH (\emph{Secure Shell}).} Protocollo usato per l'accesso remoto sicuro a una macchina e per operazioni di amministrazione del server.
+
+\textbf{STT (\emph{Speech-To-Text}).} Componente che trasforma il parlato in testo e apre la parte linguistica della pipeline conversazionale.
+
+\textbf{Store vettoriale.} Archivio che conserva embedding e metadati, rendendo possibile il retrieval semantico tramite similarit\`a vettoriale.
+
+\textbf{TLS (\emph{Transport Layer Security}).} Protocollo crittografico che protegge la trasmissione dei dati sulle connessioni di rete.
+
+\textbf{TTS (\emph{Text-To-Speech}).} Componente che sintetizza una voce a partire da un testo generato dal sistema.
+
+\textbf{UI (\emph{User Interface}).} Parte visibile e interattiva del sistema con cui l'utente entra in contatto diretto.
+
+\textbf{UX (\emph{User Experience}).} Qualit\`a complessiva dell'esperienza d'uso, intesa come chiarezza, fluidit\`a e percezione del comportamento del sistema.
+
+\textbf{Viseme.} Equivalente visivo di un fonema, usato per collegare i suoni pronunciati alle forme assunte dalla bocca dell'avatar.
+
+\textbf{VM (\emph{Virtual Machine}).} Macchina virtuale che esegue un sistema operativo isolato all'interno di un host fisico.
+
+\textbf{Voice cloning.} Tecnica che permette di sintetizzare una voce con caratteristiche simili a quelle di un campione vocale di riferimento.
+
+\textbf{WAV (\emph{Waveform Audio File Format}).} Formato audio non compresso usato spesso per campioni vocali o fasi di elaborazione in cui serve mantenere qualit\`a piena.
+
+\textbf{WebAssembly.} Formato binario eseguibile nel browser, usato spesso come supporto a componenti ad alte prestazioni nelle applicazioni web.
+
+\textbf{WebGL (\emph{Web Graphics Library}).} API grafica del browser che permette di eseguire contenuti 2D e 3D accelerati lato client.
+
+\textbf{Zero-shot.} Modalit\`a in cui un modello affronta un compito senza esempi specifici addestrati per quel caso particolare.
+
 \endgroup
