@@ -110,7 +110,7 @@ Questa cartella contiene gli script di deploy e gestione per VM Ubuntu.
 
 - `torch/torchaudio` sono installati da `requirements.txt`.
 - Se vuoi una build CUDA specifica, usa `TORCH_INSTALL_CMD`.
-- `soulframe.env` viene creato con permessi `640`; se disponibile `setfacl`, lo script prova ad aggiungere read all all'utente che ha lanciato `sudo`.
+- `soulframe.env` viene creato con permessi `640`; se disponibile `setfacl`, lo script prova a concedere accesso in lettura all'utente che ha lanciato `sudo`.
 - Rilanciare `setup_soulframe_ubuntu.sh` non crea duplicati di servizi/helper: unit file e script helper vengono sovrascritti in modo idempotente.
 
 ## sfctl
@@ -294,4 +294,6 @@ Se devi forzare manualmente, usa:
 ```bash
 sudo sed -i 's/\r$//' setup_soulframe_ubuntu.sh
 sudo sed -i 's/\r$//' sf_admin_ubuntu.sh
+sudo chmod +x setup_soulframe_ubuntu.sh sf_admin_ubuntu.sh
+sudo ./setup_soulframe_ubuntu.sh
 ```

@@ -28,7 +28,7 @@ L'idea è semplice: scegli o crei un avatar, parli, il sistema capisce la voce, 
 
 ### Build Unity: WebGL + Windows x64
 
-- E' disponibile il menu Unity `SOULFRAME/Build/Build WebGL` e `SOULFRAME/Build/Build Windows x64`.
+- È disponibile il menu Unity `SOULFRAME/Build/Build WebGL` e `SOULFRAME/Build/Build Windows x64`.
 - Script editor: `Assets/Editor/SoulframeBuildMenu.cs`.
 - Output predefiniti:
   - WebGL: cartella `Build/`
@@ -74,11 +74,20 @@ Il frontend Unity è pensato per essere diretto da usare:
 All'avvio, Coqui-TTS viene inizializzato con una frase breve ("ciao") per fare warmup del modello.
 Questa è in genere la fase più lenta del boot TTS.
 
+### Warmup RAG/Ollama al boot
+
+All'avvio, `rag_server` esegue anche un warmup best-effort di Ollama:
+
+- warmup embedding su `/api/embed`,
+- warmup chat su `/api/chat` con una generazione molto breve.
+
+Se Ollama non è ancora pronto, il warmup viene loggato come warning ma non blocca l'avvio dei servizi.
+
 Per questo motivo il frontend mostra uno stato di inizializzazione dedicato:
 
 - pannello di loading durante il bootstrap iniziale,
 - transizioni UI e animazioni dei background rings per accompagnare l'attesa,
-- ingresso dell'interfaccia completa solo quando il servizio TTS risulta pronto.
+- ingresso dell'interfaccia completa solo quando i servizi TTS e RAG risultano pronti.
 
 ### Setup voce (profilo vocale avatar)
 
@@ -172,7 +181,7 @@ La modalità scelta viene salvata in `SOULFRAME_AI/ai_services.mode.cfg` e può 
 
 ## Avaturn su Desktop (Windows)
 
-Su WebGL resta attivo il bridge iframe in pagina. Su Desktop/Editor e' stato aggiunto un fallback con browser esterno:
+Su WebGL resta attivo il bridge iframe in pagina. Su Desktop/Editor è stato aggiunto un fallback con browser esterno:
 
 - Unity apre Avaturn nel browser con URL di callback locale.
 - L'app avvia un listener locale su `http://127.0.0.1:37821/avaturn-callback`.
@@ -182,8 +191,8 @@ Su WebGL resta attivo il bridge iframe in pagina. Su Desktop/Editor e' stato agg
 
 Note pratiche:
 
-- se la porta e' occupata, il flusso callback fallisce e va cambiata la porta nel componente `AvaturnWebController`;
-- e' previsto timeout callback (default 180 secondi) con cleanup listener.
+- se la porta è occupata, il flusso callback fallisce e va cambiata la porta nel componente `AvaturnWebController`;
+- è previsto timeout callback (default 180 secondi) con cleanup listener.
 
 ## SOULFRAME_THESIS (LaTeX)
 
@@ -202,8 +211,10 @@ Note di versionamento:
 - `SOULFRAME_SETUP/`: script setup e amministrazione Windows/Linux.
 - `SOULFRAME_THESIS/`: sorgenti LaTeX della tesi e materiali correlati.
 
-## Documentazione tecnica
+## Hub documentazione
 
-- Setup Linux/Ubuntu: `SOULFRAME_SETUP/README.md`
-- Backend AI (Whisper/RAG/TTS/Avatar): `SOULFRAME_AI/README.md`
-- Script di validazione e regressione AI: `SOULFRAME_AI/tools/README.it.md`
+| Guida | Focus |
+| --- | --- |
+| **[SOULFRAME_AI](SOULFRAME_AI/README.it.md)** | Servizi backend AI, pipeline vocale, memoria RAG, cache avatar e orchestrazione locale dei servizi. |
+| **[SOULFRAME_SETUP](SOULFRAME_SETUP/README.it.md)** | Deploy Ubuntu, `sfadmin`, backup, update, comandi helper e integrazione Caddy. |
+| [Strumenti di validazione AI](SOULFRAME_AI/tools/README.it.md) | Script PowerShell di validazione e regressione per lo stack AI. |

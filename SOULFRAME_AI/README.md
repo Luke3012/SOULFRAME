@@ -1,6 +1,6 @@
 # SOULFRAME AI Services
 
-[🇬🇧 English](#) | [🇮🇹 Italiano](README.it.md)
+**🇬🇧 English** | [🇮🇹 Italiano](README.it.md)
 
 ---
 
@@ -177,7 +177,7 @@ Linux deployment notes:
 
 - do not use `127.0.0.1:800x` endpoints in the public WebGL browser;
 - always use `/api/...` behind Caddy;
-- to update backend/scripts on VM use `sudo sfadmin` (option `[2]`), which can also clean source files in update dir after confirmation.
+- to update backend/scripts on VM use `sudo sfadmin` (option `[1]`), which can also clean source files in update dir after confirmation.
 
 ## Usage
 
@@ -392,49 +392,69 @@ Change the ports in `ai_services.cmd` or stop the existing processes
 ### "TTS error: HTTP 500" on `/api/tts/tts_stream`
 
 1. Verify the service status:
-   ```bash
-   sudo systemctl status soulframe-tts --no-pager
-   sudo journalctl -u soulframe-tts -n 200 --no-pager
-   ```
+
+    ```bash
+    sudo systemctl status soulframe-tts --no-pager
+    sudo journalctl -u soulframe-tts -n 200 --no-pager
+    ```
+
 2. Check that the default voice file exists:
-   ```bash
-   ls -lh /opt/soulframe/backend/voices/default.wav
-   ```
+
+    ```bash
+    ls -lh /opt/soulframe/backend/voices/default.wav
+    ```
+
 3. If the logs contain:
-  `ImportError: cannot import name 'isin_mps_friendly' from transformers.pytorch_utils`
-  force the compatible package set:
-   ```bash
-   /opt/soulframe/.venv/bin/pip install --upgrade "transformers==4.57.1" "tokenizers==0.22.1"
-   sudo systemctl restart soulframe-tts
-   ```
+
+    `ImportError: cannot import name 'isin_mps_friendly' from transformers.pytorch_utils`
+
+    force the compatible package set:
+
+    ```bash
+    /opt/soulframe/.venv/bin/pip install --upgrade "transformers==4.57.1" "tokenizers==0.22.1"
+    sudo systemctl restart soulframe-tts
+    ```
+
 4. If the logs contain:
-  `From Pytorch 2.9, the torchcodec library is required for audio IO`
-  install the required codec packages:
-   ```bash
-   sudo /opt/soulframe/.venv/bin/pip install --upgrade "coqui-tts[codec]==0.27.5" "torchcodec>=0.8.0"
-   sudo systemctl restart soulframe-tts
-   ```
+
+    `From Pytorch 2.9, the torchcodec library is required for audio IO`
+
+    install the required codec packages:
+
+    ```bash
+    sudo /opt/soulframe/.venv/bin/pip install --upgrade "coqui-tts[codec]==0.27.5" "torchcodec>=0.8.0"
+    sudo systemctl restart soulframe-tts
+    ```
+
 5. If the logs show the Coqui license prompt with `EOFError: EOF when reading a line`, set:
-   ```bash
-   echo 'COQUI_TOS_AGREED=1' | sudo tee -a /etc/soulframe/soulframe.env
-   sudo systemctl restart soulframe-tts
-   ```
-  (Use this only if you accept the CPML / commercial Coqui license terms.)
+
+    ```bash
+    echo 'COQUI_TOS_AGREED=1' | sudo tee -a /etc/soulframe/soulframe.env
+    sudo systemctl restart soulframe-tts
+    ```
+
+    (Use this only if you accept the CPML / commercial Coqui license terms.)
+
 6. If `pip` fails with `Permission denied` on `/opt/soulframe/.venv/...`, run the `pip` command with `sudo`.
 7. Update `coqui_tts_server.py` to the latest version and restart the service.
 
 ### "wait_phrase ... 404 Not Found"
 
 Recent backend versions try to regenerate the wait phrase automatically. If the issue persists:
+
 1. Check the endpoint:
-   ```bash
-  curl -I "https://<domain>/api/tts/wait_phrase?avatar_id=LOCAL_model1&name=un_secondo"
-   ```
+
+    ```bash
+    curl -I "https://<domain>/api/tts/wait_phrase?avatar_id=LOCAL_model1&name=un_secondo"
+    ```
+
 2. Explicitly generate the wait phrases:
-   ```bash
-   curl -X POST https://<domain>/api/tts/generate_wait_phrases \
-     -F "avatar_id=LOCAL_model1" -F "language=it"
-   ```
+
+    ```bash
+    curl -X POST https://<domain>/api/tts/generate_wait_phrases \
+      -F "avatar_id=LOCAL_model1" -F "language=it"
+    ```
+
 3. Restart `soulframe-tts`.
 
 ### Voice setup (long phrase)
@@ -446,12 +466,16 @@ The current flow uses a richer setup sentence (target >= 50 words) to improve th
 If the frontend receives a 404 on `/avatars/{id}/model.glb`:
 
 1. Check the health/list endpoints of the avatar service:
-   ```bash
-   curl http://127.0.0.1:8003/health
-   curl http://127.0.0.1:8003/avatars/list
-   ```
+
+    ```bash
+    curl http://127.0.0.1:8003/health
+    curl http://127.0.0.1:8003/avatars/list
+    ```
+
 2. Update `avatar_asset_server.py` to the latest version and restart the service:
-   ```bash
-   sudo systemctl restart soulframe-avatar.service
-   ```
+
+    ```bash
+    sudo systemctl restart soulframe-avatar.service
+    ```
+
 3. In production behind Caddy, make sure the browser calls `/api/avatar/...` and not `127.0.0.1` directly.

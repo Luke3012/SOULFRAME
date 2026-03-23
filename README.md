@@ -1,6 +1,6 @@
 # SOULFRAME
 
-[🇬🇧 English](#) | [🇮🇹 Italiano](README.it.md)
+**🇬🇧 English** | [🇮🇹 Italiano](README.it.md)
 
 ---
 
@@ -214,8 +214,10 @@ Versioning notes:
 - `SOULFRAME_SETUP/`: setup scripts and Windows/Linux administration.
 - `SOULFRAME_THESIS/`: LaTeX thesis sources and related materials.
 
-## Technical documentation
+## Documentation Hub
 
-- Linux/Ubuntu setup: `SOULFRAME_SETUP/README.md`
-- Backend AI (Whisper/RAG/TTS/Avatar): `SOULFRAME_AI/README.md`
-- AI validation and regression scripts: `SOULFRAME_AI/tools/README.md`
+| Guide | Focus |
+| --- | --- |
+| **[SOULFRAME_AI](SOULFRAME_AI/README.md)** | AI backend services, voice pipeline, RAG memory, avatar asset cache, and local service orchestration. |
+| **[SOULFRAME_SETUP](SOULFRAME_SETUP/README.md)** | Ubuntu deployment, `sfadmin`, backups, updates, helper commands, and Caddy integration. |
+| [AI validation tools](SOULFRAME_AI/tools/README.md) | PowerShell validation and regression scripts for the AI stack. |

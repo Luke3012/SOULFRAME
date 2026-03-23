@@ -92,18 +92,18 @@ Il menu ti permette di:
 - **[1] Start servizi** - avvia Ollama, Whisper, RAG, TTS e il frontend configurato
 - **[2] Stop servizi** - termina tutti i processi
 - **[3] Restart servizi** - stop + start in sequenza
-- **[4] Debug console** - avvia i servizi backend in modalita' console/debug
+- **[4] Debug console** - avvia i servizi backend in modalità console/debug
 - **[5] Configura frontend default** - scegli WebGL o eseguibile Windows
 
 **Cosa fa ai_services.cmd:**
 - Rileva automaticamente l'ambiente virtuale Python (`backend\venv` o `backend\.venv`)
 - Verifica se le porte sono già in uso (evita duplicati)
-- Puo' lavorare sia in console mode sia in background mode a seconda dell'azione scelta
+- Può lavorare sia in console mode sia in background mode a seconda dell'azione scelta
 - Configura le variabili d'ambiente necessarie per Whisper/RAG/TTS
 - Fornisce link diretti alle UI Swagger (`/docs`)
-- In modalita' WebGL avvia il Build Server in `..\Build` (o `SOULFRAME_WEBGL_BUILD_DIR`) e apre `http://localhost:8000`
-- In modalita' Windows lancia `..\Build_Windows64\SOULFRAME.exe` (o `SOULFRAME_WINDOWS_EXE`)
-- Salva la modalita' frontend scelta in `ai_services.mode.cfg`
+- In modalità WebGL avvia il Build Server in `..\Build` (o `SOULFRAME_WEBGL_BUILD_DIR`) e apre `http://localhost:8000`
+- In modalità Windows lancia `..\Build_Windows64\SOULFRAME.exe` (o `SOULFRAME_WINDOWS_EXE`)
+- Salva la modalità frontend scelta in `ai_services.mode.cfg`
 
 ### Metodo Manuale
 
@@ -145,8 +145,8 @@ uvicorn avatar_asset_server:app --host 127.0.0.1 --port 8003
 
 Note:
 
-- L'endpoint Build Server vale solo quando il frontend selezionato e' WebGL.
-- In modalita' Windows viene avviato l'eseguibile nativo invece della build browser.
+- L'endpoint Build Server vale solo quando il frontend selezionato è WebGL.
+- In modalità Windows viene avviato l'eseguibile nativo invece della build browser.
 
 ## Strumenti di validazione e regressione
 
@@ -175,7 +175,7 @@ Nota deploy Linux:
 
 - non usare endpoint `127.0.0.1:800x` nel browser WebGL pubblico;
 - usare sempre `/api/...` dietro Caddy;
-- per aggiornare backend/script su VM usare `sudo sfadmin` (opzione `[2]`), che può anche ripulire i file sorgente nella update dir dopo conferma.
+- per aggiornare backend/script su VM usare `sudo sfadmin` (opzione `[1]`), che può anche ripulire i file sorgente nella update dir dopo conferma.
 
 ## Uso
 
@@ -343,20 +343,137 @@ Variabili equivalenti attualmente supportate da `ai_services.cmd`:
 
 Per cambiare gli altri parametri su Windows modifica direttamente `ai_services.cmd`.
 
-## Warmup Coqui al boot
+## Note
 
-Dopo l'avvio del servizio TTS, il backend esegue una inizializzazione/warmup del modello Coqui
-usando una frase breve (`"ciao"`). Questa è in genere la fase più lenta del primo startup.
+- **Primo startup TTS**: il download del modello XTTS v2 richiede circa 2GB e può richiedere alcuni minuti.
+- **GPU**: il TTS usa automaticamente CUDA se disponibile, con prestazioni molto migliori.
+- **OCR**: configurato di default per italiano + inglese, modificabile tramite la variabile ambiente `RAG_OCR_LANG`.
+- **Memoria RAG**: i database per avatar sono salvati in `backend/rag_store/`.
+- **Log conversazioni**: sono salvati per avatar in `backend/log/` (una sessione MainMode = un file `.log`).
+- **Log empirical test**: sono salvati separatamente sotto la root storage empirica, così i test guidati non inquinano la cronologia standard degli avatar.
 
-## Warmup RAG/Ollama al boot
+### Warmup Coqui al boot
+
+Dopo l'avvio del servizio TTS, il backend esegue una breve inizializzazione/warmup del modello Coqui
+usando una frase corta (`"ciao"`). Questa è in genere la fase più lenta del primo startup.
+
+Nel frontend Unity, questa fase è rappresentata da uno stato di inizializzazione dedicato
+(loading panel e animazioni correlate), e l'interfaccia completa diventa disponibile solo quando TTS è pronto.
+
+### Warmup RAG/Ollama al boot
 
 All'avvio del servizio RAG, `rag_server` esegue un warmup best-effort di Ollama:
 
-- step embedding su `/api/embed` (modello `EMBED_MODEL`);
-- step chat su `/api/chat` (modello `CHAT_MODEL`, con `num_predict` ridotto).
+- step embedding su `/api/embed` (modello `EMBED_MODEL`)
+- step chat su `/api/chat` (modello `CHAT_MODEL`, con `num_predict` ridotto)
 
 Se Ollama non è raggiungibile in quel momento, il warmup viene loggato come warning ma
-`rag_server` resta attivo (nessun crash di startup).
+`rag_server` resta attivo e non va in crash durante l'avvio.
 
-Nel bootstrap Unity viene atteso anche `RAG /health` (oltre a `TTS /health`) prima di
-considerare il sistema completamente pronto.
+Nel bootstrap Unity viene atteso anche `RAG /health`, insieme a `TTS /health`,
+prima di considerare il sistema completamente pronto.
+
+## Troubleshooting
+
+### "Ollama non raggiungibile"
+Verifica che Ollama sia in esecuzione: `ollama serve`
+
+### "OCR non disponibile"
+Installa Tesseract e verifica il path in `rag_server.py` (`TESSERACT_CMD`)
+
+### "CUDA out of memory"
+Usa la CPU per il TTS: `set COQUI_TTS_DEVICE=cpu` prima di avviare il servizio
+
+### Conflitto porte
+Cambia le porte in `ai_services.cmd` oppure ferma i processi esistenti
+
+### "TTS error: HTTP 500" su `/api/tts/tts_stream`
+
+1. Verifica lo stato del servizio:
+
+    ```bash
+    sudo systemctl status soulframe-tts --no-pager
+    sudo journalctl -u soulframe-tts -n 200 --no-pager
+    ```
+
+2. Controlla che il file voce di default esista:
+
+    ```bash
+    ls -lh /opt/soulframe/backend/voices/default.wav
+    ```
+
+3. Se nei log compare:
+
+    `ImportError: cannot import name 'isin_mps_friendly' from transformers.pytorch_utils`
+
+    forza il set compatibile di pacchetti:
+
+    ```bash
+    /opt/soulframe/.venv/bin/pip install --upgrade "transformers==4.57.1" "tokenizers==0.22.1"
+    sudo systemctl restart soulframe-tts
+    ```
+
+4. Se nei log compare:
+
+    `From Pytorch 2.9, the torchcodec library is required for audio IO`
+
+    installa i pacchetti codec richiesti:
+
+    ```bash
+    sudo /opt/soulframe/.venv/bin/pip install --upgrade "coqui-tts[codec]==0.27.5" "torchcodec>=0.8.0"
+    sudo systemctl restart soulframe-tts
+    ```
+
+5. Se i log mostrano il prompt licenza Coqui con `EOFError: EOF when reading a line`, imposta:
+
+    ```bash
+    echo 'COQUI_TOS_AGREED=1' | sudo tee -a /etc/soulframe/soulframe.env
+    sudo systemctl restart soulframe-tts
+    ```
+
+    (Usalo solo se accetti i termini di licenza CPML / commerciale Coqui.)
+
+6. Se `pip` fallisce con `Permission denied` su `/opt/soulframe/.venv/...`, esegui il comando `pip` con `sudo`.
+7. Aggiorna `coqui_tts_server.py` all'ultima versione e riavvia il servizio.
+
+### "wait_phrase ... 404 Not Found"
+
+Le versioni recenti del backend provano a rigenerare automaticamente la wait phrase. Se il problema persiste:
+
+1. Controlla l'endpoint:
+
+    ```bash
+    curl -I "https://<domain>/api/tts/wait_phrase?avatar_id=LOCAL_model1&name=un_secondo"
+    ```
+
+2. Genera esplicitamente le wait phrases:
+
+    ```bash
+    curl -X POST https://<domain>/api/tts/generate_wait_phrases \
+      -F "avatar_id=LOCAL_model1" -F "language=it"
+    ```
+
+3. Riavvia `soulframe-tts`.
+
+### Setup voce (frase lunga)
+
+Il flusso attuale usa una frase di setup più ricca (target >= 50 parole) per migliorare la qualità del profilo vocale locale.
+
+### "Download glb failed: 404 Not Found"
+
+Se il frontend riceve un 404 su `/avatars/{id}/model.glb`:
+
+1. Controlla gli endpoint health/list del servizio avatar:
+
+    ```bash
+    curl http://127.0.0.1:8003/health
+    curl http://127.0.0.1:8003/avatars/list
+    ```
+
+2. Aggiorna `avatar_asset_server.py` all'ultima versione e riavvia il servizio:
+
+    ```bash
+    sudo systemctl restart soulframe-avatar.service
+    ```
+
+3. In produzione dietro Caddy, assicurati che il browser chiami `/api/avatar/...` e non `127.0.0.1` direttamente.

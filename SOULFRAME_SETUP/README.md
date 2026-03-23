@@ -1,6 +1,6 @@
 # SOULFRAME Setup (Ubuntu)
 
-[🇬🇧 English](#) | [🇮🇹 Italiano](README.it.md)
+**🇬🇧 English** | [🇮🇹 Italiano](README.it.md)
 
 ---
 
