@@ -2,7 +2,7 @@
 \chapter{Bridge WebGL e Integrazioni Browser}
 \label{app:webgl-bridge}
 
-Il frontend gira in browser, ma alcune funzioni cruciali non possono essere delegate direttamente a Unity: permessi microfono, overlay DOM di Avaturn, file picker e sincronizzazione del filesystem virtuale dipendono dal contesto JavaScript del browser. I file \texttt{.jslib} sono il punto di raccordo con questa parte del sistema.
+Nel percorso WebGL il frontend passa dal browser, ma alcune funzioni cruciali non possono essere lasciate a Unity da sola: permessi microfono, overlay DOM di Avaturn, file picker e sincronizzazione del filesystem virtuale dipendono dal contesto JavaScript della pagina. I file \texttt{.jslib} sono il punto di raccordo con questa parte del sistema.
 
 \section{Bridge WebGL per audio e avatar}
 \paragraph{\normalfont\texttt{AudioCapture.jslib}.}
@@ -13,7 +13,7 @@ Il bridge audio si occupa di tre passaggi:
 \item convertire il risultato in WAV PCM per il frontend.
 \end{itemize}
 
-Il lato JavaScript usa \texttt{decodeAudioData}, costruisce manualmente l'header WAV e restituisce a Unity un puntatore al buffer in memoria Emscripten\footnote{Emscripten è la toolchain che espone al modulo WebAssembly una memoria lineare condivisa con il lato JavaScript.}. Il lato C\# copia poi subito i byte con \texttt{Marshal.Copy}. Questo doppio passaggio non è elegante in senso estetico, ma è stabile nei vincoli reali del runtime WebGL.
+Il lato JavaScript usa \texttt{decodeAudioData}, costruisce manualmente l'header WAV e restituisce a Unity un puntatore al buffer in memoria Emscripten\footnote{Emscripten è la toolchain che espone al modulo WebAssembly una memoria lineare condivisa con il lato JavaScript.}. Il lato C\# copia poi subito i byte con \texttt{Marshal.Copy}. È un doppio passaggio un po' grezzo, ma nel runtime WebGL si è rivelato il più stabile.
 
 \par\begingroup
 \scriptsize
@@ -54,7 +54,7 @@ permesso microfono -> MediaRecorder
   -> Marshal.Copy e rilascio del buffer
 \end{lstlisting}
 
-Il passaggio dati è importante soprattutto perché evita due scorciatoie fragili: lasciare il browser libero di gestire un formato audio non controllato dal resto della pipeline, oppure demandare al backend una riconversione che il client può già risolvere prima. In SOULFRAME il bridge audio non serve quindi solo a ``far parlare il microfono''; serve a far entrare nel sistema un WAV già compatibile con il resto del turno.
+Il passaggio dati conta soprattutto perché evita due scorciatoie fragili: lasciare al browser un formato audio non controllato dal resto della pipeline, oppure demandare al backend una riconversione che il client può già gestire. In SOULFRAME il bridge audio non serve quindi solo a ``far parlare il microfono''; serve a far entrare nel sistema un WAV già compatibile con il resto del turno.
 
 \begin{lstlisting}[style=sfcode,language={[Sharp]C},caption={Riduzione del lato C\#: il buffer viene copiato subito e poi trattato come WAV gestito.}]
 [AOT.MonoPInvokeCallback(typeof(AudioDataCallback))]
@@ -67,7 +67,7 @@ private static void OnAudioReady(System.IntPtr ptr, int length)
 \end{lstlisting}
 
 \paragraph{\normalfont\texttt{AvaturnBridge.jslib}.}
-Il bridge Avaturn crea un overlay DOM a schermo intero, inizializza l'SDK e inoltra l'evento di export a Unity tramite \texttt{SendMessage}\footnote{\texttt{SendMessage} è il meccanismo con cui uno script browser richiama un metodo pubblico di un oggetto Unity già presente in scena.}. Il piccolo pacchetto JSON che rientra in Unity è simile al seguente:
+Il bridge Avaturn crea un overlay DOM a schermo intero, inizializza l'SDK e inoltra l'evento di export a Unity tramite \texttt{SendMessage}\footnote{\texttt{SendMessage} è il meccanismo con cui uno script browser richiama un metodo pubblico di un oggetto Unity già presente in scena.}. Il pacchetto JSON che rientra in Unity è simile al seguente:
 
 \begin{lstlisting}[language=json,caption={Payload di export inoltrato dal bridge Avaturn al client Unity.}]
 {
@@ -79,7 +79,7 @@ Il bridge Avaturn crea un overlay DOM a schermo intero, inizializza l'SDK e inol
 }
 \end{lstlisting}
 
-Lo stesso bridge gestisce anche apertura, chiusura e ritorno del focus al canvas Unity. Questo dettaglio è meno appariscente di altri, ma fondamentale per evitare che il browser resti ``agganciato'' all'overlay dopo la chiusura dell'editor avatar.
+Lo stesso bridge gestisce anche apertura, chiusura e ritorno del focus al canvas Unity. È un dettaglio poco appariscente, ma importante per evitare che il browser resti ``agganciato'' all'overlay dopo la chiusura dell'editor avatar.
 
 \begin{lstlisting}[style=sfcode,language={[Sharp]C},caption={Estratto adattato del callback che rientra in Unity dopo l'export Avaturn.}]
 public void OnAvatarJsonReceived(string json)
@@ -104,9 +104,9 @@ OpenAvaturnIframe
   -> chiude overlay e rifocalizza il canvas
 \end{lstlisting}
 
-Il tentativo su più varianti di \texttt{SendMessage} non è ridondanza inutile. Serve perché i template WebGL non espongono sempre l'istanza Unity nello stesso modo; senza questa cautela il bridge diventerebbe fragile proprio nelle build che dovrebbero essere più portabili.
+Il tentativo su più varianti di \texttt{SendMessage} serve perché i template WebGL non espongono sempre l'istanza Unity nello stesso modo; senza questa cautela il bridge diventerebbe fragile proprio nelle build che dovrebbero essere più portabili.
 
-Anche qui non è un dettaglio cosmetico. Overlay, callback e refocus non servono soltanto a chiudere bene l'editor avatar: servono a impedire che due mondi diversi, DOM e canvas Unity, si contendano tastiera, click e stato della pagina proprio durante un passaggio delicato dell'onboarding.
+Anche qui il punto non è cosmetico. Overlay, callback e refocus non servono soltanto a chiudere bene l'editor avatar: servono a evitare che DOM e canvas Unity si contendano tastiera, click e stato della pagina proprio durante un passaggio delicato dell'onboarding.
 
 \section{Integrazioni browser e filesystem virtuale}
 \paragraph{\normalfont\texttt{WebGLFilePicker.jslib} e file picker browser.}

@@ -2,6 +2,8 @@
 \chapter{Note Tecniche Integrative}
 \label{app:notes}
 
+Questa appendice raccoglie alcuni materiali tecnici di supporto che aiutano a leggere meglio il comportamento del prototipo. Vi confluiscono note operative, evidenze di test e ricorrenze emerse durante le verifiche sul backend.
+
 \section{Evidenze e pattern tecnici}
 \paragraph{Store tecnici del progetto.}
 Gli artefatti operativi del prototipo sono distribuiti in alcuni store distinti. Più che elencare i percorsi, qui conta capire quale funzione svolga ciascuno di essi nel ciclo di vita del prototipo.
@@ -45,13 +47,6 @@ Sono già disponibili evidenze tecniche prodotte durante le batterie di prova de
 
 I due report richiamati qui corrispondono alla documentazione tecnica di prova associata al backend. In particolare, i conteggi riportati in questa appendice riprendono i report \texttt{SOULFRAME\_extreme\_stress\_report\_20260309\_151154.md} e \texttt{SOULFRAME\_text\_coherence\_report\_20260309\_151808.md}. Il primo raccoglie prove miste su testo, PDF e immagini; il secondo lavora solo su memoria testuale e insiste soprattutto sui casi in cui avatar e utente rischiano di essere confusi nella formulazione della risposta.
 
-Questi materiali svolgono almeno tre funzioni utili:
-\begin{itemize}
-\item rendono ripetibile il controllo delle regressioni del backend;
-\item permettono di distinguere meglio retrieval e qualità della risposta finale;
-\item offrono esempi già strutturati da cui estrarre failure cases o casi limite.
-\end{itemize}
-
 \par\smallskip
 \footnotesize
 \begingroup
@@ -83,6 +78,13 @@ Coerenza identitaria & Solo testo, profilo avatar, profilo utente, separazione i
 \end{longtable}
 \endgroup
 \normalsize
+
+Questi materiali svolgono almeno tre funzioni utili:
+\begin{itemize}
+\item rendono ripetibile il controllo delle regressioni del backend;
+\item permettono di distinguere meglio retrieval e qualità della risposta finale;
+\item offrono esempi già strutturati da cui estrarre failure cases o casi limite.
+\end{itemize}
 
 \paragraph{Pattern emersi dalle prove tecniche.}
 Nei due report emerge con chiarezza che il retrieval risulta più stabile della risposta finale. Qui \emph{retrieval} significa che il backend recupera la memoria o il documento corretto; l'esito della risposta finale indica invece che quel materiale viene poi usato adeguatamente nel testo prodotto, senza omissioni, senza confondere i soggetti e senza comprimere eccessivamente il contenuto. Nello stress multi-sorgente il sistema recupera sempre il materiale corretto, ma in quattro casi non riesce ancora a trasformarlo in una risposta altrettanto solida. Lo scarto compare soprattutto quando la richiesta chiede di mettere insieme fonti diverse o di leggere in modo ordinato contenuti che arrivano da documenti meno lineari.

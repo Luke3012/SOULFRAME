@@ -2,6 +2,8 @@
 \chapter{Servizio RAG e Logica Conversazionale}
 \label{app:rag}
 
+Questa appendice entra nel backend che sostiene la conversazione vera e propria. Il servizio RAG non si limita a recuperare contenuti: qui passano anche la costruzione del contesto, la gestione della memoria e alcuni controlli che orientano la risposta.
+
 \section{Il servizio come snodo del sistema}
 \noindent Nel prototipo il servizio RAG concentra la parte più delicata del turno conversazionale: memoria, retrieval, routing dell'intento, controllo della risposta e ingestione di contenuti esterni convergono tutti qui. In questo punto il backend decide che cosa usare come contesto, come trattare un turno sociale e quando una risposta debba essere frenata o corretta.
 
@@ -36,7 +38,7 @@ Controllo finale della risposta & Applica vincoli di grounding, filtri di aderen
 \end{longtable}
 \par\endgroup
 
-Queste responsabilità non sono disposte in serie rigida. Nella pratica si intrecciano nello stesso turno: una chat può aprire o riusare una sessione, leggere il contesto recente, interrogare la memoria persistente, provare un percorso di retrieval mirato e poi decidere che la risposta finale vada riscritta in modo più prudente. È anche il motivo per cui il file è cresciuto molto: il servizio non ospita solo il retrieval, ma la logica con cui il prototipo cerca di tenere insieme continuità conversazionale, credibilità dell'identità e uso disciplinato delle fonti.
+Queste responsabilità non sono disposte in serie rigida. Nella pratica si intrecciano nello stesso turno: una chat può aprire o riusare una sessione, leggere il contesto recente, interrogare la memoria persistente, provare un percorso di retrieval mirato e poi decidere che la risposta finale vada riscritta in modo più prudente. È anche il motivo per cui il file è cresciuto molto: il servizio non contiene solo il retrieval, ma la logica con cui il prototipo prova a tenere insieme continuità conversazionale, credibilità dell'identità e uso disciplinato delle fonti.
 
 Tenere qui le decisioni sul contesto evita che il client debba conoscere dettagli che non gli appartengono, come il bilanciamento tra memoria persistente e storico recente o i criteri con cui una risposta viene considerata abbastanza grounded. Il frontend sa quando un turno inizia, quando finisce e come mostrarlo; il backend RAG decide invece quali prove ha davvero a disposizione per rispondere.
 
@@ -145,7 +147,7 @@ Accanto a \texttt{/chat}, il servizio espone alcune route che nel progetto vengo
 }
 \end{lstlisting}
 
-Queste route non formano un catalogo separato: allargano il perimetro dello stesso servizio. \texttt{/chat\_session/start} apre il contenitore della conversazione; \texttt{/recall} rende osservabile il retrieval senza passare dalla generazione finale; \texttt{/ingest\_file} e \texttt{/describe\_image} arricchiscono la memoria con sorgenti esterne che poi \texttt{/chat} potrà riusare. Letti insieme, questi endpoint mostrano che il servizio non custodisce solo ricordi testuali, ma governa un insieme di fonti eterogenee.
+Queste route non formano un catalogo separato: allargano il perimetro dello stesso servizio. \texttt{/chat\_session/start} apre il contenitore della conversazione; \texttt{/recall} rende osservabile il retrieval senza passare dalla generazione finale; \texttt{/ingest\_file} e \texttt{/describe\_image} arricchiscono la memoria con sorgenti esterne che poi \texttt{/chat} potrà riusare. Letti insieme, questi endpoint mostrano che il servizio non custodisce solo ricordi testuali, ma governa fonti eterogenee.
 
 \paragraph{Piano di query e routing dell'intento.}
 
@@ -411,7 +413,7 @@ Quando la risposta generata non soddisfa i vincoli di aderenza al contesto, il s
 
 La scelta del profilo dipende dal tipo di intento, dalla presenza di contesto factual e dalla natura della query. La catena è semplice: se la risposta nega contesto disponibile o contiene troppi token non supportati, si prova prima un grounding; se il grounding non basta e il turno è factual, si passa a un profilo strict. Se la query è di profilo, si usa il profilo dedicato. E' una sequenza prudente: richiede qualche passaggio in più, ma nelle prove ha tenuto meglio di un filtro unico troppo aggressivo, che finiva per appiattire il tono.
 
-Nel codice corrente questo passaggio non dipende solo da una regola simbolica generica. Il gate finale combina infatti più segnali: soglia minima sul punteggio factual dei candidati recuperati, ampiezza del margine tra i primi candidati, grounding score della risposta e rilevazione di possibili contraddizioni o negazioni del contesto disponibile. In questo senso il \emph{grounding} non è soltanto un'etichetta descrittiva, ma un controllo operativo che decide quando la risposta può restare aperta e quando deve essere riportata dentro un perimetro più stretto.
+Nel codice corrente questo passaggio non dipende solo da una regola simbolica generica. Il gate finale combina infatti più segnali: soglia minima sul punteggio factual dei candidati recuperati, ampiezza del margine tra i primi candidati, grounding score della risposta e rilevazione di possibili contraddizioni o negazioni del contesto disponibile. Qui il \emph{grounding} non è soltanto un'etichetta descrittiva, ma un controllo operativo che decide quando la risposta può restare aperta e quando deve essere riportata dentro un perimetro più stretto.
 
 Il meccanismo di \emph{riscrittura con guardrail} è lo stesso per tutti i profili: il servizio costruisce un prompt con il messaggio utente, il contesto recente (troncato), il contesto factual (troncato al limite del profilo) e la risposta originale da riscrivere. Il modello riceve istruzioni esplicite su cosa correggere e cosa preservare; la risposta riscritta viene poi sottoposta alla stessa sanitizzazione del passaggio precedente.
 

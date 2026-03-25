@@ -2,7 +2,9 @@
 \chapter{Altri Servizi Backend}
 \label{app:backend-services}
 
-\section{Panoramica}
+Questa appendice raccoglie i servizi backend che non appartengono al nucleo RAG ma ne rendono possibile il funzionamento. Trascrizione, sintesi vocale e gestione degli asset avatar restano moduli separati, con vincoli diversi, che incidono però direttamente sull'esperienza d'uso del prototipo.
+
+\section*{Panoramica}
 Oltre al servizio RAG, il backend di SOULFRAME si regge su tre componenti più specializzati: Whisper per la trascrizione, Coqui XTTS v2 per la sintesi vocale e Avatar Asset Server per import, cache e serving dei modelli. La loro separazione conta perché ciascuno porta con sé vincoli diversi di latenza, I/O e stato persistente.
 
 \par\begingroup
@@ -30,11 +32,11 @@ Avatar Asset Server & \texttt{8003} & Importa modelli \texttt{.glb}, li deduplic
 \end{longtable}
 \par\endgroup
 
-Questi tre servizi fanno meno cose del RAG, ma non sono affatto accessori. Whisper apre il canale vocale dell'utente, Coqui chiude il turno con una voce coerente con l'avatar e l'Avatar Asset Server mantiene stabile il catalogo dei modelli tra import, cache e caricamento lato client. Sono rimasti separati perché hanno tempi, failure mode e costi molto diversi, quindi era più utile tenerli osservabili e sostituibili senza trascinare con sé tutto il resto.
+Questi tre servizi fanno meno cose del RAG, ma non sono affatto accessori. Whisper apre il canale vocale dell'utente, Coqui chiude il turno con una voce coerente con l'avatar e l'Avatar Asset Server mantiene stabile il catalogo dei modelli tra import, cache e caricamento lato client. Sono rimasti separati perché hanno tempi, failure mode e costi molto diversi; tenerli distinti rende più semplice osservarli e, se serve, sostituirli senza trascinare con sé tutto il resto.
 
 \section{Pipeline audio e risposta vocale}
 \subsubsection*{Whisper: trascrizione e punto di ingresso del turno.}
-Il servizio \texttt{whisper\_server.py} è volutamente compatto. Carica il modello definito in \texttt{WHISPER\_MODEL}, espone \texttt{/health} e accetta upload multipart sulla route \texttt{/transcribe}. Il file viene scritto in una posizione temporanea, trascritto e poi rimosso.
+Il servizio \texttt{whisper\_server.py} è volutamente compatto. Carica il modello definito in \texttt{WHISPER\_MODEL}, espone \texttt{/health} e accetta upload multipart sulla route \texttt{/transcribe}. Il file passa per una posizione temporanea, viene trascritto e poi rimosso.
 
 Il contratto che il client usa davvero è minimale:
 
@@ -57,7 +59,7 @@ POST /transcribe
 }
 \end{lstlisting}
 
-Il servizio non fa molto altro, e questa è una scelta positiva. Whisper qui si comporta come un ingresso pulito del turno: riceve l'audio, lo trascrive e restituisce testo. I controlli sulla durata minima dell'input, sullo scarto di trascrizioni spurie e sulla gestione dell'attesa rimangono nel client, che è il punto in cui quegli errori diventano davvero percepibili. In questo modo lo STT non viene caricato di logiche che appartengono più alla UX del turno che alla trascrizione in sé.
+Il servizio non fa molto altro, ed è una scelta voluta. Whisper qui resta l'ingresso del turno: riceve l'audio, lo trascrive e restituisce testo. I controlli sulla durata minima dell'input, sullo scarto di trascrizioni spurie e sulla gestione dell'attesa rimangono nel client, che è il punto in cui quegli errori diventano davvero percepibili. Così lo STT non si riempie di logiche che appartengono più alla UX del turno che alla trascrizione in sé.
 
 \paragraph{Coqui XTTS v2: voce per-avatar, streaming e wait phrases.}
 Il servizio \texttt{coqui\_tts\_server.py} è più articolato. Oltre alle route di sintesi, gestisce il reference vocale per-avatar, la generazione delle clip di attesa e il caricamento anticipato del modello.
@@ -74,9 +76,9 @@ POST /set_avatar_voice
 Questa fase conta più di quanto sembri, perché definisce la materia prima di tutto il sottosistema vocale. Una reference sporca o troppo debole non peggiora soltanto la qualità timbrica: rende instabile anche l'effetto di continuità tra avatar, wait phrases e risposta principale. Per questo il servizio pulisce il file prima di salvarlo, invece di limitarsi ad archiviarlo così com'è.
 
 \paragraph{Streaming.}
-La route \texttt{/tts\_stream} restituisce il reply come \texttt{audio/wav} progressivo. Il backend non espone al client i segmenti interni della sintesi come unità semantiche separate: prepara il reply, lo segmenta solo per gestire meglio la generazione XTTS e poi ricompone il risultato in un unico stream WAV. Il contratto reale, però, non è mono-canale. Accanto allo stream audio esiste un secondo canale logico, basato su \texttt{request\_id} e \texttt{/tts\_timing}, che fornisce snapshot temporali incrementali per il reveal del testo lato client.
+La route \texttt{/tts\_stream} restituisce il reply come \texttt{audio/wav} progressivo. Il backend non espone al client i segmenti interni della sintesi come unità semantiche separate: prepara il reply, lo segmenta solo per gestire meglio la generazione XTTS e poi ricompone il risultato in un unico stream WAV. Accanto allo stream audio esiste però un secondo canale logico, basato su \texttt{request\_id} e \texttt{/tts\_timing}, che fornisce snapshot temporali incrementali per il reveal del testo lato client.
 
-Dal lato client contano soprattutto due campi: \texttt{request\_id}, usato per correlare audio e timing, e \texttt{client\_platform}, che permette al backend di distinguere il percorso WebGL da quello nativo. Se il client non è WebGL e il \texttt{request\_id} è presente, il servizio apre una sessione temporale incrementale e la aggiorna man mano che i segmenti del reply vengono sintetizzati e allineati. Se invece il client è WebGL, la stessa sessione non viene attivata: il reply continua a uscire come audio progressivo, ma il canale temporale fine viene soppresso.
+Dal lato client contano soprattutto due campi: \texttt{request\_id}, usato per correlare audio e timing, e \texttt{client\_platform}, che permette al backend di distinguere il percorso WebGL da quello nativo. Se il client non è WebGL e il \texttt{request\_id} è presente, il servizio apre una sessione temporale incrementale e la aggiorna man mano che i segmenti del reply vengono sintetizzati e allineati. Se invece il client è WebGL, il reply continua a uscire come audio progressivo ma il canale temporale fine non viene attivato.
 
 \begin{figure}[t]
 \centering
@@ -140,11 +142,11 @@ Lo stream espone alcuni header operativi utili al client:
 \end{longtable}
 \par\endgroup
 
-La logica reale del reply tiene insieme tre passaggi distinti. Prima il testo viene pulito e suddiviso in segmenti compatibili con XTTS, usando punteggiatura forte e un limite di caratteri per evitare truncation sui blocchi troppo lunghi. Poi ogni segmento viene sintetizzato in WAV e, quando disponibile, allineato parola-per-parola con \emph{forced alignment}. Infine il backend invia subito l'audio in streaming progressivo e aggiorna in parallelo una sessione di timing incrementale associata al \texttt{request\_id}. Il frontend riceve quindi un solo flusso audio da \texttt{/tts\_stream} e interroga periodicamente \texttt{/tts\_timing} per ottenere \texttt{words}, \texttt{word\_end\_ms} e \texttt{segment\_end\_ms} cumulativi. Questi array sono cumulativi sull'intero reply, non riservati al singolo segmento corrente: così il client può far avanzare il testo senza ricostruire localmente una timeline alternativa.
+La logica reale del reply tiene insieme tre passaggi distinti. Prima il testo viene pulito e suddiviso in segmenti compatibili con XTTS, usando punteggiatura forte e un limite di caratteri per evitare truncation sui blocchi troppo lunghi. Poi ogni segmento viene sintetizzato in WAV e, quando disponibile, allineato parola-per-parola con \emph{forced alignment}. Infine il backend invia subito l'audio in streaming progressivo e aggiorna in parallelo una sessione di timing incrementale associata al \texttt{request\_id}. Il frontend riceve quindi un solo flusso audio da \texttt{/tts\_stream} e interroga periodicamente \texttt{/tts\_timing} per ottenere \texttt{words}, \texttt{word\_end\_ms} e \texttt{segment\_end\_ms} cumulativi. Questi array valgono per l'intero reply, non per il singolo segmento corrente: così il client può far avanzare il testo senza ricostruire localmente una timeline alternativa.
 
 Nel contratto corrente i parametri opzionali più rilevanti lato client sono \texttt{reply\_segment\_max\_chars}, usato per limitare la lunghezza massima dei segmenti del reply prima della sintesi, e \texttt{request\_id}, usato per correlare stream audio e snapshot temporali. I riferimenti più vecchi a \texttt{split\_sentences}, \texttt{max\_chunk\_chars} e ai vecchi header temporali non descrivono più il comportamento effettivo del reply in \texttt{MainMode}.
 
-Quando l'allineamento non è disponibile, il backend continua comunque a restituire l'audio del reply. In quel caso la sessione \texttt{/tts\_timing} rimane vuota o incompleta, con eventuale campo \texttt{error}, e il client degrada a una resa testuale statica invece di ricostruire stime locali poco affidabili. In WebGL questo fallback non è occasionale ma sistematico: il \emph{word flow} temporizzato del reply è disabilitato e il testo viene mostrato direttamente in forma completa. La ragione è operativa più che estetica: nel runtime Unity WebGL le chiamate ripetute necessarie a tenere insieme audio progressivo, timing incrementale e sincronizzazione fine con il layer visivo hanno mostrato un costo eccessivo rispetto al beneficio percepito. Una soluzione più robusta richiederebbe una revisione più profonda del sottosistema di sincronizzazione.
+Quando l'allineamento non è disponibile, il backend continua comunque a restituire l'audio del reply. In quel caso la sessione \texttt{/tts\_timing} rimane vuota o incompleta, con eventuale campo \texttt{error}, e il client passa a una resa testuale statica invece di ricostruire stime locali poco affidabili. In WebGL questo fallback non è occasionale ma sistematico: il \emph{word flow} temporizzato del reply è disabilitato e il testo viene mostrato direttamente in forma completa. La ragione è operativa più che estetica: nel runtime Unity WebGL le chiamate ripetute necessarie a tenere insieme audio progressivo, timing incrementale e sincronizzazione fine con il layer visivo hanno mostrato un costo eccessivo rispetto al beneficio percepito. Una soluzione più robusta richiederebbe una revisione più profonda del sottosistema di sincronizzazione.
 
 \paragraph{Wait phrases.}
 Le clip di attesa vengono preparate quando il client salva il riferimento vocale dell'avatar con \path{/set_avatar_voice}. In quella fase il backend usa lo stesso \texttt{reference.wav} appena validato per sintetizzare un piccolo insieme di file brevi (\texttt{wait\_<key>.wav}) e salvarli nella directory dell'avatar. Durante la conversazione, invece, \path{/wait_phrase} non sintetizza nulla: restituisce semplicemente una delle clip già presenti. In pratica il setup voce prepara il materiale una volta sola, mentre il turno conversazionale si limita a richiamarlo in modo rapido e prevedibile. Per questo le wait phrases restano fuori dal reply principale: non usano \texttt{request\_id}, non aprono una sessione \texttt{/tts\_timing} e non partecipano al \emph{word flow} del reply.

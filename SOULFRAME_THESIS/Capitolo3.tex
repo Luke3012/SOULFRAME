@@ -1,278 +1,541 @@
 % !TEX root = ./main.tex
-\chapter{Architettura e Tecnologie Utilizzate}
-\label{chap:architettura}
+\chapter{Sviluppo del Progetto: Implementazione e Criticità}
+\label{chap:implementazione}
 
-\section{Requisiti del sistema}
-\label{sec:requisiti}
 
-Un prototipo di agente conversazionale embodied come SOULFRAME mette insieme interazione in tempo reale, gestione di asset 3D e servizi di inferenza esterni. In questa sezione i requisiti servono soprattutto a chiarire quali capacità erano davvero necessarie per far funzionare il prototipo e quali vincoli hanno inciso sulla sua tenuta tecnica.
 
-\subsection{Requisiti funzionali}
+In questo capitolo il prototipo prende una forma stabile e smette di funzionare solo "in teoria". L'attenzione va soprattutto ai punti in cui frontend, backend e procedure operative hanno retto meglio, e a quelli in cui sono serviti vincoli più espliciti. Unity è stato adottato perché offriva un compromesso credibile tra integrazione di UI, scena 3D e audio nello stesso client; inoltre era già l'ambiente più solido nel percorso di lavoro svolto nell'esame di Realtà Virtuale.
 
-Le funzioni principali del sistema sono distribuite tra servizi FastAPI \cite{FastAPI2026} separati, richiamati dal client Unity WebGL tramite HTTP. L'elenco seguente mantiene il formato dei requisiti funzionali, ma va letto come descrizione operativa del prototipo più che come capitolato formale.
 
-RF1 (Libreria e selezione avatar): il client deve ottenere e visualizzare la lista degli avatar disponibili tramite \texttt{/avatars/list} e permettere la selezione di un profilo attivo identificato da \texttt{avatar\_id}. Il requisito è soddisfatto se la lista include almeno un modello locale di fallback definito in \texttt{LOCAL\_MODELS} e, quando il backend è raggiungibile, include anche avatar importati con un URL caricabile del modello \texttt{.glb}.
+\section{Implementazione frontend}
+\label{sec:impl-frontend}
 
-RF2 (Import e caching asset \texttt{.glb}): quando è disponibile un URL di export (ad es. da Avaturn \cite{AvaturnDocs2026}), il client deve richiedere l'import con \texttt{/avatars/import} e ottenere un URL di cache server-side da usare per il download e l'istanza in scena. Il requisito è soddisfatto se import ripetuti dello stesso URL non creano duplicati, mantengono lo stesso \texttt{avatar\_id} con URL di cache stabile, e se l'avatar resta caricabile anche dopo riavvio dei servizi.
+\subsection{Gestione stati UI e navigazione} \label{subsec:ui-states}
+\begingroup
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=200pt
+\sloppy
+\catcode`\_=12\relax
 
-RF3 (Setup voce persistente per avatar): il client deve consentire la registrazione di un campione vocale e inviarlo al TTS con \texttt{/set\_avatar\_voice}, associandolo all'avatar attivo. Il requisito è soddisfatto se la registrazione supera una verifica di similarità testuale con soglia definita e se il riferimento vocale risulta riutilizzabile nelle sessioni successive, insieme alle frasi di attesa già preparate per l'avatar.
+Nel client Unity di SOULFRAME la navigazione è governata da una macchina a stati finiti implementata in \texttt{UIFlowController.cs}. Il motivo è semplice: schermate, input e chiamate asincrone ai servizi devono restare coerenti anche quando il flusso rallenta o fallisce. Senza uno stato centrale, i disallineamenti tra pannello attivo, controlli disponibili e feedback UI diventano presto difficili da leggere e poi da correggere.
 
-RF4 (Memoria per-avatar con ingest e retrieval contestuale): il sistema deve salvare note e contenuti da file nella memoria dell'avatar tramite \texttt{/remember} e \texttt{/ingest\_file}, e deve usare tale memoria nella generazione contestuale via \texttt{/chat}. Il requisito è soddisfatto se la memoria resta persistente tra sessioni, se due avatar distinti non condividono contenuti indicizzati e se la risposta del servizio espone metadati minimi di tracciabilità coerenti con il turno.
+La struttura ruota attorno ai sei stati principali \texttt{Boot}, \texttt{MainMenu}, \texttt{AvatarLibrary}, \texttt{SetupVoice}, \texttt{SetupMemory} e \texttt{MainMode}. Una mappa dei pannelli e una pila di navigazione mantengono coerenti schermata corrente, ritorno e controlli disponibili, mentre le transizioni visuali sono centralizzate per evitare click residui, focus incoerenti o passaggi bruschi tra pannelli.
 
-RF5 (Turno vocale end-to-end in push-to-talk): il client deve gestire una conversazione a turni acquisendo audio, inviandolo allo STT con \texttt{/transcribe}, inoltrando la trascrizione al RAG con \texttt{/chat} e riproducendo la risposta audio tramite streaming con \texttt{/tts\_stream}. Il requisito è soddisfatto se, per ogni turno, il sistema produce testo trascritto, testo di risposta e avvio del playback audio con transizioni UI coerenti tra ascolto, elaborazione e riproduzione.
+Figura~\ref{fig:uistate-fsm} riassume la FSM principale e mette in evidenza il ruolo di \texttt{Boot}. All'avvio il client attende soprattutto la disponibilità di Coqui e RAG, poi controlla voce e memoria dell'avatar attivo prima di decidere se mandare l'utente verso onboarding o menu. In questo passaggio il client si appoggia a polling degli endpoint \texttt{/health} e a una verifica minima del profilo tramite \texttt{/avatar\_voice} e \texttt{/avatar\_stats}. Coqui viene verificato per primo perché la pre-attivazione del TTS è il collo di bottiglia più evidente all'avvio e perché, senza profilo vocale disponibile, il flusso conversazionale non può chiudersi con una risposta audio credibile.
 
-RF6 (Ingest multimodale per memoria per-avatar): il sistema deve consentire l'ingestione multimodale nella memoria dell'avatar, includendo descrizione immagine con \texttt{/describe\_image} e ingestione documentale con \texttt{/ingest\_file} (estrazione e indicizzazione del contenuto). Il requisito è soddisfatto se, dopo l'operazione, i contenuti risultano recuperabili tramite \texttt{/recall} e/o se \texttt{/avatar\_stats} indica che per l'avatar è presente una memoria già popolata.
+\begin{lstlisting}[style=sfterminal,title={Controlli iniziali in \texttt{Boot}},caption={Sequenza minima dei controlli eseguiti dal client prima di aprire menu o onboarding.}]
+1. poll Coqui /health
+2. poll RAG /health
+3. GET /avatar_voice?avatar_id=...
+4. GET /avatar_stats?avatar_id=...
+5. se manca la voce -> SetupVoice
+6. se manca la memoria -> SetupMemory
+7. altrimenti -> MainMenu
+\end{lstlisting}
 
-\subsection{Requisiti non funzionali}
+\begin{lstlisting}[style=sfcode,language={[Sharp]C},caption={Estratto adattato da \texttt{UIFlowController.cs}: il controller apre il menu solo dopo i controlli di boot.}]
+if (!coquiReady || !ragReady)
+    return UIState.Boot;
+if (!voiceInfo.has_voice)
+    return UIState.SetupVoice;
+if (statsInfo.total_memories <= 0)
+    return UIState.SetupMemory;
+return UIState.MainMenu;
+\end{lstlisting}
 
-I requisiti non funzionali sono formulati secondo il modello ISO/IEC 25010 e si concentrano sugli aspetti che, nel prototipo, incidono di più sulla plausibilità dell'interazione e sulla sua gestione tecnica. In VR anche modifiche piccole possono avere effetti evidenti su tempi, stabilità e leggibilità dell'esperienza; per questo è utile esplicitare fin da qui i vincoli di qualità che hanno guidato le scelte architetturali \cite{Karre2024VReqST}.
+L'Appendice~\ref{app:frontend} sviluppa questa logica in modo più vicino al controller; qui basta osservare che \texttt{Boot} svolge davvero una funzione di filtro sul profilo prima dell'ingresso nel flusso conversazionale.
 
-RNF1 (Efficienza prestazionale - time behaviour): la latenza percepita deve restare controllata misurando il tempo tra rilascio del comando push-to-talk e primo campione audio riprodotto dal TTS. Nel prototipo è stata adottata come soglia operativa una risposta udibile entro 12 s in esecuzione locale e entro 16 s in deploy pubblico. La verifica, in questa fase, resta osservativa: i timestamp lato client sono utili per diagnosi e confronto tra ambienti, mentre una telemetria turn-based persistente resta necessaria per una validazione quantitativa completa, come discusso nel Capitolo~\ref{chap:risultati}. Le soglie 12/16 s vanno quindi lette come target di progetto, non come benchmark conclusivo \cite{Lin2024Estuary}.
+\begin{figure}[t]
+\centering
+\includegraphics[width=1.0\textwidth]{uistate_fsm.png}
+\caption{Diagramma della macchina a stati \texttt{UIState} nel client SOULFRAME: i sei stati principali e le transizioni guidate da eventi utente e callback asincroni (controlli iniziali sui servizi, verifica profilo voce, verifica memoria).}
+\label{fig:uistate-fsm}
+\end{figure}
 
-RNF2 (Affidabilità - availability e fault tolerance): durante sessioni prolungate il sistema deve mantenere utilizzabile la maggior parte dei turni vocali, dove un turno è riuscito se STT, \texttt{/chat} e \texttt{/tts\_stream} restituiscono esito valido entro timeout. Sono implementati timeout, ritentativi limitati e gestione esplicita degli errori lato client; in caso di fallimento il flusso degrada su messaggi di stato UI senza blocchi permanenti. Nel prototipo la verifica resta soprattutto osservativa, riletta attraverso log di sessione, errori HTTP e comportamento della macchina a stati.
+Nei singoli stati contano soprattutto i casi non ovvi. In \texttt{AvatarLibrary} il carosello 3D non usa \texttt{Selectable} standard, così da evitare conflitti tra logica UI tradizionale e interazione con oggetti 3D. In \texttt{SetupMemory}, invece, input testuale e navigazione restano separati per non far collidere editing e comandi globali.
 
-RNF3 (Manutenibilità, modularità e portabilità): la sostituzione di un micro-servizio deve richiedere solo una variazione della configurazione centralizzata lato client, mantenendo invariati endpoint e dati attesi. Il requisito si considera soddisfatto quando il frontend WebGL continua a funzionare sia nello sviluppo locale, con URL assoluti, sia in deploy dietro reverse proxy con percorsi del tipo \texttt{/api/<servizio>}, e quando dopo un aggiornamento viene rieseguita una checklist minima di compatibilità.
+\texttt{UINavigator.cs} e \texttt{UIHintBar.cs} completano questo schema senza duplicare la logica di stato: il primo traduce input discreti in azioni coerenti con la schermata corrente, la seconda indica all'utente quali comandi siano disponibili. Tra desktop e touch cambia soprattutto il modo in cui l'utente interagisce. Il percorso della schermata resta lo stesso, mentre icone, gesture e feedback servono a rendere più chiari i passaggi delicati. Nella libreria avatar lo stesso principio vale per reset e cancellazione: l'utente riceve conferme allineate tra testo, animazione e suono, così l'esito dell'azione rimane chiaro anche quando il catalogo mescola avatar locali e avatar importati.
 
-RNF4 (Coerenza estetica e comunicazione di stato): il linguaggio visivo deve restare coerente con la natura stilizzata degli avatar Avaturn e con il carattere sperimentale del prototipo. Nel client questo passa da effetti di post-processing, rings animati e feedback di selezione, scelti perché compatibili con rendering WebGL e utili a rendere leggibili gli stati operativi senza aumentare il carico cognitivo dell'utente. Il requisito è soddisfatto se gli indicatori visivi accompagnano in modo consistente transizioni e operazioni principali dell'interfaccia (inizializzazione, setup, onboarding, selezione), mantenendo continuità tra resa dell'avatar e contesto UI.
+La modalità touch segue lo stesso flusso della desktop, ma cambia il modo in cui si danno i comandi: tap e hold prendono il posto del focus da tastiera. Tenere separati comportamento applicativo e presentazione fa sì che le differenze restino soprattutto nel binding degli input. Il confronto visivo in Figura~\ref{fig:ui-desktop-touch-comparison} mostra proprio questo: cambia l'interazione, non la logica sottostante.
 
-\section{Architettura di riferimento di SOULFRAME}
-\label{sec:architettura-riferimento}
-\subsection{Vista d'insieme dei componenti frontend/backend}
-SOULFRAME adotta un'architettura client--server a componenti, pensata per lasciare al browser ciò che dipende da interfaccia e resa 3D e demandare al backend inferenza e persistenza. Il client è una build Unity WebGL eseguita nel browser: gestisce la UI, le transizioni di stato dell'esperienza e l'interazione \textit{push-to-talk}, oltre al rendering e alla visualizzazione dell'avatar. La comunicazione verso il backend avviene via HTTP ed è mediata da una configurazione centralizzata, così che il client possa funzionare sia in esecuzione locale sia in deploy pubblico senza cambiare logica applicativa. L'intero impianto resta orientato a una conversazione individuale per sessione: memoria persistente e contesto recente vengono organizzati per \texttt{avatar\_id} e \texttt{session\_id}, ma non esiste una sincronizzazione reale tra utenti concorrenti.
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.90\textwidth]{ui-desktop-touch-comparison.png}
+\caption{Confronto tra UI desktop e UI touch in \texttt{MainMode}: a parità di \texttt{UIState}, cambiano input primario e \texttt{UIHintBar} (icone tastiera vs icone gesture/PTT).}
+\label{fig:ui-desktop-touch-comparison}
+\end{figure}
 
-Sul backend, la pipeline è scomposta in quattro micro-servizi FastAPI indipendenti. Whisper trasforma l'audio in testo, il servizio RAG governa orchestrazione conversazionale e memoria per-avatar, il TTS genera la voce dell'avatar e l'Avatar Asset Server mantiene il catalogo dei modelli \texttt{.glb}. I dettagli delle route compaiono più avanti e nelle appendici; nel corpo del capitolo interessa soprattutto mostrare come queste responsabilità restino ben distinte.
+{\hbadness=10000
+In WebGL va gestita anche la presenza di contesti esterni: quando è aperto un overlay browser o la UI è in lock esplicito, il navigatore sospende l'input e l'\texttt{EventSystem} viene tenuto separato dalla hint bar. Così eventi tastiera o focus residui non alterano lo stato corrente, un problema comune quando Unity condivide la pagina con componenti DOM.
+\par}
+\endgroup
 
-Le route principali riflettono bene questa divisione. Whisper espone \texttt{/transcribe}; il servizio RAG concentra \texttt{/chat}, \texttt{/chat\_session/start}, \texttt{/remember}, \texttt{/recall} e ingestione dei contenuti; il TTS offre sintesi completa, sintesi in streaming e gestione della voce per-avatar; il servizio asset governa \texttt{/avatars/list}, \texttt{/avatars/import} e il serving dei modelli \texttt{.glb}. Più che seguire ogni payload, qui è utile notare che ciascun blocco conserva un perimetro abbastanza chiaro.
+\subsection{Onboarding avatar e integrazione Avaturn}\label{subsec:avatar-onboarding}\label{subsec:avaturn-webview}
+\begingroup
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=200pt
+\sloppy
+\catcode`\_=12\relax
+\catcode`\#=12\relax
 
-Un runtime separato, Ollama, fornisce modelli di chat ed embeddings. In questo modo il servizio RAG resta focalizzato sull'orchestrazione applicativa e i modelli possono essere aggiornati o sostituiti senza toccare il client, purché restino stabili interfacce e formati attesi.
+La gestione avatar è concentrata in \texttt{AvatarManager}, che durante l'onboarding Avaturn \cite{AvaturnDocs2026} coordina UI, persistenza e backend asset. Nello sviluppo è servito proprio questo accentramento, perché import, download, cancellazione e selezione non avvengono mai in modo perfettamente lineare rispetto all'input dell'utente.
 
-Nel prototipo questa impostazione si riflette anche nelle configurazioni dei due ambienti. In locale Windows Whisper lavora con il profilo \texttt{small}, mentre nell'ambiente Ubuntu usato per le prove è stato possibile adottare \texttt{medium}; sul lato chat, la variante usata via Ollama cambia tra sviluppo e deploy, ma questi dettagli restano confinati al backend.
+Il profilo è serializzato come \texttt{AvatarData}. Il formato conserva solo i riferimenti minimi necessari a ricostruire l'asset e delega a runtime la risoluzione della sorgente effettiva in base a piattaforma e disponibilità locale. In WebGL, inoltre, la lista avatar viene trattata soprattutto come responsabilità backend, così cache browser e stato server non divergono nel tempo.
 
-In deploy pubblico, l'elemento chiave di integrazione è il reverse proxy Caddy, con due funzioni: terminazione TLS e punto d'ingresso unico per il browser. Il client WebGL comunica con un'unica origine HTTPS e invoca le API tramite percorsi riscritti (\texttt{/api/whisper/*}, \texttt{/api/rag/*}, \texttt{/api/avatar/*}, \texttt{/api/tts/*}). Caddy inoltra le richieste alle porte interne 8001--8004, mantenute non esposte verso l'esterno.
+Nel flusso completo l'overlay Avaturn restituisce a Unity una struttura JSON di esportazione; da lì \texttt{AvatarManager} costruisce un \texttt{AvatarData}, invia \texttt{/avatars/import} al backend e riceve un \texttt{cached\_glb\_url} già pubblicabile. La libreria avatar viene poi ripopolata tramite \texttt{/avatars/list}, così preview e selezione finale lavorano sullo stesso catalogo che il server conserverà anche dopo un riavvio. Questo evita divergenze tra ciò che il browser crede disponibile e ciò che il backend può servire. La forma minima dei dati scambiati è in Appendice~\ref{app:frontend}.
 
-La soluzione riduce la complessità lato browser, isola i servizi e impedisce che una build pubblica tenti di contattare \texttt{127.0.0.1:800x} dal browser dell'utente finale. Nel prototipo, gli endpoint non implementano autenticazione o autorizzazione applicativa; l'architettura presuppone quindi una rete di esecuzione controllata.
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.40\textwidth]{usecase_sessione_avatar.png}
+\caption{Percorso d'uso principale dell'utente: dal profilo avatar all'avvio della conversazione.}
+\label{fig:usecase-sessione-avatar}
+\end{figure}
+
+Per la risoluzione degli URL, \texttt{AvatarManager} e \texttt{SoulframeServicesConfig} (\texttt{ScriptableObject}\footnote{\url{https://docs.unity3d.com/Manual/class-ScriptableObject.html}}) coprono due problemi distinti: il primo normalizza i percorsi effettivi dei modelli avatar, il secondo gli indirizzi base dei servizi. Preview e caricamento principale restano inoltre separati, così un risultato tardivo non può sovrascrivere lo stato corrente quando l'utente ha già cambiato contesto.
+
+Nel percorso WebGL, \texttt{/avatars/import} e \texttt{WebGLDownloadAndInstantiate} costruiscono un flusso asincrono che termina con l'istanziazione runtime via GLTFast\footnote{\url{https://docs.unity3d.com/Packages/com.unity.cloud.gltfast@6.10/manual/index.html}}. Il primo passaggio è lato server; solo dopo il client scarica il binario e avvia il caricamento runtime. Così il flusso resta più controllabile e meno esposto a risultati parziali.
+
+Dopo il caricamento, il manager completa il setup comportamentale: animator idle, bind lip-sync e controller di sguardo/blink. Il comportamento embodied di questi componenti è discusso in \ref{subsec:embodied-behavior}; il wiring avviene subito dopo l'instanziazione, così ogni avatar entra in scena già pronto per il ciclo operativo previsto.
+
+Infine, watchdog e cancellazione globale impediscono che un download lento lasci l'applicazione in lock permanente. Se qualcosa va storto, l'utente può riprovare o tornare al menu senza riavviare tutto. La struttura del profilo avatar, i meccanismi di riserva tra catalogo locale e backend e le guardie contro risultati tardivi sono sviluppati in Appendice~\ref{app:frontend}, dove questo passaggio viene letto più da vicino rispetto alla persistenza e allo stato del client.
+
+In WebGL l'editor Avaturn viene integrato come overlay DOM: il browser ospita l'iframe e Unity riceve soltanto la struttura dati di esportazione. Durante le prove questa soluzione si è rivelata la più gestibile, perché lasciava al browser il ciclo di vita dell'editor senza trascinare nella scena Unity logiche che non le appartengono. La Figura~\ref{fig:avaturn-bridge-arch} riassume questo passaggio tra controller Unity, bridge JavaScript e callback di ritorno.
+
+L'ingresso lato Unity è \texttt{AvaturnWebController}. In editor apre l'URL esternamente, mentre in build WebGL invoca \texttt{OpenAvaturnIframe} via \texttt{[DllImport("__Internal")]}, secondo il pattern previsto da Unity per interoperare con script browser\footnote{\url{https://docs.unity3d.com/Manual/webgl-interactingwithbrowserscripting.html}} e in linea con la scena esempio WebGL dell'SDK ufficiale Avaturn \cite{AvaturnSDK}. Il callback \texttt{OnAvatarJsonReceived} inoltra poi il JSON a \texttt{UIFlowController}, che resta il coordinatore dello stato applicativo. In \texttt{AvaturnBridge.jslib} l'overlay viene creato, l'SDK viene inizializzato e l'evento \texttt{export} viene convertito in una struttura JSON inviata a Unity tramite \texttt{SendMessage}. Così il bridge si limita a consegnare eventi, mentre transizioni e side effect restano nella FSM. Il callback vero e proprio, con la chiusura dell'overlay e il passaggio del payload ad \texttt{AvatarManager}, insieme alle varianti di invio e al refocus del canvas, è riportato in Appendice~\ref{app:webgl-bridge}.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=1.0\textwidth]{pipeline_e2e.png}
-\caption{Flusso end-to-end del sistema SOULFRAME: dall'input vocale dell'utente alla risposta dell'agente embodied.}
-\label{fig:pipeline-e2e}
+\includegraphics[width=1.0\textwidth]{avaturn_bridge_arch.png}
+\caption{Architettura dell'integrazione Avaturn in WebGL: \texttt{AvaturnWebController} invoca il bridge \texttt{OpenAvaturnIframe} in \texttt{AvaturnBridge.jslib}, che crea un overlay DOM e inizializza l'SDK Avaturn; l'evento di export ritorna a Unity tramite \texttt{SendMessage} con un payload JSON.}
+\label{fig:avaturn-bridge-arch}
 \end{figure}
 
-Figura~\ref{fig:arch-cap3} riassume questa vista a blocchi. Figura~\ref{fig:pipeline-e2e} mostra in forma sintetica la catena conversazionale completa, dall'input vocale alla risposta dell'agente embodied. Le due figure sono complementari: la prima mette a fuoco il flusso logico della conversazione, la seconda come lo stesso flusso viene distribuito tra client, proxy e servizi.
+Focus e input vanno gestiti insieme: apertura overlay, blocco eventi verso Unity e refocus del canvas in chiusura prevengono stati in cui la tastiera resta agganciata al DOM o si perde tra i due contesti. Apertura e chiusura coordinate dell'overlay evitano anche i click di recupero dopo la chiusura dell'editor. In questo schema \texttt{AvaturnSystem} resta un wrapper di compatibilità: disabilita UI Avaturn non necessaria in WebGL e delega l'avvio al bridge JavaScript. Il browser gestisce l'editor in isolamento, mentre \texttt{AvatarManager} consuma il payload di import nel flusso di onboarding appena descritto.
 
-La stessa scomposizione in componenti viene mantenuta sia in locale sia su server. In ambiente Windows lo script di avvio coordina l'esecuzione dei servizi e applica controlli di base, per esempio sulla disponibilità delle porte, così da ridurre conflitti tra processi durante lo sviluppo. In ambiente Ubuntu, ciascun micro-servizio è gestito come unità \texttt{systemd}, con comandi amministrativi che permettono start, stop, status e aggiornamenti senza riconfigurare manualmente l'intero stack. È una soluzione più onerosa di un eseguibile unico, ma nel prototipo ha reso più leggibili i problemi che emergevano tra servizi diversi.
+\endgroup
+
+\subsection{Acquisizione e validazione dell'input vocale}
+\label{subsec:audio-capture}\label{subsec:voice-validation}
+\begingroup
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=200pt
+\sloppy
+\catcode`\_=12\relax
+
+Nel client SOULFRAME l'acquisizione audio è uno dei punti in cui la differenza tra build Windows nativa e build WebGL si vede con più chiarezza. Il gesto dell'utente resta lo stesso, ma nel browser entrano in gioco permessi, bridge JavaScript e vincoli del runtime che nella build Windows non pesano allo stesso modo. Per questo l'acquisizione viene trattata come un sottosistema separato dalla UI: tenerla fuori dalla logica di schermata aiuta a preservare la stabilità del flusso vocale anche quando cambiano sorgente di input (desktop o touch) o contesto di esecuzione. L'architettura è a tre livelli: \texttt{AudioRecorder} come interfaccia usata da \texttt{UIFlowController}, \texttt{WebGLAudioCapture} come bridge C\#, e \texttt{AudioCapture.jslib} come implementazione browser. La UI invoca sempre le stesse operazioni di alto livello, mentre i dettagli di piattaforma restano confinati nel provider.
+
+Nel percorso WebGL, l'interoperabilità usa \texttt{DllImport("__Internal")}\footnote{\texttt{DllImport("__Internal")} è il meccanismo con cui il codice C\# richiama funzioni esposte dal lato nativo o dal runtime WebGL.} e callback compatibili con la compilazione AOT\footnote{AOT significa \emph{Ahead-Of-Time}: il codice viene compilato in anticipo, con meno libertà rispetto a certi collegamenti dinamici disponibili in altri runtime.} di Unity WebGL\footnote{\url{https://docs.unity3d.com/Manual/webgl-interactingwithbrowserscripting.html}}. Il plugin restituisce un buffer audio che il lato C\# copia subito in memoria gestita, così il frontend non dipende dalla durata del buffer nel runtime WebGL. Il passaggio tecnico completo è sviluppato in Appendice~\ref{app:webgl-bridge}. La gestione permessi è centralizzata nello stesso provider: richiesta anticipata, stato esposto al chiamante e prevenzione di richieste concorrenti. Questo riduce i fallimenti del primo turno vocale dovuti a prompt browser tardivi e aiuta anche la UI a distinguere un problema di autorizzazione da un problema di cattura. Per questo il client prova a richiedere l'accesso al microfono già nelle fasi iniziali di \texttt{MainMode}: in WebGL il permesso fa parte del flusso. Nel plugin JavaScript, \texttt{MediaRecorder}\footnote{\texttt{MediaRecorder} è l'API del browser usata per registrare flussi audio o video già acquisiti.} produce un WAV già compatibile con il resto della pipeline. Sul lato C\#, \texttt{WebGLAudioCapture} lo copia subito in memoria gestita e lo riconsegna come \texttt{byte[]} a \texttt{AudioRecorder}. Così setup voce e turno conversazionale riusano lo stesso contratto dati senza chiedere al backend conversioni aggiuntive. Il dettaglio del passaggio browser$\rightarrow$Unity è sviluppato in Appendice~\ref{app:webgl-bridge}.
+
+\vspace*{\fill}
+\begin{lstlisting}[style=sfterminal,title={Passaggio dati del capture audio},caption={Sequenza compatta del passaggio browser -> Unity usato sia nel setup voce sia in \texttt{MainMode}.}]
+browser start capture
+-> callback JS con (pointer, length)
+-> Marshal.Copy(pointer, managedBytes, 0, length)
+-> byte[] WAV in AudioRecorder
+-> controllo durata minima
+\end{lstlisting}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=1.0\textwidth]{arch_cap3.png}
-\caption{Vista d'insieme dell'architettura a componenti di SOULFRAME: il client Unity WebGL comunica con i micro-servizi backend attraverso il reverse proxy Caddy.}
-\label{fig:arch-cap3}
+\includegraphics[width=0.95\textwidth]{audio_stack.png}
+\caption{Stack di acquisizione audio in WebGL: \texttt{AudioRecorder} delega al provider \texttt{IAudioCaptureWebGL} (\texttt{WebGLAudioCapture}), che richiama il plugin \texttt{AudioCapture.jslib} per cattura \texttt{MediaRecorder} e conversione WAV (header RIFF) con trasferimento dei byte via heap Emscripten.}
+\label{fig:audio-stack}
 \end{figure}
 
-\subsection{\texorpdfstring{Flusso end-to-end audio $\rightarrow$ testo $\rightarrow$ risposta $\rightarrow$ audio}{Flusso end-to-end audio -> testo -> risposta -> audio}}
-Il flusso conversazionale end-to-end segue una sequenza a turni: parte dall'input vocale dell'utente e termina con la riproduzione della risposta sintetizzata, mantenendo sul client Unity WebGL le responsabilità di interazione e rendering e delegando al backend le fasi di inferenza. L'interazione è di tipo push-to-talk: l'utente tiene premuto \texttt{SPACE} per parlare e, al rilascio, il client chiude la registrazione e prepara un file audio WAV. In ambiente WebGL l'acquisizione del microfono richiede un bridge JavaScript, realizzato qui tramite \texttt{AudioCapture.jslib}.\footnote{Unity Technologies, \emph{Audio in WebGL}, \url{https://docs.unity3d.com/6000.2/Documentation/Manual/webgl-audio.html}}
+Il sistema supporta sia modalità start/stop sia cattura a durata fissata. Le due modalità coprono esigenze diverse: turno conversazionale in tempo reale e acquisizione guidata durante setup. La semantica di quando invocarle resta nel livello UI, come discusso in \ref{subsec:ui-states}. La catena in Figura~\ref{fig:audio-stack} chiarisce anche un altro punto: validazione vocale e \texttt{MainMode} condividono lo stesso contratto di output audio. Avere già il WAV in quel punto permette un controllo lato frontend sulla sua durata prima di coinvolgere Whisper. Sia \texttt{SetupVoice} sia \texttt{MainMode} bloccano infatti campioni sotto circa \SI{0.55}{\second}, riducendo regressioni trasversali tra onboarding e conversazione. I dettagli del bridge browser$\leftrightarrow$Unity, delle callback e del passaggio heap Emscripten$\rightarrow$C\# sono raccolti in Appendice~\ref{app:webgl-bridge}, così da non trasformare questa sottosezione in una descrizione troppo vicina alla documentazione del plugin.
 
-Una volta completata la cattura, il client invia l'audio al servizio STT tramite \texttt{/transcribe}. Questa prima trasformazione da segnale audio a testo rende poi possibile l'intero passaggio conversazionale successivo.
+Lo stato \texttt{SetupVoice} chiude l'onboarding dell'avatar verificando che il campione registrato corrisponda davvero alla lettura del testo mostrato a schermo, prima di salvarlo come voce di \emph{voice cloning} per la sintesi successiva, come discusso in \autoref{sec:pipeline-ai}. Il controllo non ha finalità biometriche. Serve a scartare i casi che peggiorano subito la resa percepita: registrazioni troppo brevi, audio vuoto, letture in un'altra lingua o campioni registrati mentre l'utente sta dicendo altro. Per questo è stata mantenuta una validazione basata su similarità testuale: costa poco, resta deterministica e in UI si traduce in una percentuale di match, senza introdurre modelli aggiuntivi o dataset specifici.
 
-Il servizio RAG/LLM riceve la trascrizione tramite \texttt{/chat}, includendo l'identificativo dell'avatar (\texttt{avatar\_id}). Qui il backend classifica la richiesta, sceglie il percorso di recupero più adatto e costruisce il contesto della risposta.
+Il flusso parte dalla frase di riferimento mostrata a schermo. \texttt{UIFlowController} prova prima a generarla tramite il servizio RAG, chiedendo una sola frase italiana naturale di lunghezza controllata; se la risposta non arriva o non rispetta i vincoli minimi, il client usa una frase locale di riserva. Così il setup non dipende in modo fragile dalla disponibilità del backend e mantiene comunque un testo abbastanza lungo da risultare utile per il campione.
 
-Prima del primo turno, però, il client può aprire anche una sessione esplicita con \texttt{/chat\_session/start}. Questo passaggio genera un \texttt{session\_id} e permette di tenere distinti memoria persistente dell'avatar, contesto recente e traccia della sessione.
+Dopo la registrazione \emph{push-to-talk}, il client ottiene i byte WAV e ne ricava prima la durata effettiva. Se il campione è troppo breve, il flusso si ferma lato frontend e la UI chiede di riprovare senza inviare nulla a \texttt{/transcribe}. Quando la richiesta STT va a buon fine, il controller non accetta ancora subito il testo restituito: oltre ai casi vuoti, scarta alcune trascrizioni sospette e solo dopo confronta il risultato con la frase attesa tramite una similarità testuale. Se il punteggio supera la soglia configurata, pari a circa il 70\% (\texttt{setupVoiceMinSimilarity=0.7f}), il file viene inviato a Coqui con \texttt{/set_avatar_voice}; nella stessa fase il backend prepara anche le \emph{wait phrases} associate a quel riferimento vocale.\cite{Radford2023Whisper}
 
-La memoria per-avatar è costruita su un database vettoriale persistente (ChromaDB \cite{ChromaDB2026}), popolato tramite embedding generati con un modello dedicato. Accanto a questo livello persistente, il backend mantiene anche una finestra scorrevole dei turni più recenti in RAM, indicizzata per coppia \texttt{(avatar\_id, session\_id)}. Questa finestra non sostituisce la memoria interrogata via retrieval: conserva continuità locale tra richieste ravvicinate, mentre il log di sessione su file resta distinto. Il servizio invoca poi il modello linguistico per la risposta e, quando necessario, applica una riscrittura con vincoli di aderenza ai dati recuperati.
+Nel codice il punteggio è un po' più ricco di quanto lasci intuire la sola percentuale mostrata in UI. Prima del confronto, \texttt{CalculateSimilarity} normalizza i due testi: converte in minuscolo, rimuove i diacritici e compatta i simboli non alfanumerici. Così differenze marginali come apostrofi, accenti o punteggiatura non pesano troppo sul risultato finale.
 
-La scelta di tenere insieme questi tre livelli --- memoria persistente, contesto recente e log --- nasce da un compromesso preciso. Una memoria solo persistente rende più difficile seguire riferimenti ravvicinati; una memoria solo di sessione fa perdere continuità tra incontri diversi; un semplice log non basta a sostenere il turno in tempo reale. Nel corpo interessa soprattutto questa distinzione, mentre i meccanismi più minuti di retrieval e tracciabilità sono sviluppati nel Capitolo~\ref{chap:implementazione} e in Appendice~\ref{app:rag}.
+Dopo la normalizzazione, il controllo combina due segnali complementari. Il primo è una similarità di sequenza basata sulla distanza di Levenshtein normalizzata, quindi sensibile a inserzioni, cancellazioni e sostituzioni di caratteri:
+\[
+s\sb{\mathrm{seq}}(a,b) = 1 - \frac{\mathrm{lev}(a,b)}{\max(|a|,|b|)}
+\]
+Il secondo è un overlap lessicale tra i token, trattato come coefficiente di Jaccard:
+\[
+s\sb{\mathrm{word}}(a,b) = \frac{|W(a)\cap W(b)|}{|W(a)\cup W(b)|}
+\]
+Il punteggio finale è una combinazione pesata dei due contributi:
+\[
+s(a,b) = \mathrm{clip}\sb{[0,1]}\big(0.6 \cdot s\sb{\mathrm{seq}}(a,b) + 0.4 \cdot s\sb{\mathrm{word}}(a,b)\big)
+\]
+dove \(a\) è la frase attesa normalizzata, \(b\) la trascrizione ottenuta da Whisper e \(W(\cdot)\) l'insieme dei token. Il peso maggiore dato a \(s\sb{\mathrm{seq}}\) riflette un criterio pratico: durante il setup interessa soprattutto che la frase venga letta in modo abbastanza aderente e ordinato, mentre il termine lessicale aiuta a penalizzare omissioni o salti più evidenti.\cite{Wang2020TextSim}
 
-In questa tesi tali scelte sono trattate come euristiche implementative, non come prova statistica definitiva dell'aderenza ai dati recuperati. È anche il punto della pipeline in cui si sommano più facilmente dipendenza dal contesto e variabilità computazionale; per questo la latenza percepita entra direttamente nel disegno architetturale.
+Nel progetto la soglia resta fissata a 0.7 (\texttt{setupVoiceMinSimilarity=0.7f}). Non ha valore biometrico e non serve a riconoscere il parlante: serve piuttosto a filtrare campioni troppo brevi, rumorosi o troppo lontani dalla frase proposta. In pratica, la distanza di edit intercetta trascrizioni ``quasi corrette ma sporche'', mentre il termine lessicale aiuta a distinguere i casi in cui una parte rilevante della frase viene saltata o riformulata troppo.
 
-Ricevuto il testo di risposta, il client attiva la sintesi vocale tramite il servizio Text-to-Speech (TTS) basato su Coqui XTTS v2. La richiesta avviene preferibilmente tramite l'endpoint di streaming \texttt{/tts\_stream}, includendo \texttt{avatar\_id} e lingua: il servizio recupera il profilo vocale associato all'avatar (voice cloning) e produce audio progressivamente, consentendo al client di iniziare il playback non appena arrivano i primi byte dello stream. In pratica, l'attesa viene spostata dalla generazione dell'intero file alla sola apertura della risposta udibile, con un effetto diretto sulla continuità percepita del turno.
+In interfaccia questo passaggio si traduce in una percentuale di match e in una decisione semplice: procedere o chiedere una nuova registrazione. L'Appendice~\ref{app:frontend} sviluppa il controllo in modo più ravvicinato, insieme ai punti di cancellazione della coroutine. La stessa pipeline deve anche gestire errori e cancellazioni asincrone: il controller mantiene uno stato di annullamento (\texttt{setupVoiceCancelling}) e, dopo ogni step (stop recording, trascrizione, match, upload TTS), verifica se l'utente abbia richiesto di interrompere l'operazione; in tal caso esce dalla coroutine senza applicare altri side effect. Gli errori dei servizi (Whisper o Coqui) vengono riportati con messaggi distinti e accompagnati da feedback sonoro (\texttt{PlayErrorClip}), così durante i test era più semplice capire se il problema dipendesse da rete, permessi microfono o contenuto della registrazione.
 
-Per mitigare i tempi morti più evidenti, il TTS usa una pre-attivazione iniziale e, durante i turni, ricorre a brevi \emph{wait phrases} prima dell'avvio della risposta principale in streaming. Figura~\ref{fig:ui-state-diagram-cap3} colloca questo comportamento nel ciclo degli stati UI; i dettagli sono approfonditi nel Capitolo~\ref{chap:implementazione}.
+\endgroup
 
-Conviene anche distinguere i due tipi di output vocale. Le \emph{wait phrases} sono clip brevi, già associate all'avatar dopo il setup voce e usate come segnale immediato di continuità; la risposta principale, invece, arriva come stream WAV progressivo, con un costo maggiore ma con contenuto semantico completo. Nel prototipo questa distinzione ha inciso sulla qualità percepita del turno più di quanto possa sembrare da una lettura solo tecnica.
+\subsection{Comportamento embodied}
+\label{subsec:embodied-behavior}
+\begingroup
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=200pt
+\sloppy
+\catcode`_=12\relax
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.96\textwidth]{ui_state_diagram_cap3.png}
-\caption{Diagramma degli stati UI del client SOULFRAME: dalla fase
-di caricamento iniziale al ciclo conversazionale
-(Idle $\rightarrow$ Listening $\rightarrow$ Processing $\rightarrow$ Speaking).}
-\label{fig:ui-state-diagram-cap3}
-\end{figure}
+Nel client SOULFRAME il comportamento embodied viene agganciato subito dopo l'instanziazione dell'avatar, e non viene lasciato come semplice effetto collaterale dell'animazione idle. In \texttt{AvatarManager}, il setup parte con \texttt{SetupLipSyncNextFrame} e \texttt{SetupIdleLookNextFrame}, che chiamano \texttt{lipSyncBinder.Setup(avatarRoot)} e \texttt{idleLook.Setup(avatarRoot)} al frame successivo. Questa separazione è utile perché lip sync e sguardo dipendono da segnali runtime (audio TTS, input utente, stato conversazionale) che una clip preauthorata da sola non riuscirebbe a gestire in modo affidabile.
 
-Figura~\ref{fig:flusso-e2e-cap3} sintetizza la sequenza temporale e i formati dati scambiati tra componenti, evidenziando le trasformazioni principali (WAV$\rightarrow$testo, testo$\rightarrow$testo contestualizzato, testo$\rightarrow$audio).
+Il nodo centrale del lip sync è \texttt{AvaturnULipSyncBinder}. In fase di setup, il binder esegue una scansione runtime dei \texttt{SkinnedMeshRenderer}, individua i blendshape compatibili con i visemi e costruisce una mappa usata durante l'aggiornamento. L'applicazione dei pesi avviene in \texttt{LateUpdate}, pilotata dagli eventi \texttt{OnLipSyncUpdate(LipSyncInfo)} di uLipSync\footnote{\url{https://github.com/hecomi/uLipSync}}. Il binding runtime è preferibile a una tabella definita staticamente perché gli avatar Avaturn non garantiscono naming e disponibilità dei blendshape identici tra profili diversi. Il lip sync è inoltre agganciato direttamente al percorso audio TTS usato in conversazione: \texttt{UIFlowController.BeginMainMode} recupera la sorgente con \texttt{GetOrCreateLipSyncAudioSource}, privilegiando il componente \texttt{uLipSyncAudioSource}; i chunk PCM vengono poi riprodotti su quella sorgente tramite \texttt{PcmChunkPlayer}. Questo aggancio diretto mantiene allineati audio e resa visiva, evitando disaccoppiamenti tra voce sintetizzata e animazione labiale. Nel percorso WebGL, però, la stessa catena non raggiunge ancora l'affidabilità osservata in esecuzione nativa: il binder resta attivo e usa anche correzioni assistite sul peso dei visemi, ma la sincronizzazione fine voce-labbra rimane sensibile al carico e alle mediazioni del runtime browser. Per questo, nella tesi, è più corretto parlarne come di una pipeline presente ma ancora fragile, non come di una soluzione pienamente matura. \texttt{ULipSyncProfileRouter} completa la catena scegliendo il profilo uLipSync coerente con il genere del profilo avatar, senza duplicare logica nella UI. \texttt{ApplyGender(...)} viene invocato sia all'import di un nuovo avatar sia al caricamento di un profilo salvato, così il lip sync entra in scena già calibrato.
 
-Nel blocco RAG la figura distingue i tre passaggi essenziali: capire la richiesta, recuperare il contesto utile e controllare la risposta finale. In deploy con reverse proxy, questi passaggi restano invariati anche se le route vengono raggiunte tramite percorsi riscritti sotto un'unica origine HTTPS.
+Per sguardo e micro-movimenti, \texttt{AvaturnIdleLookAndBlink} gestisce blink, head tilt e target di look di base, mentre in \texttt{MainMode} aggiorna un override esterno quando l'utente interagisce con il puntatore. Il sistema resta separato dall'animatore idle perché i due livelli risolvono problemi diversi: l'animatore governa la posa generale, il look controller governa segnali attentivi reattivi e a bassa latenza. Dal punto di vista percettivo, questi segnali hanno un ruolo chiaro. Piccoli movimenti di sguardo, ascolto e blink evitano l'effetto di staticità quando non c'è parlato e aiutano a leggere l'avatar come presenza attiva, non come modello fermo. Nei turni conversazionali più lenti, questa continuità visiva riduce la sensazione di ``vuoto'' tra un input e la risposta.
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=1.0\textwidth]{flusso_e2e_cap3.png}
-\caption{Flusso end-to-end di una richiesta conversazionale in SOULFRAME: dall'acquisizione audio push-to-talk alla riproduzione della risposta vocale, con dettaglio dei passaggi interni RAG (capire la richiesta, recuperare contesto, controllare la risposta).}
-\label{fig:flusso-e2e-cap3}
-\end{figure}
+\endgroup
 
-\subsection{Flusso di gestione avatar (creazione, import, cache, rendering)}
-Il flusso di gestione avatar affianca due percorsi che convergono nella stessa esperienza in scena: avatar locali pre-inclusi nella build e avatar importati dall'utente. Il punto non è solo offrire due modalità di accesso, ma garantire una libreria sempre utilizzabile e, insieme, un canale controllato per acquisire e servire asset esterni in formato \texttt{.glb}.
+\subsection{Segnali visivi di stato}
+\label{subsec:ps2-postprocessing}
+\begingroup
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=200pt
+\sloppy
+\catcode`_=12\relax
 
-Nel percorso locale, il client seleziona un profilo già disponibile e lo carica direttamente in scena. Nel percorso importato, invece, il profilo viene creato nell'overlay web di Avaturn e il client delega al backend l'import del \texttt{.glb}, ottenendo un \texttt{cached\_glb\_url} da cui caricare il modello. Da quel punto in poi il flusso torna unico: selezione del profilo, caricamento del modello e attivazione dell'avatar nella conversazione.
+Nel client, post-processing, rings e feedback di selezione sono trattati come un sottosistema unico, non come effetti isolati, così da mantenere leggibilità dello stato e continuità percettiva tra avatar, sfondo e controlli UI. Il prefisso \texttt{PS2*} nei nomi dei componenti è una convenzione interna di naming; nel testo si usano etichette descrittive (post-processing, rings, feedback di selezione). Il riferimento estetico resta quello dei menu PlayStation 2, ma pesa soprattutto il valore funzionale dei segnali visivi.
 
-Dopo selezione o creazione, il flusso prosegue con onboarding voce e memoria per-avatar. L'accesso a \texttt{MainMode} avviene solo quando i prerequisiti minimi del profilo risultano soddisfatti, così da evitare conversazioni prive di contesto operativo. La presenza di modelli locali di fallback evita anche che la libreria si svuoti quando il backend avatar non è raggiungibile. La Figura~\ref{fig:flusso-avatar-cap3} esplicita questo raccordo, mentre i dettagli di import e robustezza lato asset sono approfonditi nel Capitolo~\ref{chap:implementazione}.
+Il blocco di post-processing inizializza un \texttt{Volume} globale URP e governa \texttt{Bloom} con override runtime. Un'inizializzazione esplicita è preferibile a profili statici distribuiti sulle camere perché il progetto deve restare stabile tra editor, build desktop e WebGL. In WebGL viene applicato un profilo alleggerito per contenere il costo GPU senza perdere l'identità visiva complessiva.
 
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=1.0\textwidth]{flusso_avatar_cap3.png}
-\caption{Flusso di gestione avatar in SOULFRAME: dalla creazione tramite Avaturn alla cache server-side e al rendering nel client Unity.}
-\label{fig:flusso-avatar-cap3}
-\end{figure}
+I rings sono gestiti da \texttt{PS2BackgroundRings}, controllato da \texttt{UIFlowController} tramite \texttt{SetOrbitSpeedMultiplier(...)} e da transizioni animate della trasformazione. La palette resta costante per mantenere continuità tra identità visiva e segnali di stato. La mappatura è semplice: durante l'attesa di inizializzazione di Coqui-TTS in \texttt{Boot} i rings rallentano e il post-processing abilita il pulse di scatter; nel \emph{download state} (e nelle operazioni bloccanti di setup voce/memoria) la velocità aumenta per comunicare attività in corso; nello stato normale si torna al moltiplicatore base. Così la pipeline resta leggibile senza aggiungere testo in UI.
 
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.95\textwidth]{ui_carosello.png}
-\caption{Interfaccia carosello avatar in SOULFRAME: selezione del
-profilo attivo tra avatar locali e importati.}
-\label{fig:ui-carosello-cap3}
-\end{figure}
+Anche la posizione dipende dallo stato: in \texttt{MainMenu}/\texttt{Boot} i rings restano nella posizione di default, durante \texttt{SetupVoice} e \texttt{SetupMemory} si ancorano a target dedicati (con varianti touch), mentre negli stati conversazionali vengono spostati fuori campo con un offset relativo alla camera. Lo spostamento usa un'interpolazione morbida e, durante il moto, i rings assumono temporaneamente un effetto ``a scia'' che rende percepibile il cambio di stato senza aggiungere testo in UI. Le particelle restano orientate verso la camera e, quando necessario, anche il transform radice viene riallineato.
 
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.95\textwidth]{ui_mainmenu.png}
-\caption{Interfaccia \texttt{MainMenu} in SOULFRAME: accesso alle funzioni principali prima dell'onboarding dell'avatar.}
-\label{fig:ui-mainmenu-cap3}
-\end{figure}
+Il feedback di selezione dei controlli è implementato con \texttt{SelectableBlink}: il componente applica una modulazione luminosa al controllo attivo e, sui testi TMP, abilita anche un glow coerente con la palette generale. Questo feedback sostituisce highlight più neutri ma meno informativi, chiarendo subito quale elemento sta ricevendo input da tastiera o touch.
+\endgroup
 
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.95\textwidth]{ui_setupvoice.png}
-\caption{Schermata \texttt{SetupVoice}: registrazione e validazione del campione vocale durante l'onboarding.}
-\label{fig:ui-setupvoice-cap3}
-\end{figure}
+\subsection{Gestione del turno conversazionale (MainMode)} \label{subsec:mainmode}
+\begingroup
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=2000pt
+\sloppy
+\catcode`\_=12\relax
 
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.95\textwidth]{ui_setupmemory.png}
-\caption{Schermata \texttt{SetupMemory}: inserimento note e ingestione contenuti per popolare la memoria per-avatar.}
-\label{fig:ui-setupmemory-cap3}
-\end{figure}
+\texttt{MainMode} è il punto in cui il flusso conversazionale deve apparire unitario all'utente, pur appoggiandosi a servizi con latenze diverse. Per questo lo stato UI (ascolto, processing, speaking) resta separato dal dettaglio delle chiamate di rete: altrimenti il turn-taking diventerebbe presto poco leggibile.
 
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.95\textwidth]{ui_push_to_talk.png}
-\caption{Stato di ascolto push-to-talk nel client Unity WebGL:
-acquisizione audio attiva con indicatore visivo.}
-\label{fig:ui-ptt-cap3}
-\end{figure}
+All'ingresso, \texttt{BeginMainMode()} riallinea il contesto, verifica i prerequisiti minimi (voce e memoria avatar) e avvia l'apertura di una sessione conversazionale, da cui viene ricavato il \texttt{session\_id} usato nei turni successivi. La verifica iniziale evita di avviare conversazioni ``stateless'' e collega in modo esplicito \texttt{MainMode} alle fasi di onboarding descritte in \ref{subsec:voice-validation} e \ref{subsec:avatar-onboarding}. In parallelo viene attivato il comportamento non verbale dell'avatar, mentre il controllo microfono riusa lo stack descritto in \ref{subsec:audio-capture}. L'endpoint \texttt{/chat\_session/start} non crea memoria nuova: apre la sessione e ne prepara il log.
 
-Le Figure~\ref{fig:ui-carosello-cap3}, \ref{fig:ui-mainmenu-cap3}, \ref{fig:ui-setupvoice-cap3}, \ref{fig:ui-setupmemory-cap3} e \ref{fig:ui-ptt-cap3} rendono leggibile la sequenza concreta di accesso al sistema: scelta del profilo, ingresso nel menu, onboarding voce, onboarding memoria e avvio del turno conversazionale.
-
-\FloatBarrier
-
-\section{Componenti software implementati}
-I componenti implementati rendono operativa l'architettura della Sezione~\ref{sec:architettura-riferimento}: integrazione di Avaturn nel client Unity WebGL, backend AI a micro-servizi e persistenza dei dati legati all'avatar. La panoramica unificata dei servizi backend è riportata in Tabella~\ref{tab:microservizi-cap3}; i dettagli implementativi più minuti sono nel Capitolo~4.
-
-\subsection{Componenti principali del prototipo}
-Il prototipo prende forma dall'unione tra integrazione di Avaturn nel client Unity WebGL e backend AI a micro-servizi. L'avatar viene creato in ambiente web dedicato, il client ne acquisisce l'identità, delega l'import del modello \texttt{.glb} al backend e poi lo riporta nel percorso unitario di SOULFRAME descritto in Sezione~\ref{sec:architettura-riferimento}. Nel runtime Unity il caricamento dei \texttt{.glb} avviene con GLTFast\footnote{Unity Technologies, \emph{glTFast package documentation}, \url{https://docs.unity3d.com/Packages/com.unity.cloud.gltfast@6.10/manual/index.html}}, così da tenere la creazione dell'avatar fuori dalla scena ma il suo uso operativo dentro lo stesso flusso applicativo.
-
-Sul backend, invece, SOULFRAME è realizzato come insieme di micro-servizi indipendenti basati su FastAPI, avviati su porte dedicate. La scomposizione in servizi rende esplicita la separazione delle responsabilità e permette di verificare disponibilità e corretto instradamento con controlli semplici (\texttt{/health}) usati sia in fase operativa sia nell'avvio iniziale del client. Tabella~\ref{tab:microservizi-cap3} sintetizza i quattro componenti e i relativi punti di accesso.
-
-{\scriptsize
-\setlength{\tabcolsep}{2pt}
-\renewcommand{\arraystretch}{1.2}
-\begin{longtable}{|>{\raggedright\arraybackslash}p{0.16\textwidth}|>{\raggedright\arraybackslash}p{0.20\textwidth}|>{\raggedright\arraybackslash}p{0.07\textwidth}|>{\raggedright\arraybackslash}p{0.24\textwidth}|>{\raggedright\arraybackslash}p{0.27\textwidth}|}
-\caption{Micro-servizi backend di SOULFRAME: porte, endpoint principali e responsabilità operative usate nel prototipo.}
-\label{tab:microservizi-cap3}\\
-\hline
-\textbf{Componente} & \textbf{File Python} & \textbf{Porta} & \textbf{Endpoint chiave} & \textbf{Responsabilità} \\
-\hline
-\endfirsthead
-\hline
-\textbf{Componente} & \textbf{File Python} & \textbf{Porta} & \textbf{Endpoint chiave} & \textbf{Responsabilità} \\
-\hline
-\endhead
-\hline
-\endfoot
-\hline
-\endlastfoot
-Whisper STT & \path{whisper_server.py} & \texttt{8001} & \path{GET /health}\ \path{POST /transcribe} & Trascrizione Speech-to-Text (STT) di audio caricato (WAV o formati compatibili), gestione lingua e cleanup di file temporanei. \\
-\hline
-RAG/LLM & \path{rag_server.py} & \texttt{8002} & \path{GET /health}\ \path{GET /avatar_stats}\ \path{POST /chat}\ \path{POST /chat_session/start}\ \path{POST /remember}\ \path{POST /recall}\ \path{POST /ingest_file}\ \path{POST /describe_image} & Costruzione della risposta contestuale: memoria per-avatar su ChromaDB, classificazione dell'intento, ricerca mista lessicale+semantica, filtraggio dei passaggi più affidabili, controllo finale del testo e metadati di turno (\texttt{intent}, \texttt{rag\_used}, \texttt{auto\_remembered}). \\
-\hline
-Coqui XTTS TTS & \path{coqui_tts_server.py} & \texttt{8004} & \path{GET /health}\ \path{POST /tts}\ \path{POST /tts_json}\ \path{POST /set_avatar_voice}\ \path{GET/DELETE /avatar_voice}\ \path{GET /wait_phrase} & Sintesi Text-to-Speech (TTS) con voice cloning per avatar, streaming audio e serving di frasi di attesa già predisposte nel setup voce; gestione e persistenza dei profili vocali per \texttt{avatar\_id}. \\
-\hline
-Avatar Asset Server & \path{avatar_asset_server.py} & \texttt{8003} & \path{GET /health}\ \path{GET /avatars/list}\ \path{POST /avatars/import}\ \path{GET /avatars/{id}/model.glb}\ \path{DELETE /avatars/{id}} & Import e caching server-side di modelli \texttt{.glb}, deduplicazione via hash URL, riallineamento automatico limitato dei metadati e lista unificata di avatar locali di fallback e avatar importati. \\
-\end{longtable}
+\begin{lstlisting}[language=json,style=sfpayload,title={POST /chat\_session/start},caption={Versione compatta dell'apertura di sessione usata dal client.}]
+{
+  "avatar_id": "LOCAL_model1"
 }
 
-Nel flusso reale i due piani restano vicini ma non coincidono. Quando l'avatar viene creato o importato, entra in gioco soprattutto il servizio asset; quando invece parte un turno conversazionale, l'audio viene trascritto da Whisper, il testo passa dal servizio RAG e la risposta viene sintetizzata dal TTS con la voce associata. Distinguere questi due percorsi aiuta a capire perché alcune criticità riguardino la latenza del turno e altre la consistenza del profilo tra sessioni diverse.
+200 OK
+{
+  "session_id": "20260305_235254_2bae76fa",
+  "log_file": "backend/log/Local1/20260305_235254_2bae76fa.log"
+}
+\end{lstlisting}
 
-Lo stesso vale per la ricerca ibrida usata dal RAG: i candidati vengono ordinati combinando similarità vettoriale e BM25, con un leggero favore per la componente lessicale. La scelta nasce dal tipo di query che il prototipo riceve, spesso ricche di nomi propri, parole chiave e riferimenti espliciti, mentre il recupero vettoriale resta utile quando la memoria viene richiamata in forma parafrasata. La Figura~\ref{fig:rag-swagger-cap3} riporta una vista della documentazione automatica degli endpoint: serve a visualizzare la granularità delle route, non a sostituire la descrizione architetturale proposta qui. Una ricostruzione più analitica dei flussi, dei dati scambiati e delle responsabilità dei servizi è raccolta nelle Appendici~\ref{app:rag} e \ref{app:backend-services}.
+Il turno vocale resta PTT sia su desktop sia su touch: cambia il binding dell'input, non il significato del comando. Usare le stesse entrypoint (start/stop) evita biforcazioni nel flusso e garantisce che errori, messaggi e fallback siano identici tra piattaforme. \texttt{MainMode} non è però limitato al solo canale vocale: il client mantiene anche un percorso testuale che invia turni da tastiera allo stesso modello di sessione, senza aprire una conversazione separata o perdere il contesto recente dell'avatar.
 
-\begin{figure}[!htbp]
+Il flusso conversazionale resta articolato in tre fasi. Nella prima, la trascrizione invia WAV a Whisper con \texttt{UnityWebRequest.Post}\footnote{\url{https://docs.unity3d.com/ScriptReference/Networking.UnityWebRequest.html}} e aggiorna la UI solo dopo una deserializzazione valida, così da mantenere leggibile il punto di fallimento in caso di rete o payload non conforme. Prima dell'invio, però, il client interrompe il turno se l'input è troppo breve; anche dopo \texttt{/transcribe}, alcuni output spurii associati a silenzio o frammenti quasi nulli vengono scartati così da non far entrare falsi positivi nella pipeline conversazionale. Whisper è stato mantenuto soprattutto per la tolleranza a rumore e variazioni di dizione\cite{Radford2023Whisper}.
+
+In fase RAG il client costruisce il JSON del turno e invia \texttt{/chat} con \texttt{avatar\_id} e, quando disponibile, \texttt{session\_id}. L'\texttt{avatar\_id} seleziona la memoria persistente del profilo, mentre il \texttt{session\_id} lega a quel turno il contesto recente della conversazione e il relativo log. Questa fase resta separata dalla TTS perché il testo della risposta è già un output autonomo dell'interazione e deve restare disponibile anche in caso di problemi audio. La generazione si basa dunque sul recupero del contesto rilevante secondo il paradigma \emph{Retrieval-Augmented Generation}\cite{Lewis2020RAG}.
+
+\begin{lstlisting}[language=json,style=sfpayload,title={POST /chat},caption={Versione compatta del turno inviato dal client e dei campi letti davvero in UI.}]
+{
+  "avatar_id": "LOCAL_model1",
+  "user_text": "Che cosa ti ricordi di me?",
+  "session_id": "20260305_235254_2bae76fa"
+}
+
+200 OK
+{
+  "text": "Mi ricordo che domani hai un colloquio alle 10.",
+  "auto_remembered": false
+}
+\end{lstlisting}
+
+Per la sintesi si adotta uno streaming incrementale del WAV di risposta: il client riceve l'audio attraverso \texttt{PcmStreamDownloadHandler} (\texttt{DownloadHandlerScript})\footnote{\url{https://docs.unity3d.com/ScriptReference/Networking.DownloadHandlerScript.html}} e lo consegna a \texttt{PcmChunkPlayer}, che lo riproduce senza attendere il completamento del trasferimento. Quando disponibile, il backend espone anche timing sufficientemente affidabili da sostenere il \texttt{Word Flow}, cioè il reveal progressivo del reply in linea con il parlato. Nella build Windows questo meccanismo ha retto meglio; in WebGL, invece, il costo complessivo della sincronizzazione fine è risultato più fragile. Per questo nel percorso WebGL tale sincronizzazione è stata disabilitata in modo esplicito: il backend continua a fornire lo stream audio della risposta, ma il client passa direttamente a una resa testuale statica, mostrando l'intero reply. Qui emerge bene il compromesso tra le due versioni: la build Windows è il termine di confronto più favorevole per continuità del parlato e sincronizzazione, mentre la build WebGL resta quella più comoda da distribuire e provare. Nei test reali, mantenere attivo anche questo livello di granularità ha aumentato la tendenza a blocchi, lag e frammentazione del turno.
+
+\begin{figure}[H]
 \centering
-\includegraphics[width=1.0\textwidth]{rag_docs_swagger.png}
-\caption{Interfaccia Swagger UI (\texttt{/docs}) del servizio RAG di
-SOULFRAME: una vista della documentazione automatica generata da FastAPI per \texttt{rag\_server.py}.}
-\label{fig:rag-swagger-cap3}
+\includegraphics[width=0.80\textwidth]{mainmode_pipeline.png}
+\caption{Pipeline conversazionale in \texttt{MainMode}: PTT $\rightarrow$ WAV $\rightarrow$ \texttt{Whisper}/\texttt{transcribe} $\rightarrow$ RAG/\texttt{chat} $\rightarrow$ \texttt{Coqui}/\texttt{tts_stream} $\rightarrow$ stream WAV progressivo + metadati temporali $\rightarrow$ playback e aggiornamento del testo di risposta.}
+\label{fig:mainmode-pipeline}
 \end{figure}
 
-\subsection{Persistenza e gestione dati per avatar}
+La \emph{wait phrase} agisce come ponte tra attesa e risposta vera e propria. Copre la finestra iniziale in cui il turno è già stato accettato ma la voce dell'avatar non è ancora partita; appena arrivano i dati audio del reply, il client la interrompe e lascia spazio alla risposta principale. Strettamente collegata è la gestione dell'interruzione: quando l'utente riprende la parola, il client abortisce richieste e playback in corso, evitando che audio tardivi si sovrappongano al turno successivo.
 
-Nel sistema, la persistenza dei dati di profilo è organizzata su filesystem e separata per \texttt{avatar\_id}: ogni avatar mantiene tre store dedicati, \texttt{avatar\_store/} per gli asset \texttt{.glb}, \texttt{voices/avatars/} per il profilo vocale e \texttt{rag\_store/} per la memoria conversazionale persistente. In questo modo le risorse operative restano allineate lungo tutto il ciclo di vita del profilo. La Figura~\ref{fig:persistenza-tree-cap3} mostra la distribuzione dei tre store persistenti e i punti di verifica disponibili.
+La pipeline in Figura~\ref{fig:mainmode-pipeline} riassume la scelta di fondo: trattare STT, RAG e TTS come stadi distinti, ma tenerli dentro uno stesso stato applicativo. Nel flusso reale il client garantisce prima una sessione conversazionale tramite \texttt{/chat\_session/start} e poi invia i singoli turni a \texttt{/chat}; il diagramma omette questo passaggio per mantenere leggibile la sequenza principale. La sintesi in streaming si integra inoltre con modelli di voice cloning come XTTS adottato nel backend\cite{Casanova2024XTTS}.
 
-\begin{figure}[!htbp]
+Il focus resta sul turno come esperienza utente e coordinamento del client. L'Appendice~\ref{app:rag} sviluppa invece i payload completi, i campi che il backend restituisce e i casi \texttt{/describe\_image} e \texttt{/ingest\_file}, cioè il versante più tecnico del contratto conversazionale.
+
+\texttt{MainMode} usa lo stesso wiring avatar descritto in \ref{subsec:embodied-behavior}: controllo sguardo, gestione idle e regole touch contestuali vengono applicati senza duplicare logica. Questo evita un effetto visivo evidente in ingresso conversazionale: avatar correttamente caricato ma ancora immobile, con sguardo non agganciato, nei primi frame prima dell'attivazione dei controller comportamentali.
+
+\endgroup
+
+\section{Implementazione backend}
+\label{sec:impl-backend}
+\begingroup
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=200pt
+\sloppy
+Il backend di SOULFRAME è organizzato in quattro micro-servizi Python, ciascuno esposto su una porta dedicata: STT su \texttt{8001}, RAG su \texttt{8002}, asset avatar su \texttt{8003} e TTS su \texttt{8004}. A supporto lavora un'istanza Ollama sulla porta \texttt{11434} per embedding e chat LLM. Le dipendenze sono raccolte in un unico \texttt{requirements.txt} con versioni fissate, così da mantenere l'ambiente il più possibile allineato tra sviluppo e deploy.
+
+FastAPI \cite{FastAPI2026} è stato scelto come framework comune perché offriva un compromesso pratico tra \emph{async I/O}, validazione dei payload tramite Pydantic\footnote{\url{https://docs.pydantic.dev/}} e una specifica OpenAPI subito consultabile durante lo sviluppo. L'avvio dei processi è coordinato da uno script operativo che mantiene un punto unico per start, stop e restart dello stack. La scomposizione in servizi a responsabilità mirata segue inoltre un perimetro funzionale abbastanza netto, vicino alla logica dei \emph{bounded context}\footnote{Per \emph{bounded context} intendo qui un perimetro funzionale abbastanza netto, entro cui ogni servizio mantiene responsabilità e dati coerenti.} tipici dei micro-servizi, così da rendere più leggibili failure e aggiornamenti selettivi \cite{Dragoni2017Microservices}.
+
+La Figura~\ref{fig:backend-services-arch} illustra l'architettura complessiva del backend con le porte dei servizi e le dipendenze principali.
+\begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{persistenza_tree_cap3.png}
-\caption{Struttura del filesystem di persistenza in SOULFRAME:
-tre store isolati per \texttt{avatar\_id} (asset \texttt{.glb},
-profilo vocale e memoria RAG).}
-\label{fig:persistenza-tree-cap3}
+\includegraphics[width=1.0\textwidth]{backend-services-arch.png}
+\caption{Architettura dei micro-servizi backend: i quattro servizi FastAPI (Whisper, RAG, Avatar Asset, TTS) comunicano su porte dedicate; il servizio RAG si appoggia a Ollama (porta 11434) per embedding e chat LLM.}
+\label{fig:backend-services-arch}
 \end{figure}
 
-L'isolamento per profilo consente di evitare interferenze tra avatar distinti e di ricostruire lo stato dopo riavvio rileggendo i rispettivi percorsi persistenti. La figura distingue questi store stabili dai dati di sessione: nel servizio RAG i turni recenti vengono mantenuti in RAM per coppia \texttt{(avatar\_id, session\_id)}, mentre i log conversazionali sono scritti separatamente su file quando il client apre una sessione con \texttt{/chat\_session/start}. Più precisamente, \texttt{rag\_store} conserva la memoria riutilizzabile dell'avatar, il contesto recente serve al turno corrente e il log documenta la sessione. Nell'applicazione, la presenza di memoria può essere verificata tramite \texttt{/avatar\_stats}, che segnala se l'avatar ha già una memoria popolata, mentre asset e voce restano associati allo stesso \texttt{avatar\_id} nei rispettivi store.
+\subsection{Servizio STT (Whisper)}
 
-Dal punto di vista del lavoro sperimentale, questa separazione ha avuto un vantaggio molto pratico: permettere controlli più chiari sui guasti. Se manca memoria, il problema resta nel ramo RAG; se manca la voce, il controllo cade sul TTS; se un modello non viene più caricato, il problema resta nel catalogo asset. In una pipeline del genere, sapere dove inizia e dove finisce ogni persistenza conta quasi quanto la persistenza stessa.
+Il primo stadio della pipeline backend è la trascrizione vocale, affidata al servizio STT (\texttt{whisper\_server.py}, porta \texttt{8001}). All'avvio viene caricato un modello Whisper configurabile via variabile d'ambiente: nel prototipo sono stati usati \texttt{small} e \texttt{medium} in funzione dell'hardware disponibile. La scelta nasce da un compromesso semplice. Modelli più piccoli riducono latenza e consumo di memoria, mentre quelli più grandi reggono meglio rumore e parlato complesso. In locale Windows, con circa 12~GB di VRAM e vincolo forte sui tempi turn-by-turn, \texttt{small} è risultato il profilo più stabile; nell'ambiente Ubuntu usato per le prove, con circa 24~GB, è stato possibile usare \texttt{medium}.
 
+L'endpoint principale è \texttt{POST /transcribe}. Riceve l'audio e un parametro di lingua, normalizza l'input, esegue la trascrizione e restituisce il campo \texttt{text}. Il servizio non applica soglie minime di durata né filtri sul contenuto della trascrizione: i controlli contro input quasi vuoti o transcript spurii restano quindi nel frontend, dentro \texttt{UIFlowController}, non nel backend STT.\footnote{\url{https://github.com/openai/whisper}}
 
+Per supportare l'integrazione con il client WebGL, il servizio accetta richieste anche da origini diverse, così il frontend può dialogare con Whisper sia in sviluppo sia quando è servito da un host separato. Espone inoltre \texttt{GET /health}, che restituisce un esito rapido con il modello caricato e viene usato come controllo iniziale nella fase di bootstrap.
+
+Le proprietà di Whisper e la motivazione della sua adozione sono discusse in \autoref{sec:pipeline-ai}; conta soprattutto che la robustezza \emph{zero-shot} renda la trascrizione praticabile con microfoni eterogenei senza fine-tuning.
+
+\subsection{Servizio RAG e memoria per avatar}\label{subsec:rag-memory}
+
+Il componente più articolato del backend è il servizio RAG (\texttt{rag\_server.py}, porta \texttt{8002}). È anche il punto in cui la pipeline smette di essere lineare, perché qui la risposta non nasce da una generazione “diretta”, ma da una memoria esterna associata all'avatar secondo il paradigma \emph{Retrieval-Augmented Generation}. Ogni avatar mantiene ricordi distinti --- note, preferenze, contenuti documentali --- in un database ChromaDB dedicato e isolato per \texttt{avatar\_id}, riusato in cache con lock globale per evitare riaperture concorrenti \cite{ChromaDB2026}.
+
+Dentro il database dell'avatar rimane una collezione \texttt{memory}; è la memoria persistente del profilo e va distinta sia dal contesto recente di sessione sia dai log conversazionali. Embedding e generazione sono delegati a Ollama, così il servizio può restare concentrato su memoria, recupero dei contenuti e costruzione del turno, mentre i modelli continuano a essere configurabili a runtime senza cambiare il contratto HTTP del client.\footnote{\url{https://ollama.com/docs}}
+
+Questa orchestrazione non coincide con un semplice top-k sulla memoria. Prima di interrogare il contesto, il turno viene interpretato; solo dopo il servizio decide se recuperare contenuti fattuali, usare il contesto conversazionale recente o restare su una risposta sociale controllata.
+
+\begin{wrapfigure}{l}{0.33\textwidth}
+\centering
+\includegraphics[width=0.90\linewidth,keepaspectratio]{rag_hybrid_search.png}
+\caption{Pipeline RAG nel backend: comprensione domanda, recupero contesto, filtro passaggi utili e controllo finale della risposta.}
+\label{fig:rag-hybrid-search}
+\end{wrapfigure}
+
+La distinzione tra dialogo sociale e dialogo orientato a contenuto informativo viene spesso trattata in letteratura come un problema di integrazione tra capacità conversazionali diverse \cite{Zhao2022UniDS}. Nel servizio questa differenza entra in una pipeline che può essere letta in cinque blocchi. (1) \textbf{Comprensione della domanda}: il turno viene classificato in un insieme ristretto di intent operativi, come \texttt{chitchat}, \texttt{session\_recap}, \texttt{memory\_recap}, \texttt{memory\_qna} e \texttt{creative\_open}. Il termine \texttt{chitchat} è usato qui nel senso ingegneristico di turno sociale, non orientato ai contenuti.\footnote{Un esempio noto di separazione pratica tra intenti sociali e intenti informativi è discusso nella documentazione Rasa: \emph{Chitchat and FAQs}, \url{https://legacy-docs-oss.rasa.com/docs/rasa/chitchat-faqs/}. Il riferimento è riportato come esempio implementativo, non come tecnologia adottata in SOULFRAME.} Il routing quindi non si limita a dare un'etichetta alla richiesta: decide quale ramo del backend abbia senso attivare.
+
+Per intent come \texttt{chitchat}, \texttt{session\_recap} e \texttt{creative\_open}, il servizio non esegue il retrieval factual standard e privilegia invece una risposta breve o contestuale, controllata in modo da evitare autobiografia inventata quando manca supporto nei dati disponibili. Per \texttt{memory\_qna} e \texttt{memory\_recap}, invece, combina ricerca ibrida BM25+vettoriale e ricerca mirata per sorgente. Separare i turni sociali dai turni factual riduce l'inquinamento della memoria recuperata e limita risposte apparentemente personali ma non supportate dai dati.
+
+(2) \textbf{Recupero del contesto}: per i rami factual il servizio seleziona i candidati più pertinenti in base all'intento e alla sorgente. (3) \textbf{Filtro dei passaggi utili}: i candidati vengono filtrati con soglie e coerenza lessicale, con percorsi di riserva prudenti sulle query corte o referenziali. Se il primo recupero non produce contesto utile, il servizio può provare intent alternativi coerenti con la query e rieseguire il probe sul nuovo ramo semantico. (4) \textbf{Generazione}: il prompt viene costruito in base all'intento, con vincoli di prima persona e aderenza al contesto. (5) \textbf{Controllo finale}: quando emergono segnali di risposta poco allineata, il testo viene riformulato in modalità \texttt{neutral}, \texttt{grounded} o \texttt{grounded\_strict}, cioè in versioni sempre più vincolate ai contenuti recuperati, con sanitizzazione finale. La catena è rimasta prudente perché, nelle prove reali, strategie più aggressive producevano risposte più fluenti ma meno affidabili.
+
+Il profilo del modello resta una scelta di runtime, non di frontend: in locale e su server cambiano le varianti usate in base alle risorse disponibili, ma la logica del client non deve sapere quale modello lavori dietro il servizio RAG.
+
+Gli endpoint principali riflettono questa logica. \texttt{/remember} salva memorie esplicite; \texttt{/recall} resta uno strumento diagnostico; \texttt{/chat\_session/start} apre una sessione e il relativo log; \texttt{/chat} usa insieme memoria persistente, contesto recente e metadati di turno. Il backend restituisce più informazioni di quante ne servano davvero alla UI: nel client contano soprattutto il testo di risposta e l'eventuale segnalazione che il sistema abbia salvato automaticamente un nuovo ricordo, mentre campi come intento e fonti recuperate restano soprattutto strumenti di tracciabilità e controllo. Il dettaglio di JSON e log è in Appendice~\ref{app:rag}.
+
+Accanto al retrieval, il servizio include una memorizzazione automatica prudente (\emph{auto-remember}), attivata solo da trigger lessicali espliciti come ``ricorda che...''. La soglia è rimasta prudente per contenere i falsi positivi: la crescita è più lenta, ma più controllabile nelle sessioni lunghe. In fase di scrittura il backend distingue anche tra contenuto fattuale e contenuto di stile tramite un metadato dedicato (\texttt{memory\_role}); per ora questa distinzione serve soprattutto a mantenere ordine e tracciabilità, senza entrare direttamente nella selezione conversazionale.
+
+L'ingestione passa da \texttt{POST /ingest\_file} e \texttt{POST /describe\_image} e trasforma PDF, testo e immagini in materiale interrogabile dalla memoria per-avatar. Nel flusso applicativo conta soprattutto che il servizio esegua pulizia minima, chunking, estrazione testuale o descrizione semantica e salvataggio con metadati coerenti con la sorgente. La catena di ingestione e i payload usati nei casi reali sono raccolti in Appendice~\ref{app:rag}.
+
+\clearpage
+
+\subsection{Servizio TTS e streaming audio}\label{subsec:tts-streaming}
+
+\begin{wrapfigure}{r}{0.28\textwidth}
+\centering
+\includegraphics[width=0.7\linewidth]{tts_streaming_protocol.png}
+\caption{Flusso reply TTS: segmentazione testo, sintesi e allineamento backend, invio WAV progressivo con metadati temporali.}
+\label{fig:tts-streaming-protocol}
+\end{wrapfigure}
+
+Il servizio TTS (\texttt{coqui\_tts\_server.py}, porta \texttt{8004}) trasforma la risposta testuale in audio con la voce dell'avatar. Il modello adottato è XTTS v2\footnote{\url{https://docs.coqui.ai/}}, scelto per il supporto multilingua e per la capacità di \emph{voice cloning} zero-shot: basta un breve campione vocale registrato durante l'onboarding perché il sistema produca una voce riconoscibile senza addestramenti dedicati.
+
+All'avvio il servizio seleziona automaticamente GPU o CPU in base alla disponibilità; se durante la sintesi emergono errori CUDA (ad esempio \emph{out of memory}), il server tenta un fallback su CPU, così da mantenere il servizio disponibile a costo di una latenza maggiore. Il compromesso è coerente con un prototipo che deve funzionare anche su hardware consumer.
+
+Prima della sintesi, il testo viene normalizzato con la funzione \texttt{\_clean\_tts\_text}. Il preprocessing rimuove simboli che potrebbero essere vocalizzati in modo indesiderato, semplifica la punteggiatura e normalizza gli spazi. L'intento è stabilizzare la prosodia e prevenire letture troppo letterali di markup o segni grafici, mantenendo però la punteggiatura utile come indizio per pause e intonazione.
+
+L'endpoint \texttt{POST /tts} fornisce la sintesi completa in un'unica risposta. Il client invia \texttt{text} e, opzionalmente, i riferimenti necessari a risolvere la voce dell'avatar; il server decide poi quale riferimento usare, privilegiando quello specifico del profilo quando disponibile.
+
+La Figura~\ref{fig:tts-streaming-protocol} mette in evidenza il punto centrale del protocollo: il backend prepara la risposta vocale e ne invia il WAV in modo progressivo, mentre il client usa i riferimenti temporali ricevuti per accompagnare il parlato con una resa testuale coerente.
+
+La sintesi genera un array di campioni che viene validato e serializzato in \texttt{audio/wav} PCM16 tramite \texttt{soundfile}, restituendo un \texttt{Response} con header informativi su identità avatar e profilo vocale usato.
+
+L'endpoint \texttt{POST /tts\_stream} è la modalità più importante nel flusso conversazionale reale, perché è quella usata dal reply in \texttt{MainMode}. Il backend prepara la risposta, la suddivide in segmenti testuali compatibili con la sintesi, genera i relativi WAV, ne ricompone poi il contenuto in un unico stream \texttt{audio/wav} e aggiunge metadati temporali che il client usa per seguire il parlato. Dal punto di vista del frontend il contratto resta semplice: arriva un WAV progressivo, la riproduzione parte appena il flusso è sufficiente a sostenere il playback, e il testo del reply può avanzare insieme alla voce quando i tempi parola-per-parola sono disponibili.
+
+La gestione del riferimento vocale per-avatar è esposta da \texttt{POST /set\_avatar\_voice}. L'endpoint riceve \texttt{avatar\_id} e un \texttt{speaker\_wav} e lo salva come \texttt{reference.wav} nella directory dedicata dell'avatar, dopo una fase di validazione e preprocess. In questo modo il riferimento rimane più stabile e si riducono i casi in cui un file problematico peggiora il condizionamento. Nel ciclo reale del prototipo questo conta molto, perché la stessa reference viene poi riusata sia nella risposta principale sia nelle \emph{wait phrases}.
+
+Nel ciclo di vita dell'avatar, il client usa anche \texttt{GET /avatar\_voice} per verificare presenza e dimensione del riferimento e \texttt{DELETE /avatar\_voice} per rimuoverlo durante le operazioni di reset. Per gestire la latenza iniziale tipica della sintesi neurale, il servizio include inoltre una strategia di pre-caching delle \emph{wait phrases}. Le clip di attesa vengono generate quando il riferimento vocale dell'avatar viene salvato e poi recuperate durante \texttt{MainMode} come file audio già pronti. Questo pre-caching consente al frontend di restituire un segnale immediato di continuità prima che la risposta principale prenda il controllo dell'output vocale. In altre parole, la parte più lenta della generazione viene spostata fuori dal turno vero e proprio.
+
+Infine, per ridurre la penalità del primo utilizzo, il server può eseguire una fase di pre-attivazione e caricamento anticipato all'avvio\footnote{La pre-attivazione all'avvio è configurabile tramite variabili d'ambiente (ad esempio \texttt{COQUI\_WARMUP\_ON\_STARTUP}).}. Questa pre-attivazione incide soprattutto sul primo scambio, che altrimenti risulterebbe molto più rigido. XTTS v2 resta adatto a un'impostazione zero-shot multilingua \cite{Casanova2024XTTS}.
+
+\subsection{Servizio asset avatar}\label{subsec:avatar-asset}
+
+Rispetto agli altri tre servizi, il quarto componente del backend (\texttt{avatar\_asset\_server.py}, porta \texttt{8003}) ha un ruolo più circoscritto e non dipende né da GPU né da modelli di inferenza: si occupa di importare modelli \texttt{.glb}, mantenerli in un catalogo persistente e servirli al client. Il footprint resta leggero perché l'elaborazione si limita a download e file system, rendendo il servizio adatto anche ad ambienti di test con risorse limitate.
+
+L'endpoint \texttt{GET /avatars/list} espone l'inventario degli avatar disponibili. La lista include sia modelli locali predefiniti, sia i modelli importati dinamicamente, unificati in un unico payload JSON con metadati utili al frontend. Il client può quindi popolare la libreria avatar senza dipendere dalla persistenza locale del browser, delegando al backend la ``fonte di verità'' della catalogazione.
+
+L'importazione è gestita da \texttt{POST /avatars/import}. L'endpoint riceve un URL, applica una validazione preliminare e poi scarica l'asset in modo atomico, così da evitare file parziali o stati incoerenti nel catalogo. La deduplicazione riduce inoltre repliche inutili quando lo stesso modello viene importato più volte.
+
+Il serving del modello è esposto da \texttt{GET /avatars/\{id\}/model.glb}, che restituisce il contenuto tramite \texttt{FileResponse}. Prima di rispondere, il server risolve il percorso effettivo dell'asset con un meccanismo di riallineamento automatico limitato, così da ridurre failure ``hard'' lato client in caso di spostamenti o rinomini accidentali. La gestione del ciclo di vita include anche \texttt{DELETE /avatars/\{avatar\_id\}}, usato dal client quando un profilo viene rimosso.
+
+  \begin{table}[!b]
+  \centering
+  \scriptsize
+  \renewcommand{\arraystretch}{1.18}
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabularx}{\textwidth}{@{}p{0.11\textwidth}p{0.24\textwidth}p{0.25\textwidth}X@{}}
+\toprule
+Servizio & Endpoint & Input minimo & Output minimo / uso client \\
+\midrule
+Whisper & POST /transcribe & form-data: file audio, language & JSON con \texttt{text}; usato per validazione campione vocale e turni vocali. \\
+RAG & POST /chat & JSON: avatar\_id, user\_text, top\_k & JSON con \texttt{text}, \texttt{rag\_used}, \texttt{intent}, \texttt{auto\_remembered}, \texttt{conversation\_logged}, \texttt{conversation\_session\_id}; risposta conversazionale tracciata. \\
+RAG & POST /chat\_session/start & JSON: avatar\_id & JSON con \texttt{session\_id}, \texttt{log\_file}; apertura sessione conversazionale e log dedicato. \\
+RAG & POST /ingest\_file & form-data: avatar\_id, file & JSON con \texttt{ok}, \texttt{filename}, \texttt{chunks\_added}; ingest documenti in setup memoria. \\
+RAG & POST /describe\_image & form-data: avatar\_id, remember, prompt, file & JSON con \texttt{description} e stato salvataggio; ingest semantico da immagine. \\
+RAG & POST /remember & JSON: avatar\_id, text, meta & JSON con \texttt{ok}, \texttt{id}; memorizzazione esplicita di note utente. \\
+RAG & GET /avatar\_stats; POST /clear\_avatar & query/form-data: avatar\_id, hard & JSON con stato memoria e reset soft/hard; controllo prerequisiti e cleanup. \\
+Coqui TTS & POST /tts\_stream & form-data: text, avatar\_id, language, reply\_segment\_max\_chars & stream \texttt{audio/wav} progressivo con metadati temporali; playback incrementale del reply. \\
+Coqui TTS & POST /set\_avatar\_voice; GET/DELETE /avatar\_voice & form-data o query: avatar\_id, speaker\_wav & JSON con esito, presenza e dimensione della voce; setup e reset riferimento vocale. \\
+Coqui TTS & GET /wait\_phrase & query: avatar\_id, name & \texttt{audio/wav}; riproduzione di frasi d'attesa già generate durante il setup voce. \\
+Avatar asset & GET /avatars/list & nessuno & JSON con \texttt{avatars}; popolamento libreria avatar nel frontend. \\
+Avatar asset & POST /avatars/import & JSON: avatar\_id, url, gender/bodyId/urlType & JSON con \texttt{avatar\_id}, \texttt{cached\_glb\_url}; import con deduplica su \texttt{url\_hash}. \\
+Avatar asset & DELETE /avatars/\{avatar\_id\} & path: avatar\_id & JSON con \texttt{ok}, \texttt{deleted}; rimozione asset e metadati dal catalogo. \\
+\bottomrule
+\end{tabularx}
+\caption{Contratto minimo client-backend.}
+\label{tab:backend-client-endpoints}
+\end{table}
+\noindent La tabella va letta come riferimento operativo del client, non come elenco esaustivo di tutte le route offerte dai servizi.
+\endgroup
 \FloatBarrier
 
-\section{Setup e deploy operativo}
-Il setup e il deploy operativo traducono l'architettura descritta nella Sezione~\ref{sec:architettura-riferimento} in procedure ripetibili di avvio, arresto e verifica. SOULFRAME mantiene la stessa organizzazione logica dal contesto di sviluppo a quello pubblico, ma cambia il modo in cui i processi vengono orchestrati e raggiunti in rete. Per ridurre gli errori di esercizio, sono stati privilegiati passaggi ripetibili e un controllo unificato dei servizi.
+\clearpage
 
-\subsection{Ambienti di esecuzione e deploy}
-In ambiente locale la configurazione è orientata a sviluppo e test rapidi: i servizi girano sull'indirizzo della macchina e il frontend WebGL è servito in HTTP. Il provisioning iniziale è supportato da \texttt{setup\_soulframe\_windows.bat}, mentre l'avvio operativo è centralizzato in \texttt{ai\_services.cmd}, così da mantenere un punto unico per start, stop e restart dello stack locale. Questo assetto favorisce diagnostica iterativa e osservabilità immediata; le differenze rispetto al deploy server sono sintetizzate in Tabella~\ref{tab:deploy-confronto-cap3}.
+\section{Integrazione end-to-end}
+\label{sec:integrazione}
+\begingroup
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=200pt
+\sloppy
 
-Nel lavoro pratico questa centralizzazione ha avuto un vantaggio molto concreto: ridurre il tempo tra modifica del codice e verifica end-to-end. Restano comunque esterni alcuni prerequisiti di sistema, in particolare Ollama e Tesseract, che in locale incidono direttamente sulla ripetibilità del setup.
+Mettere in relazione servizi con latenze diverse (STT, RAG, TTS, asset) significa accettare che ogni chiamata possa fallire in modo differente: timeout su Whisper, risposta RAG lenta, stream TTS interrotto o endpoint asset non raggiungibile. Lo stesso client deve inoltre operare sia in ambiente locale, dove le porte dei micro-servizi sono raggiungibili direttamente, sia in produzione, dove un reverse proxy fornisce un punto d'ingresso unico e riscrive i path. Per questo orchestrazione delle richieste, normalizzazione degli URL e gestione esplicita dei failure non sono aspetti accessori, ma condizioni necessarie per mantenere la UI coerente anche in presenza di errori transitori.
 
-\begin{table}[!htbp]
+\noindent\textbf{Orchestrazione end-to-end.}
+\label{subsec:orchestrazione}\label{subsec:normalizzazione-endpoint}\label{subsec:error-retry-fallback}
+
+L'orchestrazione delle richieste è centralizzata in \texttt{UIFlowController.cs}, che coordina il ciclo conversazionale tipico: acquisizione audio in PTT, trascrizione, recupero del contesto e generazione della risposta, sintesi vocale e riproduzione sincronizzata con il comportamento dell'avatar. In \texttt{MainMode} l'utente avvia la registrazione, il client produce un WAV, apre una sessione conversazionale quando serve e inoltra poi il turno ai servizi necessari. Durante la riproduzione si attivano anche lip-sync e controller comportamentali dell'avatar, così l'output resta coerente con la resa embodied descritta nelle sottosezioni precedenti. La Tabella~\ref{tab:backend-client-endpoints} fornisce il contratto minimo effettivamente usato dal client in questo ciclo. Qui non conta soltanto che le chiamate esistano, ma che restino leggibili dal lato dell'esperienza utente. Lo stesso stato conversazionale deve infatti assorbire latenza, retry, playback e cambi di focus senza trasformarsi in una sequenza di passaggi tecnici percepibili come rotture del turno.
+
+Tutte le richieste HTTP sono configurate a partire da \texttt{SoulframeServicesConfig}, un \texttt{ScriptableObject} che centralizza gli indirizzi base e una policy minima di invocazione. Questo accentramento evita URL definite in modo statico nel codice della UI e consente di propagare differenze di deploy senza modificare la logica del flusso. In ambiente di produzione WebGL, il browser invia le richieste a un reverse proxy Caddy che espone un'unica origine HTTPS e instrada i percorsi \texttt{/api/whisper/*}, \texttt{/api/rag/*}, \texttt{/api/avatar/*}, \texttt{/api/tts/*} verso i corrispondenti servizi interni.
+
+\begin{wrapfigure}{l}{0.4\textwidth}
 \centering
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.2}
-\begin{tabular}{|>{\raggedright\arraybackslash}p{0.19\textwidth}|>{\raggedright\arraybackslash}p{0.35\textwidth}|>{\raggedright\arraybackslash}p{0.35\textwidth}|}
-\hline
-\textbf{Aspetto} & \textbf{Windows locale} & \textbf{Ubuntu server} \\
-\hline
-Avvio servizi & Script locale (\texttt{ai\_services.cmd}) con processi separati in ascolto su loopback & Service manager con unità dedicate e restart automatico \\
-\hline
-Origine/URL usati dal client & Origine locale (\texttt{http://localhost:8000}) con porte backend esplicite in configurazione client & Unica origine HTTPS; API raggiunte tramite percorsi \texttt{/api/<servizio>} dietro reverse proxy \\
-\hline
-TLS & Assente nel loop di sviluppo locale (HTTP) & Terminazione TLS al reverse proxy \\
-\hline
-Logging & Log di console/processo per debugging interattivo & Log centralizzati di servizi e reverse proxy \\
-\hline
-Update/rollback & Aggiornamento manuale dello workspace e riavvio script & Script amministrativi con stop/start orchestrato e supporto backup/rollback \\
-\hline
-Gestione persistenze & Directory locali del progetto (\texttt{avatar\_store}, \texttt{voices}, \texttt{rag\_store}) & Directory persistenti lato server con separazione per componente/avatar \\
-\hline
-\end{tabular}
-\caption{Differenze operative essenziali tra setup locale Windows e deploy server Ubuntu.}
-\label{tab:deploy-confronto-cap3}
-\end{table}
+\includegraphics[width=1.1\linewidth,height=0.45\textheight,keepaspectratio]{endpoint_normalization.png}
+\caption{Scelta tra URL assolute di loopback e percorsi relativi \texttt{/api/*} in base all'origine della build WebGL.}
+\label{fig:endpoint-normalization}
+\end{wrapfigure}
 
-\paragraph{Deploy su Ubuntu e servizi di supporto.}
-In ambiente Ubuntu l'obiettivo è l'esposizione pubblica controllata del prototipo. I micro-servizi restano su rete interna, mentre il browser raggiunge un'unica origine HTTPS tramite reverse proxy. Il setup server separa componenti applicativi, file statici WebGL e variabili ambientali operative; la gestione dei processi è demandata a unità del service manager con politiche di restart, così che il ripristino dopo reboot o failure non richieda interventi manuali su ogni servizio.
+La Figura~\ref{fig:endpoint-normalization} rende esplicita la regola di switch tra URL assolute in loopback e percorsi relativi \texttt{/api/*} in deploy pubblico. In pratica, quando la build gira in locale usa ancora gli indirizzi diretti dei servizi; quando invece viene servita da un dominio pubblico, gli stessi indirizzi vengono riscritti sotto \texttt{/api} e passano attraverso il reverse proxy. Questa normalizzazione è gestita da \texttt{SoulframeServicesConfig.cs} tramite \texttt{NormalizeForWebGlRuntime()}, attiva solo in build WebGL. Per gli asset avatar esiste una normalizzazione separata in \texttt{AvatarManager}, così il caricamento dei \texttt{.glb} non viene confuso con il livello delle API. Il punto pratico è evitare che il browser dell'utente finale tenti di contattare indirizzi di loopback come \texttt{127.0.0.1:800x}; usando percorsi relativi, le chiamate restano agganciate alla stessa origine che ha servito la build e il routing interno viene delegato al proxy.
 
-Accanto ai micro-servizi applicativi, il prototipo include un livello di supporto operativo per gestione dei processi, reverse proxy e automazione amministrativa. In particolare, i servizi restano in bind su \texttt{127.0.0.1} e il routing pubblico viene concentrato in un solo punto, mentre helper come \texttt{sfctl} e \texttt{sfurl} rendono più semplice distinguere un problema applicativo da un problema di deploy o di instradamento.
+L'integrazione end-to-end espone però il client anche a failure tipici delle chiamate di rete: latenza variabile, timeout e servizi momentaneamente non raggiungibili. Nel prototipo questa gestione è concentrata in una policy semplice, definita in \texttt{SoulframeServicesConfig.cs}: il client attende fino a circa quindici secondi per una singola richiesta e, se necessario, la ripete una sola volta. Mantenere questa policy in uno \texttt{ScriptableObject} permette di bilanciare reattività e tolleranza agli errori senza modificare il codice del flusso conversazionale. Lato client C\#/Unity, ogni \texttt{UnityWebRequest} usa un timeout coerente con questa regola. In caso di errore di rete, timeout o risposta HTTP non valida, il client tenta il recupero entro il limite previsto; se anche questo fallisce, la UI aggiorna lo stato con un messaggio esplicito e termina la pipeline in modo pulito, ripristinando l'interazione.
 
-La complessità operativa non scompare, ma diventa più leggibile. Nel passaggio dal locale al server non cambia solo il sistema operativo: cambia anche il modo in cui lo stack viene avviato, osservato e mantenuto nel tempo. In una tesi centrata su un prototipo funzionante, il deploy non è quindi un dettaglio secondario ma una parte concreta della tenuta complessiva del progetto.
+La scelta di mantenere questa policy semplice è intenzionale. Una logica più ricca, con backoff o strategie più aggressive, avrebbe forse migliorato alcuni casi limite, ma avrebbe anche reso più difficile capire se un problema dipendesse dalla rete, dal servizio o dal modo in cui il client stava inseguendo il recupero. In questa fase era più utile una robustezza facile da diagnosticare. Per la fase TTS, in cui la latenza percepita è più critica, il fallback audio di cortesia è quello descritto in \autoref{subsec:tts-streaming}. Serve a dare un feedback immediato anche quando la sintesi principale è in ritardo o richiede un retry. Sul lato server, il servizio TTS implementa inoltre un fallback CUDA$\rightarrow$CPU. Questo non riguarda solo il caso in cui la GPU manchi all'avvio: se durante la generazione emergono errori riconducibili a CUDA, il server prova a degradare su CPU per evitare il blocco definitivo della sintesi. L'esecuzione risulta più lenta, ma l'istanza continua a fornire audio e il deploy regge meglio su macchine consumer o in condizioni di carico variabile. Il livello di robustezza descritto è dimensionato per un prototipo di ricerca: \texttt{ai\_services.cmd} non implementa health-check automatici né auto-ripristino, e le limitazioni che emergono in scenari prolungati sono discusse in \ref{sec:problemi-soluzioni}.
 
-Il frontend Unity WebGL resta così riutilizzabile nei due contesti, variando soprattutto il livello di orchestrazione e il punto di ingresso di rete. La tabella comparativa precedente rende verificabili queste differenze; i dettagli esecutivi sono approfonditi nel Capitolo~\ref{chap:implementazione} e in Appendice~\ref{app:ops}.
+\endgroup
+
+\section{Criticità affrontate e soluzioni}
+\label{sec:problemi-soluzioni}
+\begingroup
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=200pt
+\sloppy
+\catcode`\_=12\relax
+\catcode`\#=12\relax
+
+Nel percorso client--micro-servizi emergono criticità operative che in un prototipo monolitico restano spesso meno visibili: latenza variabile tra stadi, vincoli browser sul routing API, qualità non uniforme dell'OCR, compatibilità fragile tra dipendenze ML e differenze di gestione tra Windows e Ubuntu. Le sottosezioni seguenti raccolgono i problemi che si sono presentati con maggiore continuità e il modo in cui sono stati affrontati.
+
+\subsection{Latenza, routing e continuità del flusso}
+\label{subsec:latenza-timeout}\label{subsec:cors-routing}
+
+Nel prototipo la criticità più immediata è la latenza percepita tra la fine dell'input vocale e l'inizio della risposta sintetizzata. In \texttt{MainMode} questo ritardo si manifesta come una sequenza di stati \emph{listening}$\rightarrow$\emph{processing} che, se troppo lunga, viene interpretata dall'utente come un blocco dell'interazione. Il problema non dipende da una singola chiamata, ma dalla somma di più stadi: trascrizione Speech-to-Text, generazione contestuale con memoria, sintesi Text-to-Speech e avvio della riproduzione audio. Il caso peggiore coincide spesso con un \emph{cold start} (ad esempio modelli non ancora in cache o inizializzati), oppure con condizioni di carico in cui il runtime di inferenza impiega più tempo a restituire un risultato. La causa tecnica è quindi composizionale. Il servizio STT carica un modello Whisper all'avvio e poi esegue l'inferenza su file audio caricati dal client; la fase di retrieval e chat del RAG dipende da chiamate a un runtime esterno (Ollama) che esegue embedding e Large Language Model (LLM); il servizio TTS usa un modello XTTS che, quando condizionato da un riferimento vocale per-avatar, può introdurre ulteriore costo computazionale, variando in modo sensibile tra esecuzione su GPU e su CPU. In presenza di questi tempi, una policy di rete troppo ottimistica produce fallimenti per timeout; una troppo permissiva rischia invece di mantenere la UI in attesa per intervalli poco predicibili.
+
+Per mitigare il problema si combinano misure lato client e lato server. Sul client, \texttt{SoulframeServicesConfig} centralizza una policy minima di invocazione: il turno non resta in attesa indefinita, ma prova a recuperare una volta sola prima di dichiarare il fallimento. In fase di tuning, una finestra di dieci secondi si è mostrata troppo aggressiva sui turni lenti, causando interruzioni premature del ciclo vocale; la soglia attuale di circa quindici secondi è risultata più adatta all'hardware di sviluppo. Sul server TTS, la latenza percepita viene ridotta tramite risposta audio progressiva: l'endpoint \texttt{/tts_stream} invia la risposta come WAV in streaming e consente al client di avviare il playback senza attendere il trasferimento completo del file. Per pre-attivazione iniziale, fallback CUDA$\rightarrow$CPU e breve audio di attesa si rimanda a \autoref{subsec:tts-streaming}; qui rileva soprattutto il fatto che queste misure contengano il ritardo del primo turno e mantengano il servizio disponibile anche in assenza di GPU.
+
+Nella pratica, queste misure contengono i casi di UI bloccata e stabilizzano la latenza percepita, soprattutto per risposte lunghe o per i primi turni dopo l'avvio. Restano però limiti coerenti con la natura prototipale del sistema: la policy di retry è volutamente semplice (senza backoff esponenziale), e la pipeline continua a risentire dei tempi di inferenza quando i servizi sono avviati su hardware non adeguato o quando i modelli vengono eseguiti in modalità CPU.
+
+Su WebGL, alla latenza si aggiunge il problema del routing API nel browser. Le chiamate possono essere bloccate anche quando i micro-servizi sono in esecuzione, perché l'intercettazione avviene prima che la richiesta raggiunga il server. La causa è la \emph{Same-Origin Policy} (SOP), che isola le risorse tra origin diversi (schema, host e porta) e richiede un consenso esplicito per consentire accessi \emph{cross-origin}. Il meccanismo standard per gestire tale consenso è il \emph{Cross-Origin Resource Sharing} (CORS), che consente al server di dichiarare in modo controllato quali origin e metodi siano ammessi; la letteratura osserva però come design, implementazione e deployment di CORS risultino spesso soggetti a complessità e misconfigurazioni nel mondo reale \cite{Chen2018CORS}. Nel prototipo la condizione cross-origin emerge naturalmente dalla scomposizione a micro-servizi: in locale i servizi sono in ascolto su porte distinte (8001--8004), mentre la build WebGL può essere servita su un'altra porta o su un dominio differente.
+
+Per risolvere il vincolo CORS si adottano due livelli complementari. In sviluppo, i servizi accettano richieste provenienti da origini diverse, così Unity/WebGL può dialogare con backend in ascolto su porte separate senza essere bloccato dal browser. In produzione, invece, il problema viene ridotto a monte con la normalizzazione degli endpoint descritta in \autoref{subsec:normalizzazione-endpoint}: il client usa percorsi relativi \texttt{/api/*} dietro reverse proxy e torna quindi a lavorare su un'unica origine HTTPS. Questa doppia soluzione mantiene la flessibilità del debugging locale e, allo stesso tempo, impedisce che in deploy il browser dell'utente tenti di raggiungere indirizzi di loopback come \texttt{127.0.0.1:800x}. Il limite residuo è che una policy CORS molto permissiva è adeguata a un prototipo in rete controllata, mentre un rilascio pubblico richiederebbe una restrizione esplicita delle origini ammesse e una gestione più rigorosa delle policy lato proxy.
+
+\subsection{Ingestione e dipendenze}\label{subsec:ocr-ingestione}\label{subsec:compatibilita-dipendenze}
+
+La qualità dell'ingestione nella memoria RAG dipende in modo critico dall'OCR (Optical Character Recognition) applicato a PDF e immagini. Il problema si osserva in modo concreto quando i documenti sono scansioni con risoluzione e contrasto variabili, font non standard o impaginazioni complesse (ad esempio multi-colonna e tabelle): in questi casi il testo estratto contiene frammentazioni, inversioni di ordine e porzioni mancanti, che riducono l'efficacia del retrieval e aumentano la probabilità di recuperare contesto poco utile. La causa tecnica è che il servizio RAG tratta i PDF come immagini, rendendo esplicita la conversione pagina$\rightarrow$bitmap e poi applicando un OCR generalista; questo evita di affidarsi a testo embedded spesso corrotto, ma espone ai limiti tipici della trascrizione da immagini quando manca un pre-processing layout-aware.
+
+Nel servizio RAG l'ingestione è stata quindi strutturata come pipeline deterministica. Per i PDF, ogni pagina viene renderizzata come immagine a 400~DPI tramite PyMuPDF\footnote{PyMuPDF --- \url{https://pymupdf.readthedocs.io/en/latest/}.} e poi trascritta con Tesseract\footnote{Tesseract OCR --- \url{https://tesseract-ocr.github.io/tessdoc/Installation.html}.}, con configurazione multilingua e fallback su inglese quando i pacchetti lingua non sono disponibili. Il testo grezzo viene poi normalizzato e linearizzato per ridurre la frammentazione tipica delle tabelle, un passaggio che aiuta gli embedding a produrre rappresentazioni più stabili. Da lì in poi la pipeline procede con un chunking per caratteri con overlap, filtri conservativi contro segmenti troppo corti o contenuti spuri, e una deduplicazione intra-file per evitare duplicati identici nello store. Una seconda deduplicazione basata su similarità interviene in altri passaggi per ridurre le ridondanze meno evidenti. In questo modo il retrieval non viene saturato da frammenti vuoti o ripetitivi, e l'estrazione OCR mantiene una copertura minima anche su documenti non nativamente testuali.
+
+Restano però limiti evidenti. La pipeline non implementa un'analisi avanzata del layout --- detection di colonne, ricostruzione strutturata di tabelle --- e l'ordine logico del contenuto può risultare imperfetto. La qualità dipende inoltre dal DPI di rendering e da caratteristiche grafiche difficili come font decorativi o scansioni inclinate. Tesseract, come motore open-source multilingua, si adatta bene a un approccio generalista che richiede poca personalizzazione, ma non elimina la dipendenza dalla qualità dell'immagine in input \cite{Smith2009Tesseract}.
+
+Su questo stesso blocco pesa anche la compatibilità dell'ambiente Python necessario per eseguire i micro-servizi. In fase di installazione, errori di import o mismatch di ABI si manifestano in modo concreto come fallimenti all'avvio di Whisper, ChromaDB o, soprattutto, del servizio TTS. La causa tecnica è legata alla profondità delle dipendenze transitive nel dominio AI/ML: librerie come \texttt{coqui-tts}, \texttt{torch}, \texttt{transformers} e \texttt{tokenizers} impongono vincoli di versione stringenti e spesso dipendono da componenti compilati, rendendo fragile l'aggiornamento non coordinato dei pacchetti. Questo scenario è tipico nell'ecosistema PyPI, dove aggiornamenti upstream possono introdurre conflitti tra vincoli e ambiente locale, richiedendo strategie di risoluzione esplicite \cite{Wang2020Watchman}.
+
+La risposta più affidabile è stata un pinning rigoroso delle versioni in \texttt{requirements.txt}, che fissa l'accoppiata tra framework web e librerie ML (ad esempio \texttt{fastapi==0.128.0}, \texttt{openai-whisper==20250625}, \texttt{chromadb==1.4.1}, \texttt{coqui-tts==0.27.5}, \texttt{torch==2.10.0}, \texttt{torchaudio==2.10.0}, \texttt{transformers==4.57.1}, \texttt{tokenizers==0.22.1}, \texttt{torchcodec>=0.8.0}). Questo riduce la variabilità tra macchine e rende riproducibile il comportamento durante test e deploy. Per le installazioni con accelerazione GPU, lo script operativo \texttt{ai_services.cmd} prevede inoltre un comando dedicato (\texttt{TORCH_INSTALL_CMD}) per installare wheel CUDA specifiche, e centralizza anche variabili operative che influenzano direttamente il comportamento di RAG, Whisper e Coqui XTTS v2. In pratica, mismatch tra \texttt{transformers} e \texttt{tokenizers} o assenza di codec audio necessari alla sintesi si presentano in modo ripetibile su ambienti diversi e richiedono riallineamenti puntuali nel file di dipendenze. Il vantaggio si vede soprattutto sulla riproducibilità: un nuovo setup tende a convergere verso uno stato funzionante senza interventi ad hoc, e le regressioni possono essere ricondotte a modifiche puntuali nel file dei requirements. Rimane tuttavia una fragilità strutturale rispetto a cambiamenti upstream: l'aggiornamento di un singolo pacchetto può richiedere riallineamenti a catena, e alcune dipendenze (in particolare nel TTS) impongono vincoli non sempre dichiarati in modo immediato nei metadati pubblici\footnote{PyPI: coqui-tts --- \url{https://pypi.org/project/coqui-tts/}.}. Nel perimetro attuale questo compromesso resta accettabile, ma suggerisce che un'evoluzione verso un rilascio più stabile richiederebbe una gestione più strutturata dell'ambiente (ad esempio lockfile e pipeline di build ripetibile) per ridurre ulteriormente l'impatto degli aggiornamenti remoti.
+
+\subsection{Differenze operative tra ambienti}\label{subsec:differenze-windows-ubuntu}
+
+Nel passaggio dall'ambiente di sviluppo Windows a quello di produzione Ubuntu, la differenza principale non sta nel sistema operativo in sé, ma nel modo in cui lo stack viene gestito. Vanno tenuti distinti anche i due piani già emersi nel capitolo: Windows/WebGL descrive il runtime del client, mentre Windows/Ubuntu descrive il modo in cui l'intero stack viene avviato e mantenuto. Su Windows il ciclo è centrato su \texttt{ai\_services.cmd}, orientato a sviluppo locale rapido: lo script offre modalità \emph{console}, \emph{background} e \emph{debug}, sceglie se aprire il frontend WebGL o l'eseguibile Windows e mantiene nello stesso punto la configurazione minima dello stack. Su Ubuntu il flusso è stato separato in provisioning iniziale (\texttt{setup\_soulframe\_ubuntu.sh}) e manutenzione quotidiana (\texttt{sf\_admin\_ubuntu.sh}), con i servizi registrati come unità \texttt{systemd} dotate di riavvio automatico in caso di crash. In questo modo bootstrap infrastrutturale e operatività quotidiana non condividono lo stesso strumento, e la continuità dei servizi non dipende da sessioni terminali aperte.
+
+La riproducibilità dell'ambiente segue la stessa logica: il provisioning Ubuntu seleziona in modo deterministico il runtime Python, installa le dipendenze di sistema, crea un ambiente isolato con configurazione centralizzata e include fix automatici sui conflitti noti tra librerie di inferenza. Così macchine diverse tendono a convergere più facilmente, anche se il margine per modifiche estemporanee resta minore rispetto al flusso locale.
+
+Sul fronte rete, in sviluppo i servizi restano raggiungibili direttamente sulle proprie porte, ma in produzione un reverse proxy espone un'unica origine HTTPS e instrada il traffico verso i servizi interni tramite percorsi \texttt{/api/*}. Questa configurazione riduce i problemi CORS in WebGL, mantiene allineata la normalizzazione endpoint lato client e concentra il controllo del traffico su un singolo punto di ingresso. Il meccanismo di aggiornamento segue un principio analogo: una directory di staging raccoglie gli artefatti, la console amministrativa li applica con backup versionati e rilancia i servizi in modo controllato. I dettagli operativi di entrambi gli ambienti, le convenzioni di provisioning e la struttura dei pacchetti di aggiornamento sono sviluppati in Appendice~\ref{app:ops}.
+\endgroup
+
+\begingroup
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=200pt
+\sloppy
+\section{Operatività, affidabilità e sicurezza}\label{sec:runbook}\label{sec:sicurezza}
+
+Nel ciclo di vita del prototipo, avvio, verifica, aggiornamento e manutenzione ordinaria sono stati ricondotti a poche procedure ripetibili. Era il modo più semplice per evitare che ogni intervento diventasse una diagnosi da rifare da capo. I controlli davvero indispensabili restano pochi: capire se un servizio non è in salute, distinguere un problema di routing da un problema applicativo, applicare un aggiornamento senza compromettere la piattaforma e mantenere traccia delle modifiche tramite backup. La distinzione tra ambiente di produzione Ubuntu e sviluppo locale Windows rimane esplicita, perché i due contesti richiedono strumenti operativi differenti pur condividendo le stesse porte logiche e lo stesso insieme di servizi.
+
+\noindent\textbf{Assetto operativo tra Ubuntu e Windows.}
+La distinzione tra produzione Ubuntu e supporto locale Windows riguarda soprattutto il modo in cui lo stack viene governato, non la sua forma logica. In entrambi i casi restano gli stessi servizi, ma cambiano gli strumenti che ne rendono possibile avvio, verifica, aggiornamento e diagnosi.
+
+\paragraph{Produzione Ubuntu.}
+Il provisioning in produzione è automatizzato dallo script \texttt{setup\_soulframe\_ubuntu.sh}, che prepara layout, variabili d'ambiente, unit \texttt{systemd}, reverse proxy Caddy e helper CLI, mantenendo i micro-servizi su loopback e concentrando l'esposizione pubblica in un'unica origine HTTPS. Nel capitolo interessa soprattutto questo perimetro operativo; esempi più minuti sono raccolti in Appendice~\ref{app:ops}.\footnote{systemd.service (Restart, RestartSec, ExecStart, WantedBy) --- \url{https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html}} Una volta completato il provisioning, la gestione quotidiana si appoggia a pochi comandi ripetibili. \texttt{sfctl} copre stato, log e riavvii coordinati; \texttt{sfurl} espone gli endpoint pubblici di health-check e aiuta a distinguere rapidamente un fault di applicazione da un problema di routing o di certificato.\footnote{journalctl (filtri per unit e follow) --- \url{https://www.freedesktop.org/software/systemd/man/latest/journalctl.html}} L'aggiornamento in produzione segue una sequenza unica: directory di rilascio separata, backup della build e del backend, applicazione degli artefatti supportati, riallineamento dei servizi. Non punta allo zero-downtime, ma a evitare stati intermedi incoerenti, spesso più dannosi di una breve finestra di fermo in un prototipo distribuito. Comandi e convenzioni dei backup sono sviluppati in Appendice~\ref{app:ops}. Nella pratica questa disciplina minima ha aiutato soprattutto a leggere meglio i guasti: quando un servizio non partiva, quando un aggiornamento lasciava lo stack in uno stato incoerente o quando il browser smetteva di raggiungere correttamente le API, avere un percorso operativo già definito evitava di confondere un difetto applicativo con un errore di esercizio.
+
+Il ciclo di vita operativo, dalla verifica di stato al restart e all'update, è riassunto in \autoref{fig:sfctl-lifecycle}.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.85\textwidth]{sfctl-lifecycle.png}
+  \caption{Sequenza tipica di diagnosi, restart e update dei servizi SOULFRAME tramite \texttt{sfctl} e \texttt{sf\_admin\_ubuntu.sh}.}
+  \label{fig:sfctl-lifecycle}
+\end{figure}
+
+\paragraph{Supporto locale Windows.}
+In ambiente Windows il manuale operativo è più leggero: \texttt{ai\_services.cmd} centralizza start/stop/restart dei servizi e avvia il frontend, servendo la build WebGL o aprendo l'eseguibile Windows, mentre \texttt{SoulframeControlCenter.bat} prepara il pacchetto di deploy. Cambia il grado di orchestrazione, non la forma dello stack. Il prototipo diventa così più osservabile e ripetibile, ma senza un vero hardening operativo: mancano rollback automatici, health-check sul traffico e strategie di recovery più ricche. Resta comunque una base sufficiente per evitare rotture banali e rendere il debugging meno improvvisato. Non si descrive un sistema pronto per la produzione, ma un prototipo che doveva restare funzionante e osservabile end-to-end. Per questo sono state privilegiate scelte operative che riducono i fault transitori e rendono la diagnosi ripetibile, lasciando fuori misure di sicurezza più avanzate. La base resta il runbook operativo (\autoref{sec:runbook}). L'architettura a micro-servizi introduce più punti di failure di una soluzione monolitica; richiede quindi timeout/retry minimi (\autoref{subsec:error-retry-fallback}), health-check praticabili e aggiornamenti che limitino il downtime. Sul fronte sicurezza, la normalizzazione degli endpoint in WebGL (\autoref{subsec:normalizzazione-endpoint}) e il reverse proxy con TLS definiscono un unico perimetro di ingresso.
+
+\paragraph{Affidabilità: auto-restart, health-check e gestione dei fault.}
+In ambiente di produzione Ubuntu, l'affidabilità operativa si fonda sulla delega della supervisione dei processi a \texttt{systemd}. Le unit generate dallo script di setup impostano \texttt{Restart=always} e \texttt{RestartSec=5}, così che un crash di un micro-servizio venga seguito da un riavvio automatico dopo cinque secondi.\footnote{systemd.service (Restart, RestartSec) --- \url{https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html}} Questo riduce la necessità di intervento manuale per fault transitori e limita la durata delle interruzioni dovute a errori non deterministici.
+
+Il meccanismo di auto-restart non sostituisce un health management completo, perché \texttt{systemd} reagisce al crash del processo ma non interpreta la qualità del servizio quando il processo resta vivo ma non risponde correttamente. I server FastAPI espongono endpoint di health-check (\texttt{/health}) usati a scopo diagnostico dal runbook, in particolare tramite \texttt{sfurl} e \texttt{sfctl logs} per correlare un errore lato client con un evento lato server. In letteratura, health-check più strutturati includono tipicamente probe di \emph{liveness} e \emph{readiness} e si integrano con orchestratori o bilanciatori per isolare istanze non pronte o non sane, riducendo failure propagati e downtime; inoltre pattern come il \emph{circuit breaker} consentono di contenere fault a cascata quando dipendenze esterne diventano intermittenti \cite{Barua2024FaultTolerance}. Nel contesto SOULFRAME, l'assenza di un orchestratore (ad esempio Kubernetes) implica che tali probe non siano sfruttati in modo automatico; tuttavia la presenza di \texttt{/health} e la disponibilità dei log centralizzati costituiscono un primo livello di osservabilità coerente con gli obiettivi di prototipazione. La resilienza minima lato client (timeout e retry in \texttt{SoulframeServicesConfig}) è descritta in dettaglio in \autoref{subsec:error-retry-fallback}. Operativamente, il punto è contenere i failure transitori nella catena STT$\rightarrow$RAG$\rightarrow$TTS mantenendo una latenza massima prevedibile.
+
+\paragraph{Affidabilità: aggiornamenti, rollback manuale e minimizzazione del downtime.}
+La seconda componente di affidabilità operativa riguarda gli aggiornamenti, che rappresentano una fonte frequente di regressioni e downtime se applicati in modo parziale. Nel prototipo, la console amministrativa \texttt{sf\_admin\_ubuntu.sh} implementa una pipeline \texttt{update\_all} che segue una sequenza deterministica: stop dei servizi, creazione di backup, deploy degli artefatti, normalizzazione dei file e riavvio. L'aggiornamento non è \emph{zero-downtime} in senso stretto, ma riduce la finestra di indisponibilità ed evita stati intermedi difficili da diagnosticare. Il rollback resta manuale: il sistema conserva i backup, ma non esegue automaticamente un revert in caso di failure post-deploy. Questa limitazione deriva dalla scelta di mantenere l'infrastruttura leggera; in un'evoluzione verso un rilascio più stabile, l'introduzione di verifiche automatiche post-deploy (ad esempio health-check su tutte le unit e test di richiesta minima STT$\rightarrow$TTS) consentirebbe di bloccare o annullare automaticamente un aggiornamento non sano, avvicinando la pipeline a pratiche di continuous delivery più robuste.
+
+\paragraph{Sicurezza operativa: isolamento di rete e perimetro TLS.}
+La misura di sicurezza operativa più rilevante già presente è la riduzione della superficie di attacco tramite isolamento di rete. In produzione, tutti i micro-servizi FastAPI eseguono bind su \texttt{127.0.0.1}, quindi non sono direttamente esposti alla rete pubblica; l'unico punto di ingresso è il reverse proxy Caddy, che termina TLS e inoltra le richieste ai servizi interni tramite routing su \texttt{/api/*}. In pratica, browser e utenti esterni comunicano solo con Caddy in HTTPS, mentre le porte 8001--8004 restano confinate al loopback del server. Caddy gestisce inoltre \emph{automatic HTTPS}, includendo emissione e rinnovo dei certificati e riducendo errori operativi legati alla gestione manuale di TLS.\footnote{Caddy (Automatic HTTPS) --- \url{https://caddyserver.com/docs/automatic-https}} La direttiva \texttt{reverse\_proxy} definisce l'inoltro verso i target in loopback e consente di mantenere invariata la configurazione del client WebGL, che in produzione utilizza percorsi relativi anziché URL assolute, come discusso in \autoref{subsec:normalizzazione-endpoint}.\footnote{Caddy (reverse\_proxy) --- \url{https://caddyserver.com/docs/caddyfile/directives/reverse_proxy}}
+
+Questo assetto fornisce un livello di sicurezza pragmatico per un prototipo: il traffico è cifrato sul tratto pubblico e i servizi non sono raggiungibili direttamente dall'esterno. Restano però assenti altre misure di enforcement al perimetro: non è implementata autenticazione sugli endpoint, non è presente rate-limiting e le policy CORS risultano permissive (\texttt{allow\_origins=["*"]} sui server FastAPI). In termini di threat model, questo significa che chiunque possa raggiungere l'origin pubblico può invocare le API, soggetto solo alla conoscenza degli endpoint e alla disponibilità dei servizi. È una scelta compatibile con un contesto controllato, come un ambiente di test o dimostrazione, ma non con un'esposizione pubblica non supervisionata.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.85\textwidth]{security_layers.png}
+  \caption{Livelli dell'architettura in cui si concentrano le misure operative di sicurezza: rete, reverse proxy, applicazione e sistema operativo.}
+  \label{fig:security-layers}
+\end{figure}
+
+La Figura~\ref{fig:security-layers} mostra che, allo stato attuale, le misure operative si concentrano su rete e reverse proxy (bind locale e TLS), mentre il livello applicativo resta più aperto per non irrigidire la sperimentazione della pipeline conversazionale. Questa scelta riduce l'attrito nello sviluppo, ma sposta parte dell'onere della sicurezza sul contesto operativo in cui il prototipo viene eseguito.
+
+\paragraph{Limiti attuali e possibili evoluzioni.}
+La principale limitazione di sicurezza è l'assenza di autenticazione e autorizzazione centralizzate. In letteratura, l'API gateway è spesso indicato come punto di enforcement dei micro-servizi: al gateway vengono delegate verifica credenziali e policy uniformi, mentre i servizi interni restano focalizzati sulla logica di dominio \cite{Xu2019APIGateway}. In un'evoluzione di SOULFRAME, questo modello potrebbe passare da Caddy o da un gateway dedicato. Un framework di mitigazione per API REST suggerisce inoltre di combinare autenticazione forte, validazione input, rate-limiting e centralizzazione delle policy per ridurre vettori come abuso di risorse, injection e accesso non autorizzato \cite{Alam2023SecuringAPIs}. Nel prototipo, la validazione dei payload è delegata in parte a FastAPI/Pydantic, ma mancano limiti di traffico e controlli di identità lato server. Nel perimetro attuale non è stata introdotta un'autenticazione completa, per non spostare la tesi su un hardening applicativo vero e proprio; la sicurezza resta quindi legata a contesti controllati. Sul versante affidabilità, l'assenza di un service mesh o di un orchestratore limita l'automazione dei health-check e delle strategie di contenimento dei fault. L'esperienza operativa mostra che il solo auto-restart è efficace contro i crash, ma meno contro degradazioni silenziose. L'adozione di probe di \emph{readiness} e di pattern di \emph{circuit breaker} sarebbe un'estensione diretta delle pratiche discusse in letteratura \cite{Barua2024FaultTolerance}. Una prima estensione, senza cambiare piattaforma, potrebbe introdurre un controllo periodico dei \texttt{/health} a livello di reverse proxy o script amministrativi.
+
+Il prototipo, in questa fase, non ha ancora una maturità da produzione. Alcune misure di sicurezza e di affidabilità sono già presenti, altre sono rimaste fuori per non spostare la tesi su un hardening completo. L'obiettivo resta validare la pipeline conversazionale end-to-end con un'infrastruttura stabile, senza aprire in parallelo un secondo lavoro dedicato alla messa in sicurezza. Il runbook (\autoref{sec:runbook}) e la gestione degli errori (\autoref{subsec:error-retry-fallback}) restano la base più naturale per estensioni successive, come controlli di accesso, rate-limiting e health management più automatico.
+\endgroup
