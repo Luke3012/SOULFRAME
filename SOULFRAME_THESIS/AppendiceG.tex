@@ -1,5 +1,6 @@
 % !TEX root = ./main.tex
-\chapter{Glossario}
+\chapter*{Glossario}
+\addcontentsline{toc}{chapter}{Glossario}
 \label{app:glossary}
 
 \begingroup
@@ -7,73 +8,55 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.65em}
 
-Questo glossario raccoglie i termini che ricorrono più spesso nella tesi e nelle appendici tecniche. Le voci sono ordinate alfabeticamente; per gli acronimi più usati viene indicata anche l'espansione estesa.
+Questo glossario raccoglie solo i termini tecnici che tornano più spesso nella tesi e che, fuori contesto, non sono così immediati. Le voci sono ordinate alfabeticamente.
 
-\textbf{Affordance.} Insieme di segnali percettivi che fanno capire a un utente come un oggetto o un'interfaccia possa essere usato.
+\textbf{Affordance.} Insieme di segnali visivi o interattivi che fanno intuire come un elemento dell'interfaccia possa essere usato.
 
-\textbf{API (\emph{Application Programming Interface}).} Interfaccia con cui un componente software espone funzioni, dati o servizi ad altri componenti.
+\textbf{API (\emph{Application Programming Interface}).} Interfaccia con cui un componente software espone funzioni o dati ad altri componenti.
 
-\textbf{ASGI (\emph{Asynchronous Server Gateway Interface}).} Standard usato in Python per applicazioni web asincrone; nel progetto fa da base ai micro-servizi FastAPI.
+\textbf{ASGI (\emph{Asynchronous Server Gateway Interface}).} Standard usato in Python per applicazioni web asincrone; nel progetto fa da base ai servizi FastAPI.
 
-\textbf{Auto-remember.} Meccanismo che consente al sistema di salvare in memoria informazioni ricorrenti o rilevanti emerse durante la conversazione.
+\textbf{Backend.} Parte del sistema che gestisce logica applicativa, servizi, orchestrazione e accesso ai dati, senza coincidere con l'interfaccia mostrata all'utente.
 
 \textbf{Blendshape.} Tecnica di animazione facciale che modifica la mesh 3D per ottenere espressioni, movimenti labiali o transizioni del volto.
 
-\textbf{BM25 (\emph{Best Matching 25}).} Algoritmo di ranking lessicale usato nel retrieval per stimare quanto un testo sia pertinente rispetto a una query.
+\textbf{BM25 (\emph{Best Matching 25}).} Algoritmo di ranking lessicale usato per stimare quanto un testo sia pertinente rispetto a una query.
 
-\textbf{Bridge WebGL.} Collegamento tra la pagina web che ospita il client Unity WebGL e il runtime del prototipo, usato per scambiare eventi e dati.
+\textbf{Chunk.} Porzione di testo ricavata dalla suddivisione di un contenuto più grande, così da renderlo indicizzabile e recuperabile.
 
-\textbf{ChromaDB.} Database vettoriale usato nel progetto per conservare memoria testuale, embedding e metadati associati agli avatar.
+\textbf{CLI (\emph{Command-Line Interface}).} Interfaccia testuale usata per avvio, diagnostica o manutenzione di servizi e strumenti.
 
-\textbf{Chunk.} Porzione di testo ottenuta dalla suddivisione di un documento più grande, così da renderne possibile l'indicizzazione e il recupero.
+\textbf{CORS (\emph{Cross-Origin Resource Sharing}).} Meccanismo del browser che regola quali risorse possono essere richieste tra origini diverse.
 
-\textbf{CLI (\emph{Command-Line Interface}).} Interfaccia a riga di comando usata per avvio, diagnostica o manutenzione dei servizi.
+\textbf{Debriefing.} Breve momento finale della prova in cui il partecipante può commentare liberamente l'esperienza e chiarire eventuali dubbi sulla sessione svolta.
 
-\textbf{Contesto recente.} Insieme degli ultimi turni dialogici o dei riferimenti immediati che il sistema usa per mantenere coerenza nel turno corrente.
+\textbf{Embedding.} Rappresentazione numerica di un testo, di un'immagine o di un altro contenuto, usata per confrontarne la vicinanza semantica.
 
-\textbf{Controllo finale della risposta.} Verifica conclusiva applicata alla risposta generata, utile per bloccare o correggere output incoerenti con il profilo dell'avatar o con il materiale recuperato.
-
-\textbf{CORS (\emph{Cross-Origin Resource Sharing}).} Meccanismo del browser che regola quali risorse possono essere richieste tra origini diverse; nel prototipo incide sulle chiamate tra WebGL, proxy e backend.
-
-\textbf{Deduplicazione.} Processo con cui si evitano copie ripetute dello stesso contenuto durante ingestione, memoria o recupero documentale.
-
-\textbf{DOM (\emph{Document Object Model}).} Struttura ad albero con cui il browser rappresenta una pagina HTML e ne rende manipolabili gli elementi.
-
-\textbf{DPI (\emph{Dots Per Inch}).} Misura della densità di punti usata per descrivere la risoluzione di immagini o acquisizioni scannerizzate.
+\textbf{ECA (\emph{Embodied Conversational Agent}).} Agente conversazionale dotato di una rappresentazione corporea visibile, come un avatar o un personaggio in scena.
 
 \textbf{Fallback.} Comportamento di riserva adottato quando il percorso principale non può essere completato o non restituisce un risultato affidabile.
 
-\textbf{FSM (\emph{Finite State Machine}).} Modello a stati finiti utile per descrivere il passaggio ordinato tra fasi operative diverse, come ascolto, elaborazione e risposta.
-
-\textbf{GPU (\emph{Graphics Processing Unit}).} Unità di calcolo parallelo impiegata per accelerare inferenza, elaborazione di modelli e, in generale, carichi computazionali intensivi.
+\textbf{FSM (\emph{Finite State Machine}).} Modello a stati finiti usato per descrivere passaggi ordinati tra fasi diverse di un sistema o di un'interfaccia.
 
 \textbf{Grounding.} Ancoraggio della risposta a fonti, memoria o input reali, in modo da ridurre invenzioni e mantenere coerenza col contesto.
 
-\textbf{HTTPS (\emph{HyperText Transfer Protocol Secure}).} Versione cifrata del protocollo HTTP, usata per proteggere la comunicazione tra client e server.
+\textbf{Hallucination.} Generazione di un contenuto plausibile ma non supportato dai dati disponibili; nel testo il termine viene spesso reso anche come ``allucinazione''.
 
-\textbf{Ingestione.} Fase in cui documenti, immagini o altri contenuti vengono acquisiti, puliti, segmentati e preparati per il retrieval.
+\textbf{HMD (\emph{Head-Mounted Display}).} Visore indossabile usato per la fruizione di esperienze VR o XR.
 
-\textbf{JSON (\emph{JavaScript Object Notation}).} Formato testuale leggero usato per scambiare dati strutturati tra client, proxy e micro-servizi.
+\textbf{Hybrid search.} Strategia di recupero che combina confronto lessicale e ricerca semantica per migliorare la pertinenza dei contenuti trovati.
 
-\textbf{Lip sync.} Sincronizzazione tra audio e movimento delle labbra di un avatar, così da rendere la resa vocale più credibile.
+\textbf{IQR (\emph{Interquartile Range}).} Intervallo tra primo e terzo quartile, usato per descrivere la dispersione dei dati in modo poco sensibile ai valori estremi.
 
 \textbf{LLM (\emph{Large Language Model}).} Modello linguistico di grandi dimensioni impiegato per comprendere il contesto e generare risposte in linguaggio naturale.
 
-\textbf{Memoria factual.} Parte della memoria che conserva fatti, informazioni biografiche o dati stabili sull'avatar e sull'utente.
+\textbf{MDMT (\emph{Multidimensional Measure of Trust}).} Questionario usato per descrivere la fiducia percepita verso un agente o un sistema.
 
-\textbf{Memoria persistente.} Memoria che rimane disponibile anche dopo la chiusura della sessione, a differenza del solo contesto temporaneo del turno.
+\textbf{OCR (\emph{Optical Character Recognition}).} Tecnica usata per estrarre testo da immagini o PDF scannerizzati, così da renderli interrogabili.
 
-\textbf{OCR (\emph{Optical Character Recognition}).} Tecnica usata per estrarre testo da immagini o PDF scannerizzati, così da renderli interrogabili nel pipeline RAG.
+\textbf{PANAS (\emph{Positive and Negative Affect Schedule}).} Questionario che misura in modo separato affettività positiva e affettività negativa.
 
-\textbf{OpenAPI.} Specifica usata per descrivere endpoint, parametri e risposte di un servizio web in modo standardizzato.
-
-\textbf{Payload.} Contenuto effettivo di una richiesta o di una risposta, al netto di intestazioni e metadati di trasporto.
-
-\textbf{Pipeline.} Sequenza ordinata di fasi o moduli che trasformano un input in un output, per esempio da voce a testo, da retrieval a risposta, o da testo a voce.
-
-\textbf{PTT (\emph{Push-To-Talk}).} Modalità di interazione in cui la cattura audio parte solo quando l'utente tiene premuto un comando dedicato.
-
-\textbf{Query plan.} Strategia con cui il sistema decide come interpretare una query, quali sorgenti consultare e in quale ordine.
+\textbf{Prompt.} Istruzione o insieme di istruzioni date a un modello generativo per orientarne comportamento, tono o vincoli di risposta.
 
 \textbf{RAG (\emph{Retrieval-Augmented Generation}).} Approccio che combina recupero di contenuti pertinenti e generazione testuale, così da produrre risposte più ancorate al contesto.
 
@@ -81,19 +64,11 @@ Questo glossario raccoglie i termini che ricorrono più spesso nella tesi e nell
 
 \textbf{Retrieval.} Fase di recupero di documenti, chunk o memorie rilevanti da usare nella generazione della risposta.
 
-\textbf{Routing dell'intento.} Scelta del percorso operativo più adatto in base a ciò che l'utente sta chiedendo, ad esempio memoria, documento, immagine o risposta diretta.
+\textbf{Routing.} Scelta del percorso operativo più adatto in base al tipo di richiesta o di intento rilevato nel turno corrente.
 
-\textbf{SDK (\emph{Software Development Kit}).} Insieme di librerie, strumenti e documentazione che facilita l'integrazione di una piattaforma o di un servizio.
-
-\textbf{Similarità vettoriale.} Misura della vicinanza tra embedding usata per trovare contenuti semanticamente affini a una query.
-
-\textbf{SSH (\emph{Secure Shell}).} Protocollo usato per l'accesso remoto sicuro a una macchina e per operazioni di amministrazione del server.
+\textbf{RSES (\emph{Rosenberg Self-Esteem Scale}).} Scala usata per ottenere una misura sintetica dell'autostima percepita.
 
 \textbf{STT (\emph{Speech-To-Text}).} Componente che trasforma il parlato in testo e apre la parte linguistica della pipeline conversazionale.
-
-\textbf{Store vettoriale.} Archivio che conserva embedding e metadati, rendendo possibile il retrieval semantico tramite similarità vettoriale.
-
-\textbf{TLS (\emph{Transport Layer Security}).} Protocollo crittografico che protegge la trasmissione dei dati sulle connessioni di rete.
 
 \textbf{TTS (\emph{Text-To-Speech}).} Componente che sintetizza una voce a partire da un testo generato dal sistema.
 
@@ -101,15 +76,11 @@ Questo glossario raccoglie i termini che ricorrono più spesso nella tesi e nell
 
 \textbf{UX (\emph{User Experience}).} Qualità complessiva dell'esperienza d'uso, intesa come chiarezza, fluidità e percezione del comportamento del sistema.
 
-\textbf{Viseme.} Equivalente visivo di un fonema, usato per collegare i suoni pronunciati alle forme assunte dalla bocca dell'avatar.
-
-\textbf{VM (\emph{Virtual Machine}).} Macchina virtuale che esegue un sistema operativo isolato all'interno di un host fisico.
+\textbf{Vector store.} Archivio specializzato che conserva embedding e metadati, rendendo possibile il retrieval semantico tramite similarità vettoriale.
 
 \textbf{Voice cloning.} Tecnica che permette di sintetizzare una voce con caratteristiche simili a quelle di un campione vocale di riferimento.
 
-\textbf{WAV (\emph{Waveform Audio File Format}).} Formato audio non compresso usato spesso per campioni vocali o fasi di elaborazione in cui serve mantenere qualità piena.
-
-\textbf{WebAssembly.} Formato binario eseguibile nel browser, usato spesso come supporto a componenti ad alte prestazioni nelle applicazioni web.
+\textbf{WebAssembly.} Formato binario eseguibile nel browser, usato per componenti web ad alte prestazioni.
 
 \textbf{WebGL (\emph{Web Graphics Library}).} API grafica del browser che permette di eseguire contenuti 2D e 3D accelerati lato client.
 

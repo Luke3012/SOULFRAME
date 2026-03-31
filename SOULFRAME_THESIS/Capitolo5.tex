@@ -1,56 +1,313 @@
 % !TEX root = ./main.tex
-\chapter{Conclusioni e Sviluppi Futuri}
-\label{chap:conclusioni}
+\chapter{Studio empirico}
+\label{chap:studio-empirico}
 
-Nelle pagine finali tiro le somme del lavoro svolto su SOULFRAME. Qui raccolgo soprattutto ciò che ha funzionato, i limiti che restano aperti e gli sviluppi che avrebbero più senso nel seguito del progetto.
+Dopo la valutazione tecnica del prototipo, restava da capire come SOULFRAME reggesse quando passava davvero in mano alle persone. In questa parte della tesi descrivo il test empirico svolto sul prototipo, con un confronto tra una condizione neutra e una condizione personale. L'obiettivo non era dimostrare qualcosa in astratto, ma capire se la personalizzazione dell'avatar cambiasse davvero il modo in cui l'agente veniva percepito e vissuto durante la sessione.
 
-\section{Bilancio del lavoro e contributi principali}
-\label{sec:sintesi}
-\label{sec:contributi-raggiunti}
-Il lavoro parte da un problema concreto: far funzionare una conversazione vocale credibile dentro un client Unity in ambiente 3D, senza ridurre l'avatar a un semplice ``parlante'' scollegato dalla scena. Da qui deriva l'impostazione del prototipo: un profilo avatar composto da aspetto, voce e memoria, sostenuto da una pipeline STT--RAG/LLM--TTS e da una separazione chiara tra client e backend a micro-servizi. Durante lo sviluppo molte scelte non sono nate in astratto, ma dall'integrazione concreta del sistema. Anche la selezione finale dei modelli è arrivata dopo tentativi reali e qualche cambio di rotta costoso in termini di tempo. Le misure quantitative disponibili e i relativi limiti metodologici sono raccolti nel Capitolo~\ref{chap:risultati}; qui interessa soprattutto fissare cosa ha retto davvero e cosa invece resta ancora da consolidare.
+Lo studio è stato impostato come \textit{between-subjects}\footnote{Ogni partecipante ha provato una sola condizione. Così il test restava più semplice da gestire e la seconda prova non veniva influenzata dalla prima.}: ogni partecipante ha svolto pre-test, interazione e post-test in una sola sessione, senza passare anche per l'altra condizione. La prova serviva a capire se un avatar più vicino alla persona, per voce e memoria iniziale, risultasse davvero più credibile, oppure se finisse soprattutto per rendere più visibili i limiti del sistema.
 
-Il risultato più solido è la tenuta della pipeline end-to-end, abbastanza chiara da permettere diagnosi rapide e abbastanza stabile da funzionare sia in locale sia dietro reverse proxy. La normalizzazione degli endpoint lato client è stata decisiva, perché ha permesso di passare da loopback a dominio pubblico senza cambiare logica applicativa. Anche sul piano della riproducibilità il codice sorgente sviluppato per SOULFRAME è disponibile nella repository del progetto \cite{SOULFRAMERepo}.
+\section{Metodo}
+\label{sec:empirical-method}
 
-Sul frontend, la FSM unica per desktop e touch, affiancata da \texttt{UINavigator} e \texttt{UIHintBar}, ha mantenuto coerente il comportamento dell'interfaccia al variare degli input. Nella conversazione, streaming TTS e \emph{wait phrases} non eliminano i tempi di inferenza, ma riducono i vuoti percepiti e aiutano a capire meglio lo stato del turno. Un altro punto riuscito riguarda la gestione avatar nei vincoli di WebGL: delegare import, catalogo e serving al backend ha ridotto la fragilità lato browser proprio nei punti in cui cache, persistenza e filesystem virtuale tendevano a divergere. Sul piano operativo, il compromesso emerso è abbastanza chiaro: la build Windows resta più favorevole per la continuità audio, mentre WebGL è la scelta più sensata quando contano accesso immediato e distribuzione semplificata.
+\paragraph{Partecipanti.}
+\label{subsec:empirical-participants}
 
-Anche sul piano applicativo, oggi questo quadro appare meno astratto. Un caso recente è quello della giocatrice WNBA Kelsey Plum, che ha presentato una chat vocale basata su un proprio \emph{verified AI digital twin}\footnote{Per una copertura giornalistica del caso si veda Mya Copeland, ``WNBA star Kelsey Plum launches a verified AI digital twin'', \emph{Fast Company}, 10 marzo 2026, ripubblicato su Yahoo Tech: \url{https://tech.yahoo.com/ai/meta-ai/articles/wnba-star-kelsey-plum-launches-160000052.html}. L'articolo richiama anche l'annuncio pubblico del 6 marzo 2026.}. Il caso non è sovrapponibile a SOULFRAME, ma rende più concreto un orizzonte d'uso legato a continuità identitaria, ruolo della voce e qualità percepita della relazione con l'agente \cite{Kan2023ECA_Training,Yang2025ECA_XR,seaborn2021voiceux}. SOULFRAME lavora però su qualcosa di diverso: non una sola chat vocale personalizzata, ma un profilo in cui voce, memoria, presenza visiva e comportamento restano legati dentro un ambiente 3D.
+Il campione complessivo è formato da 30 partecipanti, reclutati in modo informale e coinvolti in sessioni individuali svolte in presenza. Nel capitolo mantengo la lettura del test come confronto tra due gruppi da 15 partecipanti ciascuno, perché questa era l'impostazione con cui la prova era stata pensata e presentata. Tutti i dati sono stati raccolti in forma anonima e ogni partecipante ha dato il consenso alla prova prima dell'inizio della sessione.
 
-\section{Limiti attuali del sistema}
-\label{sec:limiti}
-Il limite metodologico principale è già comparso nel Capitolo~\ref{chap:risultati}: i tempi riportati sono ordini di grandezza osservati, non misure turn-based strumentate, perché manca una telemetria persistente e sincronizzata tra client e servizi. L'impatto pratico è stato chiaro fin dalle prime prove: senza timestamp per turno la diagnosi aiuta il debugging operativo, ma non regge da sola una valutazione comparativa robusta.
+Il gruppo risulta abbastanza eterogeneo per età e titolo di studio. L'età media complessiva è pari a 33.2 anni, con mediana 25.5 e IQR\footnote{\textit{Interquartile Range}: l'intervallo compreso tra primo e terzo quartile, utile qui per dare un'idea della dispersione senza farsi guidare troppo dai valori estremi.} 24--40. Dal punto di vista del genere, i partecipanti sono 17 maschi e 13 femmine. Per il titolo di studio prevalgono scuola superiore (16 casi), laurea triennale (9) e scuola media (5). La Tabella~\ref{tab:empirical-sample} riassume questi dati.
 
-Un nodo ancora aperto riguarda la memoria conversazionale. Oggi SOULFRAME memorizza in modo affidabile quando c'è un trigger lessicale esplicito (per esempio ``ricorda che...''), ma non estrae ancora in autonomia le informazioni davvero memorabili dal dialogo libero. Inoltre il contesto recente di sessione resta confinato alla RAM e al log del turno e non viene promosso automaticamente nella memoria persistente dell'avatar. Per ora si è preferito non forzare una versione ``semi-intelligente'', perché il rischio di falsi positivi in memoria sarebbe stato più dannoso del beneficio atteso. Il sistema resta quindi pensato per un'interazione individuale per sessione, non per una conversazione condivisa e sincronizzata tra più utenti o più agenti concorrenti.
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{lX}
+\hline
+\textbf{Indicatore} & \textbf{Valore osservato} \\
+\hline
+Partecipanti complessivi & 30 \\
+Disegno sperimentale & due condizioni tra gruppi (neutra / personale) \\
+Età & media 33.2 anni; mediana 25.5; IQR 24--40 \\
+Genere & 17 maschi, 13 femmine \\
+Titolo di studio & 16 scuola superiore, 9 laurea triennale, 5 scuola media \\
+Modalità di reclutamento & convenienza / contatto diretto \\
+Setting & sessioni individuali su laptop Windows \\
+\hline
+\end{tabularx}
+\caption{Descrizione sintetica del campione utilizzato nello studio empirico.}
+\label{tab:empirical-sample}
+\end{table}
 
-Un altro limite riguarda la personalizzazione facciale spinta a partire da immagini reali. I primi tentativi con pipeline di ricostruzione più autonome hanno mostrato presto che il costo di integrazione era troppo alto rispetto al beneficio visivo ottenibile nel perimetro attuale; per questo questa direzione non è ancora entrata in un flusso operativo abbastanza stabile da affiancare il percorso avatar già adottato. Avaturn resta quindi la soluzione più solida per mantenere qualità visiva coerente e complessità implementativa sostenibile.
+\paragraph{Materiali dello studio.}
+\label{subsec:empirical-materials}
 
-Restano poi i vincoli del runtime WebGL: i test operativi si sono concentrati su Microsoft Edge (Chromium), mentre altri browser non sono stati caratterizzati in modo sistematico. Nel progetto restano anche \texttt{fs.jslib} e \texttt{FS.syncfs}, ma nel flusso corrente del catalogo avatar WebGL il punto di riferimento principale è il backend. Questo fa sì che eventuali stati intermedi del filesystem locale del browser incidano meno sulla disponibilità degli avatar importati rispetto a una persistenza tutta browser-side. Si perde un po' di autonomia lato client, ma il catalogo resta più coerente tra test locale e deploy dietro proxy pubblico.
+Per il test è stata usata la build Windows del prototipo, eseguita sullo stesso laptop già descritto nel capitolo tecnico. Ho preferito questa configurazione perché, nelle prove precedenti, risultava più regolare del WebGL soprattutto sul piano del playback audio e della continuità generale della sessione. Tutti i partecipanti hanno interagito solo tramite tastiera e non hanno avuto accesso alle funzioni di modifica voce e modifica memoria durante la prova.
 
-Lo stesso vale per il sottosistema vocale. In WebGL il nodo principale non è far partire la voce, ma mantenerla fluida. La build Windows, provata sullo stesso impianto applicativo, ha mostrato una resa più stabile e meno soggetta a micro-interruzioni percepite. Per questo nella versione attuale si è preferito disabilitare in WebGL il \emph{reply word flow} temporizzato e usare una visualizzazione testuale statica del reply. Anche la resa del lipsync resta delicata: l'integrazione tra Avaturn, \texttt{uLipSync} e condizioni WebGL non è ancora abbastanza stabile e non ha permesso di ottenere una sincronizzazione uniforme in tutte le combinazioni di avatar e carico.
+Nel prototipo era presente una \textit{test mode} dedicata, richiamabile dal menu principale con la sequenza \texttt{T-E-S-T}. Questa modalità serviva a standardizzare il più possibile il test: separava gli avatar generici da quelli personali, disabilitava i pulsanti di modifica in \texttt{MainMode}, forzava il setup memoria in cinque passaggi per la condizione personale e faceva ripartire ogni prova da una nuova sessione conversazionale.
 
-Tra i limiti emersi c'è anche la tendenza del modello linguistico a riempire i vuoti di contesto con contenuto plausibile quando il recupero delle fonti non porta materiale davvero utile. In \autoref{subsec:criticita-osservate} questo comportamento è già emerso sul piano osservativo; qui conta soprattutto come limite strutturale del bilanciamento tra fluidità conversazionale e controllo semantico. In un contesto embodied, una deviazione di questo tipo pesa più di un errore testuale isolato, perché viene facilmente letta come parte dell'identità dell'interlocutore. Ridurla vorrebbe dire introdurre controlli più stretti sull'aderenza alle fonti o adottare politiche più prudenti quando il contesto è debole, ma nel perimetro attuale entrambe le strade hanno un costo in latenza o complessità.
+La frase usata nel setup voce era la seguente:
 
-Un limite diverso riguarda l'ingestione dei documenti. Quando i PDF contengono tabelle articolate, layout multi-colonna o scansioni a bassa qualità, l'OCR produce testo frammentato e spesso fuori ordine. Quei chunk finiscono comunque nello store vettoriale e possono essere recuperati con similarità alta anche se il contenuto è parziale o invertito. Il sistema quindi continua a rispondere, ma il contesto che costruisce può restare poco utile per la generazione, con esiti confusi o dichiarazioni di incertezza anche su documenti presenti. Qui sta il costo della scelta pragmatica adottata: l'ingestione OCR generalista rende il sistema subito utilizzabile su più formati, ma lascia entrare un rumore strutturale che il retrieval ibrido, da solo, non riesce sempre a correggere. Per affrontare davvero questo punto serve un pre-processing \textit{layout-aware} prima dell'indicizzazione, che non è stato ancora integrato.
+\begin{quote}
+``Mi chiamo \_\_\_\_. Oggi è il giorno \{0\} del mese di \{1\} dell'anno \{2\}. Il cielo oggi è \_\_\_\_\_. Sto facendo una prova di voce calma e chiara, quindi leggo lentamente questa frase guidata con attenzione, regolarmente. Ultime parole semplici per completare il test.''
+\end{quote}
 
-Anche la qualità del voice cloning presenta un compromesso. Coqui XTTS v2 produce una voce riconoscibile come sintetica e, su frasi lunghe o punteggiatura complessa, timbro e prosodia possono allontanarsi dal campione registrato. La causa principale è la combinazione tra campione breve raccolto in app e vincoli computazionali della macchina di sviluppo: estendere durata e qualità del riferimento migliorerebbe la resa, ma allungherebbe onboarding e inferenza oltre un equilibrio sostenibile sul laptop usato per i test (AMD Ryzen AI 9 HX 370 con RTX 5070 Ti Mobile, 12 GB di VRAM). Pre-attivazione, streaming e \emph{wait phrases} attenuano la percezione dell'attesa, ma non cambiano questo compromesso di fondo: la risposta può partire prima, non diventare improvvisamente più fedele al riferimento o meno costosa da generare. Per il perimetro attuale, XTTS v2 è la scelta più praticabile per voice cloning zero-shot locale, ma la somiglianza percepita va trattata come approssimazione e non come fedeltà.
+Nel passaggio reale i tre placeholder numerici venivano sostituiti con giorno, mese e anno correnti, mentre gli spazi lasciati vuoti venivano completati dal partecipante durante la registrazione. Nella condizione personale, inoltre, il setup memoria non avveniva con un testo libero unico, ma con cinque campi guidati:
 
-Infine c'è un limite operativo che non conviene nascondere: la toolchain Python/CUDA resta fragile quando cambiano dipendenze o driver. Dal lato infrastrutturale il sistema ha già una forma abbastanza chiara, perché in deploy i servizi restano sull'indirizzo locale della macchina e il traffico pubblico passa per reverse proxy e TLS. Questo però non basta ancora per un'esposizione più ampia: autenticazione, autorizzazione e limitazione del traffico restano parziali.
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{0.92\textwidth}{>{\raggedright\arraybackslash}p{0.30\textwidth}X>{\raggedleft\arraybackslash}p{0.12\textwidth}}
+\hline
+\textbf{Campo} & \textbf{Indicazione data al partecipante} & \textbf{Max caratteri} \\
+\hline
+Percorso di studi & corso di laurea, università, anno o anno di conclusione & 200 \\
+Lavoro / occupazione & lavoro attuale o principale occupazione & 150 \\
+Hobbies e interessi & due o tre attività del tempo libero praticate regolarmente & 200 \\
+Città / contesto di vita & città di residenza e contesto generale & 150 \\
+Tratti personali & due o tre aggettivi con cui descriversi & 100 \\
+\hline
+\end{tabularx}
+\caption{Struttura del setup memoria guidato nella condizione personale.}
+\label{tab:empirical-memory-setup}
+\end{table}
 
-La stessa prudenza vale per la privacy operativa. Campioni vocali, note personali, PDF, immagini descritte e profili avatar possono contenere dati sensibili o comunque identificativi; in questa fase vengono trattati assumendo un ambiente controllato e un uso sperimentale. Finché autenticazione, politiche di accesso, cifratura applicativa e gestione esplicita del consenso rimangono parziali, SOULFRAME non è adatto a un impiego aperto o multiutente con dati personali non presidiati.
+Le due condizioni sono state organizzate così:
 
-\section{Sviluppi futuri prioritari}
-\label{sec:sviluppi-futuri}
-\paragraph{Miglioramenti tecnici.}
-Uno sviluppo prioritario riguarda la memoria conversazionale. Il passo successivo più utile è introdurre un modulo che estragga automaticamente le informazioni rilevanti dal dialogo (ad esempio NER\footnote{NER sta per \emph{Named Entity Recognition}: è il riconoscimento automatico di entità nominate nel testo, come persone, luoghi, date o organizzazioni. In un sistema come SOULFRAME potrebbe aiutare a capire quali elementi del dialogo valgano la pena di essere memorizzati.}, intent detection o un secondo LLM leggero in pipeline), mantenendo però regole conservative per evitare memorizzazioni spurie. Sul sottosistema RAG avrebbe anche senso affiancare a questo hardening una batteria controllata e ripetibile lato backend, con telemetria per turno, routing dell'intent più robusto e controlli più prudenti quando il contesto recuperato è debole o rumoroso. In parallelo, varrebbe la pena provare modelli linguistici più recenti e più capaci, perché una parte dei limiti osservati nella risposta finale dipende anche dalla taglia e dalla qualità del modello oggi usato.
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.18\textwidth}X X}
+\hline
+\textbf{Condizione} & \textbf{Configurazione dell'avatar} & \textbf{Materiale dato al sistema} \\
+\hline
+Neutra & avatar generico standardizzato, voce standardizzata, memoria di base non personalizzata; nuova sessione conversazionale per ogni prova & nessuna biografia personale del partecipante inserita nella memoria iniziale \\
+Personale & avatar personale, frase di setup voce standardizzata, memoria guidata in cinque campi con limiti di caratteri; nuova sessione conversazionale per ogni prova & profilo personale del partecipante costruito tramite i cinque campi memoria \\
+\hline
+\end{tabularx}
+\caption{Configurazione delle due condizioni sperimentali.}
+\label{tab:empirical-conditions}
+\end{table}
 
-Un secondo fronte riguarda la resa vocale. Nel prototipo attuale il voice cloning riesce spesso a catturare bene l'andamento generale della voce, ma resta meno convincente nei campioni più deboli o meno marcati, dove la somiglianza percepita cala in modo evidente. Una possibile evoluzione è sperimentare modelli TTS più pesanti o più aggiornati, anche a costo di un aumento della latenza, per capire se sia possibile migliorare fedeltà timbrica e naturalezza complessiva del parlato.
+Nella condizione neutra tutti i partecipanti partivano dalla stessa configurazione di base dell'avatar. Allo stesso tempo, le prove non condividevano la stessa conversazione attiva, così ogni sessione veniva osservata come episodio separato.
 
-Resta aperto anche il tema di una personalizzazione avatar più spinta a partire da immagini reali. Questa direzione avrebbe senso solo se il salto percettivo fosse concreto e sostenibile rispetto alla qualità già garantita dal flusso attuale. Un miglioramento interessante del lato conversazionale sarebbe inoltre mostrare in interfaccia le fonti che l'avatar sta richiamando mentre parla, ad esempio un'immagine, un estratto di PDF o un documento recuperato dalla memoria. Questo renderebbe più trasparente il legame tra risposta e contenuti usati dal backend, e aiuterebbe anche a capire meglio quando la risposta finale sta realmente seguendo il contesto disponibile.
+Per la raccolta dati ho usato quattro strumenti standardizzati. La Rosenberg Self-Esteem Scale (RSES) \cite{Rosenberg1965} è stata somministrata prima della sessione. Il PANAS \cite{Watson1988PANAS} è stato proposto sia nel pre-test sia nel post-test, così da osservare la variazione dell'affettività positiva e negativa. Nel post-test ho poi usato il Godspeed Questionnaire Series \cite{Bartneck2009Godspeed} per descrivere come veniva percepito l'avatar, insieme a una versione adattata del Multidimensional Measure of Trust (MDMT) \cite{MalleUllman2021MDMT} per la fiducia nell'agente.
 
-Anche un'estensione verso mobile/Android ha senso, soprattutto perché l'interfaccia è già impostata con logica touch-first in vari passaggi, mentre l'inferenza rimane legata a un backend dedicato. Un'architettura ibrida (client mobile + modelli lato cloud) potrebbe abbassare la barriera d'accesso senza comprimere eccessivamente la qualità. Prima di allargare troppo il perimetro, serve però consolidare la base tecnica: telemetria per turno, logging strutturato, readiness-check più rigorosi e hardening operativo minimo del deploy. Sono interventi meno ``visibili'', ma necessari se si vuole trasformare le osservazioni qualitative in evidenze misurabili.
+Nella fase di analisi ho trattato i questionari in modo piuttosto diretto. Per la RSES ho ricodificato gli item inversi e calcolato un punteggio totale. Per il PANAS ho separato la componente positiva da quella negativa e ho letto il cambiamento come differenza tra post-test e pre-test. Per la resa dell'avatar ho mantenuto le cinque dimensioni previste dal Godspeed --- antropomorfismo, animazione, gradevolezza, intelligenza percepita e sicurezza percepita --- anche se nel protocollo testuale compare per errore la dicitura ``quattro dimensioni''. Per l'MDMT, invece, ho preferito un indice medio complessivo su scala 0--7, così da avere una lettura più compatta della fiducia.
 
-\paragraph{Estensione della valutazione.}
-Nel perimetro di questa tesi la valutazione rimane centrata su osservazioni tecniche e qualitative del prototipo in esercizio. In prospettiva, il passo successivo più utile è introdurre protocolli ripetibili, telemetria per turno e un confronto più controllato tra ambienti, così da trasformare le osservazioni esplorative in evidenze più robuste.
+I punteggi dei questionari sono stati calcolati nel modo seguente. Per la RSES ho invertito gli item 2, 5, 6, 8 e 9 e poi sommato i dieci valori:
+\[
+x_i^*=
+\begin{cases}
+x_i & \text{se l'item non è invertito}\\
+5-x_i & \text{se l'item è invertito}
+\end{cases}
+\qquad
+RSES_{tot}=\sum_{i=1}^{10}x_i^*
+\]
 
-\enlargethispage{2\baselineskip}
-\label{sec:finali}
-SOULFRAME mostra che una conversazione vocale embodied in un client Unity diventa praticabile solo quando architettura, implementazione e operatività vengono tenute insieme fin dall'inizio. Il contributo principale del lavoro sta nell'aver trasformato componenti eterogenei in un prototipo unico, funzionante e abbastanza trasparente da poter essere corretto e sviluppato con criterio.
+Per il PANAS ho separato i cinque item positivi dai cinque negativi, sia prima sia dopo la sessione:
+\[
+PA_{pre}=\sum_{i=1}^{5}x_i^{pre}, \qquad NA_{pre}=\sum_{i=6}^{10}x_i^{pre}
+\]
+\[
+PA_{post}=\sum_{i=1}^{5}x_i^{post}, \qquad NA_{post}=\sum_{i=6}^{10}x_i^{post}
+\]
+\[
+\Delta PA = PA_{post}-PA_{pre}, \qquad \Delta NA = NA_{post}-NA_{pre}
+\]
+In questa lettura, un valore \(\Delta PA > 0\) indica un aumento dell'affettività positiva, mentre \(\Delta NA < 0\) indica una riduzione dell'affettività negativa e quindi un andamento più favorevole.
+
+Per il Godspeed ho lavorato sulla media di ciascuna dimensione:
+\[
+G_k=\frac{1}{m_k}\sum_{j=1}^{m_k}x_j
+\]
+e, nel caso della sicurezza percepita, ho riportato sullo stesso orientamento gli item inversi con:
+\[
+x_j^*=6-x_j
+\]
+
+Infine, per l'MDMT ho usato un indice medio complessivo:
+\[
+Trust=\frac{1}{20}\sum_{i=1}^{20}x_i
+\]
+
+\paragraph{Procedura.}
+\label{subsec:empirical-procedure}
+
+\vspace*{\fill}
+La sessione seguiva un flusso abbastanza lineare. Dopo una breve introduzione, ogni partecipante compilava il pre-test con RSES e PANAS. A questo punto iniziava la parte operativa: nella condizione neutra l'avatar era già pronto, mentre nella condizione personale venivano completati il setup voce e il setup memoria guidato. Solo dopo questo passaggio iniziava la conversazione vera e propria con l'avatar. Al termine della prova venivano somministrati il PANAS post, il Godspeed e il questionario MDMT adattato, seguiti da un breve debriefing finale in cui raccoglievo anche impressioni più libere sulla sessione.
+
+Nel protocollo la finestra di interazione era stata pensata in modo controllato, ma nella pratica la durata complessiva dipendeva anche dai passaggi di setup. Per questo, nelle prove reali, la sessione si è assestata in media attorno ai 25 minuti nella condizione neutra e ai 30 minuti nella condizione personale. La Figura~\ref{fig:empirical-procedure} riassume il flusso seguito durante il test.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.60\textwidth]{empirical_procedure.png}
+\caption[Procedura sperimentale]{Sequenza della procedura sperimentale usata nello studio empirico.}
+\label{fig:empirical-procedure}
+\end{figure}
+
+\section{Risultati}
+\label{sec:empirical-results}
+
+\paragraph{Misure di base.}
+
+I risultati vanno letti con prudenza. Per i confronti tra gruppi ho usato Mann--Whitney U, mentre per le variazioni pre/post dentro la stessa condizione ho usato Wilcoxon per ranghi con segno. In un campione piccolo come questo, p-value ed effetto servono soprattutto a leggere la direzione dei risultati e a capire dove il prototipo mostra segnali coerenti.
+
+Prima degli outcome principali, la Tabella~\ref{tab:empirical-baseline} mostra che autostima e affettività positiva pre-test risultano abbastanza vicine, mentre l'affettività negativa iniziale parte più alta nella condizione personale. Il confronto resta leggibile, ma questa differenza iniziale va tenuta presente quando si commentano i cambiamenti emotivi.
+
+Nelle tabelle che seguono, PA indica l'affettività positiva (\textit{Positive Affect}), NA l'affettività negativa (\textit{Negative Affect}) e il simbolo $\Delta$ la variazione tra post-test e pre-test.
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabularx}{0.94\textwidth}{>{\raggedright\arraybackslash}X>{\raggedleft\arraybackslash}X>{\raggedleft\arraybackslash}X>{\raggedleft\arraybackslash}p{0.09\textwidth}>{\raggedleft\arraybackslash}p{0.09\textwidth}}
+\hline
+\textbf{Misura} & \textbf{Personale mediana [IQR]} & \textbf{Neutra mediana [IQR]} & \textbf{p} & \textbf{r\textsubscript{rb}} \\
+\hline
+RSES totale & 30.00 [26.25--31.75] & 32.00 [29.25--35.25] & 0.150 & -0.31 \\
+PANAS pre -- PA & 20.00 [16.50--21.75] & 18.50 [17.00--20.50] & 0.517 & 0.14 \\
+PANAS pre -- NA & 9.50 [8.00--13.75] & 7.00 [6.00--8.00] & 0.008 & 0.57 \\
+\hline
+\end{tabularx}
+\caption{Confronto descrittivo delle misure di base prima dell'interazione.}
+\label{tab:empirical-baseline}
+\end{table}
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabularx}{0.94\textwidth}{>{\raggedright\arraybackslash}X>{\raggedleft\arraybackslash}X>{\raggedleft\arraybackslash}X>{\raggedleft\arraybackslash}p{0.09\textwidth}>{\raggedleft\arraybackslash}p{0.09\textwidth}}
+\hline
+\textbf{Outcome} & \textbf{Personale mediana [IQR]} & \textbf{Neutra mediana [IQR]} & \textbf{p} & \textbf{r\textsubscript{rb}} \\
+\hline
+MDMT totale & 4.50 [3.40--5.67] & 4.55 [3.84--5.39] & 0.983 & 0.01 \\
+$\Delta PA$ & 0.00 [-1.00--1.00] & 1.00 [0.00--2.00] & 0.105 & -0.35 \\
+$\Delta NA$ & -2.00 [-3.75--0.00] & 0.00 [-1.25--0.00] & 0.165 & -0.29 \\
+\hline
+\end{tabularx}
+\caption[Outcome principali nelle due condizioni]{Confronto tra le due condizioni sugli outcome principali dello studio empirico.}
+\label{tab:empirical-core-outcomes}
+\end{table}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.26\textwidth}>{\raggedleft\arraybackslash}p{0.20\textwidth}>{\raggedleft\arraybackslash}p{0.20\textwidth}>{\raggedleft\arraybackslash}p{0.09\textwidth}>{\raggedleft\arraybackslash}p{0.09\textwidth}}
+\caption[Dimensioni percettive dell'avatar nelle due condizioni]{Confronto tra le due condizioni sulle principali dimensioni percettive dell'avatar.}
+\label{tab:empirical-godspeed}\\
+\hline
+\textbf{Dimensione} & \textbf{Personale mediana [IQR]} & \textbf{Neutra mediana [IQR]} & \textbf{p} & \textbf{r\textsubscript{rb}} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Dimensione} & \textbf{Personale mediana [IQR]} & \textbf{Neutra mediana [IQR]} & \textbf{p} & \textbf{r\textsubscript{rb}} \\
+\hline
+\endhead
+\hline
+\endfoot
+Antropomorfismo & 3.00 [2.00--3.50] & 2.60 [2.40--3.05] & 0.573 & 0.12 \\
+Animazione & 3.12 [2.50--3.50] & 2.88 [2.19--3.31] & 0.544 & 0.13 \\
+Gradevolezza & 3.80 [3.45--3.95] & 3.80 [2.95--4.40] & 0.967 & -0.01 \\
+Intelligenza percepita & 3.30 [2.70--4.00] & 3.10 [2.15--3.70] & 0.358 & 0.20 \\
+Sicurezza percepita & 4.33 [3.42--5.00] & 4.33 [3.67--4.67] & 0.751 & 0.07 \\
+\hline
+\end{longtable}
+\endgroup
+
+\subsection{Fiducia e percezione dell'avatar}
+\label{subsec:trust-avatar}
+
+Il dato più chiaro è che la personalizzazione, da sola, non ha prodotto un aumento evidente della fiducia dichiarata: il punteggio MDMT resta quasi sovrapponibile nelle due condizioni. Almeno nello stato attuale del prototipo, volto, voce e memoria iniziale non bastano quindi a far percepire l'agente come più affidabile.
+
+Sulla percezione dell'avatar emerge qualcosa in più. La condizione personale tende a stare leggermente sopra la neutra soprattutto nel modo in cui l'agente viene percepito come più umano, un po' più animato e leggermente più credibile sul piano cognitivo, mentre la gradevolezza resta sostanzialmente allineata. Non è una differenza forte, ma va nella direzione attesa: l'avatar personale viene letto un po' di più come un interlocutore riconoscibile e meno come una figura generica.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.93\textwidth]{empirical_godspeed_bars.png}
+\caption[Dimensioni percettive dell'avatar]{Confronto delle principali dimensioni percettive dell'avatar nelle due condizioni; nel grafico la barra chiara indica la condizione personale, quella scura la neutra.}
+\label{fig:empirical-godspeed}
+\end{figure}
+
+Qui la lettura deve restare indiretta: nel materiale raccolto non c'è una misura specifica dell'identificazione con l'avatar, quindi non posso dire che la condizione personale la aumenti in senso forte. Posso però osservare che alcuni indicatori percettivi si muovono nella direzione di una maggiore riconoscibilità dell'agente.
+
+\subsection{Variazione dello stato affettivo}
+\label{subsec:affective-change}
+
+Per la parte affettiva ho guardato soprattutto a $\Delta PA$ e $\Delta NA$, cioè alla differenza tra post-test e pre-test nelle due componenti del PANAS. I confronti tra gruppi non arrivano a una differenza statisticamente netta, ma mostrano due andamenti diversi: nella condizione neutra l'affettività positiva tende a crescere un po' di più, mentre nella condizione personale si vede una riduzione maggiore dell'affettività negativa.
+
+Anche leggendo i test entro ciascun gruppo, il dato più interessante resta nella condizione personale, dove la componente negativa si abbassa in modo più visibile tra inizio e fine sessione ($p = 0.022$; $r_{rb} = -0.73$). Nella condizione neutra, invece, si nota soprattutto una tendenza all'aumento dell'affettività positiva ($p = 0.057$; $r_{rb} = 0.57$), che resta però appena sotto una soglia di solito letta come più convincente.
+
+Il dato, però, non va forzato oltre quello che mostra: il campione resta piccolo, i gruppi non partono dallo stesso livello di affettività negativa e non c'è nessuna base per parlare di efficacia psicologica del sistema. L'impressione più netta è che l'avatar personale incida soprattutto sul tono della sessione, più che sulla fiducia dichiarata in modo esplicito.
+
+\subsection{Analisi qualitativa dei log}
+\label{subsec:qualitative-logs}
+
+I questionari da soli non bastavano a spiegare alcuni comportamenti osservati durante il test. Per questo ho affiancato una rilettura qualitativa dei log conversazionali e delle note prese durante le sessioni. Ho usato un codebook volutamente breve, costruito attorno ai temi che tornavano più spesso:
+
+\begingroup
+\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.30\textwidth}>{\raggedright\arraybackslash}p{0.62\textwidth}}
+\caption{Codebook usato per la lettura qualitativa delle note di test.}
+\label{tab:qualitative-codebook}\\
+\hline
+\textbf{Categoria} & \textbf{Che cosa intercetta nelle note} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Categoria} & \textbf{Che cosa intercetta nelle note} \\
+\hline
+\endhead
+\hline
+\endfoot
+Richiamo corretto della memoria & recupero di un'informazione personale o contestuale in modo coerente con il profilo \\
+Dettaglio inventato / allucinazione & aggiunta di informazioni non presenti nella memoria o nel turno corrente \\
+Ripetitività & risposte che tornano sugli stessi fatti o sugli stessi aggettivi senza avanzare davvero \\
+Resa migliore con domande specifiche & casi in cui richieste più precise producono risposte più centrate \\
+Coinvolgimento / divertimento & segnali di curiosità, sorpresa o interesse emersi durante la prova \\
+Osservazioni su voce e interfaccia & commenti su voce sintetica, orientamento nella UI e resa generale del sistema \\
+\hline
+\end{longtable}
+\endgroup
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.93\textwidth]{empirical_log_themes.png}
+\caption[Temi ricorrenti nei log e nelle osservazioni]{Temi ricorrenti emersi nelle note di osservazione e nei log conversazionali; la barra chiara indica la condizione personale, quella scura la neutra.}
+\label{fig:empirical-log-themes}
+\end{figure}
+
+I conteggi della Figura~\ref{fig:empirical-log-themes} non vanno letti come misura turno per turno, ma come presenza del tema almeno una volta nelle note legate a un partecipante. La differenza più netta è che la condizione personale raccoglie più casi di richiamo corretto della memoria, ma anche più casi di dettaglio inventato. È un esito plausibile: appena il sistema riceve più informazioni personali, ha anche più occasioni per funzionare bene e più punti in cui può sbagliare in modo evidente.
+
+Letti in modo aggregato, questi pattern aiutano a spiegare meglio anche i questionari. Nella condizione personale il sistema produce più occasioni in cui il richiamo della memoria viene percepito come centrato, e questo rende l'interazione più riconoscibile quando il recupero funziona. Allo stesso tempo, però, è anche la condizione in cui gli errori diventano più visibili: un dettaglio inventato su hobby, città o caratteristiche personali pesa più di una risposta generica data da un avatar neutro.
+
+La condizione neutra mostra un profilo diverso. Le sessioni risultano in media meno specifiche, ma anche meno esposte a rotture nette di credibilità legate al profilo personale. Nelle note di osservazione torna più spesso un'interazione semplice da sostenere, a tratti persino più leggera, mentre nella condizione personale il coinvolgimento dipendeva molto di più da quanto il sistema riuscisse davvero a usare bene la memoria iniziale.
+
+Tre mini-casi aiutano a rendere più concreto questo passaggio. \textbf{Caso 1.} In una sessione della condizione personale, una domanda sociale poco ancorata al profilo ha portato prima a una risposta troppo sicura su una terza persona e subito dopo a un ripiegamento difensivo del tipo ``non ho abbastanza elementi'' quando l'utente ha contestato il contenuto. Qui il problema non era solo l'errore, ma il fatto che l'avatar passasse in pochi turni da un'invenzione piuttosto libera a una chiusura brusca. È un esempio chiaro di come la generalizzazione possa pesare direttamente sulla credibilità dell'interazione.
+
+\textbf{Caso 2.} In un'altra sessione, sempre personale, una domanda iniziale su un obiettivo di vita riceveva una risposta prudente perché il sistema non aveva ancora un riferimento abbastanza preciso. Dopo che l'utente aveva aggiunto quel dettaglio in modo esplicito, una domanda successiva sullo stesso tema produceva invece una risposta molto più centrata e coerente con il profilo. Quando l'informazione viene formulata in modo specifico, il retrieval riesce più facilmente a recuperarla e a usarla in modo utile.
+
+\textbf{Caso 3.} In una sessione più leggera, con domande semplici su gusti, attività quotidiane e piccoli ricordi, lo scambio è rimasto fluido per più turni e l'avatar ha mantenuto un tono abbastanza scorrevole. Il limite, però, riemergeva appena l'utente provava a far ricordare qualcosa di nuovo su di sé: il sistema recuperava una parte corretta dell'informazione, ma la mescolava con dettagli appartenenti al profilo dell'avatar o con elementi troppo generici. Il caso è utile perché mostra insieme i due lati più frequenti del test: interazione facile da sostenere e coinvolgimento discreto, ma robustezza ancora incostante quando il contesto cambia.
+
+Il fatto che l'MDMT rimanga quasi sovrapposto nelle due condizioni suggerisce che la fiducia dichiarata dipenda ancora soprattutto dalla qualità concreta della risposta, non dalla sola personalizzazione dell'avatar. In parallelo, la riduzione di affettività negativa osservata nella condizione personale è compatibile con le sessioni in cui il richiamo corretto della memoria ha dato all'interazione un tono più vicino; l'andamento di $\Delta PA$ nella condizione neutra, invece, si accorda meglio con sessioni percepite come meno dense sul piano personale, ma più facili da sostenere fino alla fine.
+
+Anche sul piano tecnico il quadro resta abbastanza coerente. Quando la domanda è specifica, il recupero della memoria riesce più spesso a fornire un contesto utile alla risposta; quando invece la richiesta resta vaga, il sistema tende più facilmente a generalizzare oppure a introdurre dettagli non sufficientemente ancorati ai dati disponibili. Per questo i log non vengono usati qui come aneddoti, ma come supporto interpretativo ai risultati emersi dai questionari.
+
+\section{Discussione}
+\label{sec:empirical-discussion}
+
+Lo studio empirico non mostra un vantaggio netto della condizione personale su tutti i fronti, ma chiarisce abbastanza bene dove la personalizzazione comincia a cambiare l'interazione. Sul piano della fiducia dichiarata il risultato resta quasi piatto: l'MDMT è molto simile tra i due gruppi, segno che la fiducia dipende ancora soprattutto dalla qualità concreta della risposta, non dalla sola somiglianza dell'avatar con la persona.
+
+Sul piano percettivo il quadro è più sfumato. L'avatar personale tende a risultare un po' più riconoscibile, leggermente più vivo nella resa e un po' meno generico, ma il guadagno resta contenuto. La personalizzazione aiuta a rendere l'incontro più distinguibile, ma non basta a compensare i punti in cui retrieval e generazione restano fragili \cite{Yang2025ECA_XR,Kan2023ECA_Training}.
+
+La parte affettiva è forse quella più interessante. La riduzione dell'affettività negativa nella condizione personale non autorizza letture forti, ma lascia intravedere che riconoscere qualcosa di proprio nell'avatar possa incidere sul tono della sessione. Il gruppo neutro, invece, sembra muoversi in modo un po' diverso: meno riconoscibilità, ma in alcuni casi un'interazione vissuta come più leggera o più ludica.
+
+La lettura qualitativa aiuta a capire meglio il perché. Nella condizione personale il sistema riesce più spesso a recuperare dettagli giusti e a produrre momenti percepiti come ``vicini'', ma è anche la condizione in cui gli errori pesano di più. Un dettaglio inventato su hobby, città o carattere rompe molto più facilmente la credibilità dell'interazione rispetto a quanto accade con un avatar neutro.
+
+Restano comunque limiti metodologici che è meglio tenere espliciti. Il campione è ridotto, il confronto è tra gruppi, i gruppi non partono dallo stesso livello di affettività negativa e manca una misura diretta dell'identificazione con l'avatar. Anche l'analisi qualitativa viene da note e log riletti a posteriori, quindi funziona più come triangolazione dei risultati che come misura autonoma.
+
+Questo test aggiunge qualcosa che la sola valutazione tecnica non poteva dare: il prototipo non viene percepito solo come una pipeline che funziona oppure no, ma come un interlocutore che in alcuni momenti riesce davvero a dare un minimo di continuità personale. Chiarisce anche dove il sistema si rompe: non tanto sulla sola latenza, quanto nel momento in cui deve capire quando usare la memoria, quanto fidarsi del contesto recuperato e quando invece restare più prudente.

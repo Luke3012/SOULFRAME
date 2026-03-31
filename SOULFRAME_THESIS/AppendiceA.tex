@@ -74,7 +74,7 @@ L'input atteso dal client è compatto:
 }
 \end{lstlisting}
 
-Si vede anche un'altra scelta di progetto: il client non passa un oggetto enorme, ma soltanto ciò che serve al turno. \texttt{avatar\_id} identifica il profilo, \texttt{session\_id} ancora la conversazione corrente, \texttt{input\_mode} aiuta a leggere il tipo di turno e \texttt{log\_conversation} decide se il servizio debba scrivere anche la traccia su file. Tutto il resto viene ricostruito lato backend.
+Il client non passa un oggetto enorme, ma soltanto ciò che serve al turno. \texttt{avatar\_id} identifica il profilo, \texttt{session\_id} ancora la conversazione corrente, \texttt{input\_mode} aiuta a leggere il tipo di turno e \texttt{log\_conversation} decide se il servizio debba scrivere anche la traccia su file. Tutto il resto viene ricostruito lato backend.
 
 L'output non restituisce solo il testo finale:
 
@@ -107,7 +107,7 @@ Accanto a \texttt{/chat}, il servizio espone alcune route che nel progetto vengo
 \setlength{\LTleft}{0pt}
 \setlength{\LTright}{0pt}
 \captionsetup{type=table}
-\captionof{table}{Route complementari che completano il comportamento del servizio RAG.}
+\captionof{table}[Route complementari del servizio RAG]{Route complementari che completano il comportamento del servizio RAG.}
 \label{tab:appendix-rag-routes}
 \begin{longtable}{|>{\raggedright\arraybackslash}p{0.27\textwidth}|>{\raggedright\arraybackslash}p{0.18\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.55\textwidth-6\tabcolsep-4\arrayrulewidth\relax}|}
 \hline
@@ -223,7 +223,7 @@ La ricerca ibrida combina:
 \item filtri successivi su score, copertura e coerenza lessicale.
 \end{itemize}
 
-Nel codice la ricerca ibrida usa un bilanciamento 0.6/0.4 a favore di BM25, quindi del segnale più legato alle parole effettivamente presenti nella query. La scelta è coerente con il tipo di richieste osservate nel progetto, spesso ricche di nomi propri, etichette e riferimenti espliciti. Il recupero semantico resta comunque importante quando la memoria viene richiamata in forma parafrasata.
+Nel codice la ricerca ibrida usa un bilanciamento 0.6/0.4 a favore di BM25, quindi del segnale più legato alle parole effettivamente presenti nella query. Questo si adatta bene al tipo di richieste osservate nel progetto, spesso ricche di nomi propri, etichette e riferimenti espliciti. Il recupero semantico resta comunque importante quando la memoria viene richiamata in forma parafrasata.
 
 La formula implementata in \texttt{rag\_server.py} è semplice:
 \[

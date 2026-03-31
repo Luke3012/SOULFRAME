@@ -1,13 +1,12 @@
 % !TEX root = ./main.tex
-\chapter{Risultati e Valutazione}
+\chapter{Valutazione tecnica del prototipo}
 \label{chap:risultati}
 
-Dopo aver descritto il prototipo nei capitoli precedenti, qui interessa capire come si comporti davvero nelle prove. I risultati vengono letti sia sul piano della tenuta tecnica della pipeline conversazionale sia su quello della qualità percepita dell'interazione, mantenendo però chiari anche i limiti della valutazione svolta.
+Dopo aver descritto il prototipo nei capitoli precedenti, qui interessa capire come si comporti davvero nelle prove dal punto di vista tecnico. L'attenzione è sulla tenuta della pipeline conversazionale, sui tempi osservati, sui failure case e sui limiti che emergono quando il sistema passa dal caso nominale all'uso reale. La parte comparativa sugli utenti viene invece ripresa nel capitolo successivo.
 
 \section{Impostazione della valutazione}
 \label{sec:metodologia}
-\subsection{Scenari di prova e setup sperimentale}
-Per valutare un agente embodied vocale conta prima di tutto se il turno regge: tempi percepiti, continuità tra stato interno e feedback, tenuta della conversazione quando la pipeline rallenta. Il quadro architetturale è discusso in \autoref{sec:architettura-soulframe}; qui contano soprattutto le osservazioni raccolte usando il prototipo.
+\noindent Il primo passo era fissare che cosa osservare davvero e in quali condizioni farlo. Per questo la valutazione è stata costruita attorno agli scenari di prova, ai punti di misura più utili per leggere il turno conversazionale e a una batteria tecnica separata sul backend, usata per isolare meglio il comportamento del RAG. Il quadro architetturale è discusso in \autoref{sec:architettura-soulframe}; qui contano soprattutto le osservazioni raccolte usando il prototipo.
 
 Le prove sono state svolte in due ambienti funzionalmente equivalenti. In locale, il client Unity in \texttt{MainMode} comunica con i micro-servizi su loopback (\texttt{127.0.0.1:8001--8004}). Nell'ambiente Ubuntu usato per le prove, la stessa pipeline è esposta dietro reverse proxy con path \texttt{/api/*}. La logica applicativa è la stessa; cambia il contesto operativo.
 
@@ -36,15 +35,14 @@ Accanto alla dimensione tecnica, la valutazione include anche una componente di 
 
 \section{Risultati tecnici del prototipo}
 \label{sec:quantitativi}
-\subsection{Prestazioni della pipeline STT-RAG-TTS}
-Le prove tecniche mostrano che la pipeline STT--RAG--TTS è utilizzabile in entrambi gli ambienti testati. La tabella seguente condensa l'ordine di grandezza dei tempi osservati, mettendo in evidenza dove si concentra il costo della pipeline. I valori sono orientativi: derivano da osservazioni esplorative e log di esecuzione, non da una campagna strumentata per turno. Le scelte implementative di riferimento sono nel Capitolo~\ref{chap:implementazione}, soprattutto per i moduli RAG e TTS (\autoref{subsec:rag-memory}, \autoref{subsec:tts-streaming}).
+\noindent I risultati tecnici hanno senso soprattutto se letti su due piani distinti. Da una parte c'è il costo della pipeline STT--RAG--TTS nel turno tipico; dall'altra c'è il modo in cui quel costo cambia quando entrano in gioco avvio dei servizi, rete, proxy e differenze tra build Windows e setup Ubuntu. Le prove tecniche mostrano che la pipeline STT--RAG--TTS è utilizzabile in entrambi gli ambienti testati. La tabella seguente condensa l'ordine di grandezza dei tempi osservati, mettendo in evidenza dove si concentra il costo della pipeline. I valori sono orientativi: derivano da osservazioni esplorative e log di esecuzione, non da una campagna strumentata per turno. Le scelte implementative di riferimento sono nel Capitolo~\ref{chap:implementazione}, soprattutto per i moduli RAG e TTS (\autoref{subsec:rag-memory}, \autoref{subsec:tts-streaming}).
 
 \par\begingroup
 \small
 \setlength{\LTleft}{0pt}
 \setlength{\LTright}{0pt}
 \begin{longtable}{|>{\raggedright\arraybackslash}p{0.28\textwidth}|>{\raggedright\arraybackslash}p{0.33\textwidth}|>{\raggedright\arraybackslash}p{\dimexpr0.39\textwidth-4\tabcolsep-3\arrayrulewidth\relax}|}
-\caption{Tempi indicativi per fase della pipeline.}
+\caption[Tempi per fase della pipeline]{Tempi indicativi per fase della pipeline.}
 \label{tab:tempi-fase} \\
 \hline
 \textbf{Fase} & \textbf{Locale (Windows)} & \textbf{Setup Ubuntu testato} \\
@@ -81,7 +79,7 @@ Pre-attivazione/setup iniziale (stack pronto) & circa 40 s & circa 80 s \\
 \hline
 \end{tabularx}
 \normalsize
-\caption{Tempo di inizializzazione osservato.}
+\caption[Tempo di inizializzazione]{Tempo di inizializzazione osservato.}
 \label{tab:cold-start-ready}
 \end{table}
 
@@ -99,8 +97,7 @@ Nel confronto diretto con la build Windows dello stesso client la differenza è 
 
 \section{Risultati qualitativi e casi d'uso}
 \label{sec:qualitativi}
-\subsection{Qualità percepita e usabilità}
-La qualità percepita dell'interazione vocale dipende soprattutto da tre fattori: naturalezza, reattività e continuità del turno. La letteratura sulla \emph{Voice User Experience} misura queste dimensioni in modi molto diversi tra loro; qui contano soprattutto le osservazioni raccolte sul prototipo.\cite{seaborn2021voiceux} I dettagli implementativi sono nel Capitolo~\ref{chap:implementazione} (\autoref{subsec:mainmode}, \autoref{subsec:tts-streaming}, \autoref{subsec:ps2-postprocessing}).
+\noindent Accanto ai tempi e ai failure più evidenti, serviva anche capire come il prototipo venisse percepito quando il turno riusciva davvero a partire e a chiudersi. In questa parte la lettura si sposta quindi su qualità della voce, leggibilità dell'interfaccia e casi concreti in cui retrieval, risposta finale e feedback di stato restano allineati oppure iniziano a divergere. La qualità percepita dell'interazione vocale dipende soprattutto da tre fattori: naturalezza, reattività e continuità del turno. La letteratura sulla \emph{Voice User Experience} misura queste dimensioni in modi molto diversi tra loro; qui contano soprattutto le osservazioni raccolte sul prototipo.\cite{seaborn2021voiceux} I dettagli implementativi sono nel Capitolo~\ref{chap:implementazione} (\autoref{subsec:mainmode}, \autoref{subsec:tts-streaming}, \autoref{subsec:ps2-postprocessing}).
 
 Per la voce sintetizzata, l'impiego di Coqui XTTS v2 con \emph{voice cloning} rafforza subito la percezione di identità dell'avatar. Il preprocessing del testo (\texttt{\_clean\_tts\_text}) evita letture troppo letterali di simboli e punteggiatura, mentre i parametri di campionamento e penalità di ripetizione sono tarati per privilegiare stabilità e scorrevolezza. La somiglianza con il campione originale non è costante, ma già così la voce risulta abbastanza riconoscibile da sostenere l'identità del personaggio durante il turno.
 
@@ -115,7 +112,7 @@ Nella stessa batteria mirata, i materiali non testuali sono stati utili per capi
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{mainmode_desktop_eval.png}
-\caption{Interfaccia desktop in modalità MainMode con transcript, risposta dell'avatar, stato conversazionale e comandi contestuali nella hint bar.}
+\caption[MainMode desktop]{Interfaccia desktop in modalità MainMode con transcript, risposta dell'avatar, stato conversazionale e comandi contestuali nella hint bar.}
 \label{fig:mainmode-desktop}
 \end{figure}
 
@@ -128,7 +125,7 @@ L'usabilità dell'interfaccia è stata osservata confrontando due varianti che c
 \centering
 \includegraphics[width=0.95\linewidth]{mainmode_touch_eval.png}
 \captionsetup{singlelinecheck=false,justification=raggedright}
-\caption{Interfaccia touch in modalità MainMode: Push-to-Talk, swipe tra transcript e reply e adattamenti per l'usabilità su schermo touch.}
+\caption[MainMode touch]{Interfaccia touch in modalità MainMode: Push-to-Talk, swipe tra transcript e reply e adattamenti per l'usabilità su schermo touch.}
 \label{fig:mainmode-touch}
 \vspace{-8pt}
 \end{wrapfigure}
@@ -154,7 +151,7 @@ Figura~\ref{fig:failure-sequence} propone un diagramma di sequenza che sintetizz
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{failure_sequence.png}
-\caption{Diagramma di sequenza di un failure case con timeout, retry e ricadute visibili sul feedback di stato.}
+\caption[Failure case con timeout e retry]{Diagramma di sequenza di un failure case con timeout, retry e ricadute visibili sul feedback di stato.}
 \label{fig:failure-sequence}
 \end{figure}
 
@@ -164,7 +161,8 @@ Figura~\ref{fig:failure-sequence} propone un diagramma di sequenza che sintetizz
 \sloppy
 \section{Discussione dei risultati}
 \label{sec:discussione}
-\subsection{Punti di forza e limiti emersi}
+\noindent A questo livello conta leggere insieme ciò che ha retto meglio e ciò che continua a mostrare fragilità. La discussione non aggiunge nuove prove, ma prova a tenere nello stesso quadro modularità del prototipo, qualità del retrieval, limiti della voce sintetica e differenze operative tra i due ambienti osservati.
+
 \paragraph{Punti di forza.}
 La modularità è uno dei punti più solidi del prototipo: i servizi Speech-to-Text (STT), Retrieval-Augmented Generation (RAG) e Text-to-Speech (TTS) sono separati, raggiungibili tramite endpoint dedicati e verificabili con controlli di stato (\texttt{/health}). Questa scomposizione rende più semplice localizzare i colli di bottiglia e ha retto bene anche nel passaggio tra ambiente locale e setup Ubuntu testato. Dal lato esperienza, lo streaming TTS rende l'attesa più leggibile anche quando la sintesi richiede più tempo e permette al client di avviare il playback senza attendere l'intero trasferimento del reply. Le wait phrases non riducono il tempo di inferenza, ma evitano che il silenzio venga percepito subito come blocco del turno.
 
@@ -193,4 +191,8 @@ Le tre domande di ricerca, definite nel Capitolo~\ref{chapintroduzione}, possono
 Per RQ2, le evidenze qualitative suggeriscono che voice cloning, gestione del turn-taking (streaming + wait phrases) e segnali visivi di stato migliorano la fluidità percepita del dialogo. È ciò che emerge dal prototipo e dal comportamento osservato durante le sessioni analizzate.
 
 Per RQ3, i risultati sono più netti: la scomposizione in micro-servizi, i contratti HTTP espliciti, gli health-check e la configurazione centralizzata degli endpoint supportano modularità e riproducibilità tra ambienti. Restano però limiti pratici, soprattutto sul runtime e sulle dipendenze, che impediscono ancora una riproducibilità pienamente ``push-button''.
+
+La valutazione tecnica definisce ormai con una certa chiarezza il perimetro operativo del prototipo. Nella build Windows usata per le prove, la pipeline riesce a sostenere sessioni complete con una continuità sufficiente da giustificare un passaggio a una valutazione con utenti reali. Restano però limiti ben visibili: la latenza al primo audio continua a pesare sul turno, il retrieval risponde meglio a richieste specifiche che a domande vaghe, e in WebGL l'interazione diventa più fragile per l'effetto congiunto di rete, proxy e playback.
+
+Da qui il passaggio successivo non riguarda più solo la tenuta della pipeline, ma il modo in cui il sistema viene percepito durante una sessione reale. Il capitolo seguente presenta quindi lo studio empirico comparativo svolto sul prototipo, mettendo a confronto una condizione neutra e una condizione personale.
 \endgroup

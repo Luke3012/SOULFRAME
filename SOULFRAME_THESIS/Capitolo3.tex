@@ -10,6 +10,8 @@ In questo capitolo il prototipo prende una forma stabile e smette di funzionare 
 \section{Implementazione frontend}
 \label{sec:impl-frontend}
 
+Nel client Unity la parte frontend non coincide con la sola interfaccia, perché navigazione, onboarding, acquisizione audio e comportamento embodied devono restare allineati durante tutto il turno. Per questo conviene leggere insieme gestione degli stati, libreria avatar, input vocale e \texttt{MainMode}: sono blocchi distinti, ma nel prototipo si tengono davvero in piedi solo quando rimangono coordinati.
+
 \subsection{Gestione stati UI e navigazione} \label{subsec:ui-states}
 \begingroup
 \setlength{\emergencystretch}{3em}
@@ -18,7 +20,7 @@ In questo capitolo il prototipo prende una forma stabile e smette di funzionare 
 \sloppy
 \catcode`\_=12\relax
 
-Nel client Unity di SOULFRAME la navigazione è governata da una macchina a stati finiti implementata in \texttt{UIFlowController.cs}. Il motivo è semplice: schermate, input e chiamate asincrone ai servizi devono restare coerenti anche quando il flusso rallenta o fallisce. Senza uno stato centrale, i disallineamenti tra pannello attivo, controlli disponibili e feedback UI diventano presto difficili da leggere e poi da correggere.
+La navigazione è governata da una macchina a stati finiti implementata in \texttt{UIFlowController.cs}. Schermate, input e chiamate asincrone ai servizi devono restare coerenti anche quando il flusso rallenta o fallisce. Senza uno stato centrale, i disallineamenti tra pannello attivo, controlli disponibili e feedback UI diventano presto difficili da leggere e poi da correggere.
 
 La struttura ruota attorno ai sei stati principali \texttt{Boot}, \texttt{MainMenu}, \texttt{AvatarLibrary}, \texttt{SetupVoice}, \texttt{SetupMemory} e \texttt{MainMode}. Una mappa dei pannelli e una pila di navigazione mantengono coerenti schermata corrente, ritorno e controlli disponibili, mentre le transizioni visuali sono centralizzate per evitare click residui, focus incoerenti o passaggi bruschi tra pannelli.
 
@@ -49,7 +51,7 @@ L'Appendice~\ref{app:frontend} sviluppa questa logica in modo più vicino al con
 \begin{figure}[t]
 \centering
 \includegraphics[width=1.0\textwidth]{uistate_fsm.png}
-\caption{Diagramma della macchina a stati \texttt{UIState} nel client SOULFRAME: i sei stati principali e le transizioni guidate da eventi utente e callback asincroni (controlli iniziali sui servizi, verifica profilo voce, verifica memoria).}
+\caption[Macchina a stati UIState]{Diagramma della macchina a stati \texttt{UIState} nel client SOULFRAME: i sei stati principali e le transizioni guidate da eventi utente e callback asincroni (controlli iniziali sui servizi, verifica profilo voce, verifica memoria).}
 \label{fig:uistate-fsm}
 \end{figure}
 
@@ -62,7 +64,7 @@ La modalità touch segue lo stesso flusso della desktop, ma cambia il modo in cu
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.90\textwidth]{ui-desktop-touch-comparison.png}
-\caption{Confronto tra UI desktop e UI touch in \texttt{MainMode}: a parità di \texttt{UIState}, cambiano input primario e \texttt{UIHintBar} (icone tastiera vs icone gesture/PTT).}
+\caption[Confronto UI desktop e touch]{Confronto tra UI desktop e UI touch in \texttt{MainMode}: a parità di \texttt{UIState}, cambiano input primario e \texttt{UIHintBar} (icone tastiera vs icone gesture/PTT).}
 \label{fig:ui-desktop-touch-comparison}
 \end{figure}
 
@@ -89,7 +91,7 @@ Nel flusso completo l'overlay Avaturn restituisce a Unity una struttura JSON di 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.40\textwidth]{usecase_sessione_avatar.png}
-\caption{Percorso d'uso principale dell'utente: dal profilo avatar all'avvio della conversazione.}
+\caption[Percorso d'uso principale]{Percorso d'uso principale dell'utente: dal profilo avatar all'avvio della conversazione.}
 \label{fig:usecase-sessione-avatar}
 \end{figure}
 
@@ -108,7 +110,7 @@ L'ingresso lato Unity è \texttt{AvaturnWebController}. In editor apre l'URL est
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{avaturn_bridge_arch.png}
-\caption{Architettura dell'integrazione Avaturn in WebGL: \texttt{AvaturnWebController} invoca il bridge \texttt{OpenAvaturnIframe} in \texttt{AvaturnBridge.jslib}, che crea un overlay DOM e inizializza l'SDK Avaturn; l'evento di export ritorna a Unity tramite \texttt{SendMessage} con un payload JSON.}
+\caption[Integrazione Avaturn in WebGL]{Architettura dell'integrazione Avaturn in WebGL: \texttt{AvaturnWebController} invoca il bridge \texttt{OpenAvaturnIframe} in \texttt{AvaturnBridge.jslib}, che crea un overlay DOM e inizializza l'SDK Avaturn; l'evento di export ritorna a Unity tramite \texttt{SendMessage} con un payload JSON.}
 \label{fig:avaturn-bridge-arch}
 \end{figure}
 
@@ -129,7 +131,6 @@ Nel client SOULFRAME l'acquisizione audio è uno dei punti in cui la differenza 
 
 Nel percorso WebGL, l'interoperabilità usa \texttt{DllImport("__Internal")}\footnote{\texttt{DllImport("__Internal")} è il meccanismo con cui il codice C\# richiama funzioni esposte dal lato nativo o dal runtime WebGL.} e callback compatibili con la compilazione AOT\footnote{AOT significa \emph{Ahead-Of-Time}: il codice viene compilato in anticipo, con meno libertà rispetto a certi collegamenti dinamici disponibili in altri runtime.} di Unity WebGL\footnote{\url{https://docs.unity3d.com/Manual/webgl-interactingwithbrowserscripting.html}}. Il plugin restituisce un buffer audio che il lato C\# copia subito in memoria gestita, così il frontend non dipende dalla durata del buffer nel runtime WebGL. Il passaggio tecnico completo è sviluppato in Appendice~\ref{app:webgl-bridge}. La gestione permessi è centralizzata nello stesso provider: richiesta anticipata, stato esposto al chiamante e prevenzione di richieste concorrenti. Questo riduce i fallimenti del primo turno vocale dovuti a prompt browser tardivi e aiuta anche la UI a distinguere un problema di autorizzazione da un problema di cattura. Per questo il client prova a richiedere l'accesso al microfono già nelle fasi iniziali di \texttt{MainMode}: in WebGL il permesso fa parte del flusso. Nel plugin JavaScript, \texttt{MediaRecorder}\footnote{\texttt{MediaRecorder} è l'API del browser usata per registrare flussi audio o video già acquisiti.} produce un WAV già compatibile con il resto della pipeline. Sul lato C\#, \texttt{WebGLAudioCapture} lo copia subito in memoria gestita e lo riconsegna come \texttt{byte[]} a \texttt{AudioRecorder}. Così setup voce e turno conversazionale riusano lo stesso contratto dati senza chiedere al backend conversioni aggiuntive. Il dettaglio del passaggio browser$\rightarrow$Unity è sviluppato in Appendice~\ref{app:webgl-bridge}.
 
-\vspace*{\fill}
 \begin{lstlisting}[style=sfterminal,title={Passaggio dati del capture audio},caption={Sequenza compatta del passaggio browser -> Unity usato sia nel setup voce sia in \texttt{MainMode}.}]
 browser start capture
 -> callback JS con (pointer, length)
@@ -141,7 +142,7 @@ browser start capture
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{audio_stack.png}
-\caption{Stack di acquisizione audio in WebGL: \texttt{AudioRecorder} delega al provider \texttt{IAudioCaptureWebGL} (\texttt{WebGLAudioCapture}), che richiama il plugin \texttt{AudioCapture.jslib} per cattura \texttt{MediaRecorder} e conversione WAV (header RIFF) con trasferimento dei byte via heap Emscripten.}
+\caption[Stack di acquisizione audio WebGL]{Stack di acquisizione WebGL: \texttt{AudioRecorder} usa \texttt{IAudioCaptureWebGL} (\texttt{WebGLAudioCapture}) e \texttt{AudioCapture.jslib} per cattura \texttt{MediaRecorder}, conversione WAV e passaggio dati via heap Emscripten.}
 \label{fig:audio-stack}
 \end{figure}
 
@@ -167,9 +168,9 @@ Il punteggio finale è una combinazione pesata dei due contributi:
 \[
 s(a,b) = \mathrm{clip}\sb{[0,1]}\big(0.6 \cdot s\sb{\mathrm{seq}}(a,b) + 0.4 \cdot s\sb{\mathrm{word}}(a,b)\big)
 \]
-dove \(a\) è la frase attesa normalizzata, \(b\) la trascrizione ottenuta da Whisper e \(W(\cdot)\) l'insieme dei token. Il peso maggiore dato a \(s\sb{\mathrm{seq}}\) riflette un criterio pratico: durante il setup interessa soprattutto che la frase venga letta in modo abbastanza aderente e ordinato, mentre il termine lessicale aiuta a penalizzare omissioni o salti più evidenti.\cite{Wang2020TextSim}
+dove \(a\) è la frase attesa normalizzata, \(b\) la trascrizione ottenuta da Whisper e \(W(\cdot)\) l'insieme dei token. I casi vuoti o troppo brevi vengono già esclusi dai filtri preliminari del setup voce, quindi il denominatore della distanza normalizzata non entra nei casi degeneri. Il peso maggiore dato a \(s\sb{\mathrm{seq}}\) riflette un criterio pratico: durante il setup interessa soprattutto che la frase venga letta in modo abbastanza aderente e ordinato, mentre il termine lessicale aiuta a penalizzare omissioni o salti più evidenti.\cite{Wang2020TextSim}
 
-Nel progetto la soglia resta fissata a 0.7 (\texttt{setupVoiceMinSimilarity=0.7f}). Non ha valore biometrico e non serve a riconoscere il parlante: serve piuttosto a filtrare campioni troppo brevi, rumorosi o troppo lontani dalla frase proposta. In pratica, la distanza di edit intercetta trascrizioni ``quasi corrette ma sporche'', mentre il termine lessicale aiuta a distinguere i casi in cui una parte rilevante della frase viene saltata o riformulata troppo.
+Nel progetto la soglia resta fissata a 0.7 (\texttt{setupVoiceMinSimilarity=0.7f}). Non ha valore biometrico e non serve a riconoscere il parlante: serve piuttosto a filtrare campioni troppo brevi, rumorosi o troppo lontani dalla frase proposta. La distanza di edit intercetta trascrizioni ``quasi corrette ma sporche'', mentre il termine lessicale aiuta a distinguere i casi in cui una parte rilevante della frase viene saltata o riformulata troppo.
 
 In interfaccia questo passaggio si traduce in una percentuale di match e in una decisione semplice: procedere o chiedere una nuova registrazione. L'Appendice~\ref{app:frontend} sviluppa il controllo in modo più ravvicinato, insieme ai punti di cancellazione della coroutine. La stessa pipeline deve anche gestire errori e cancellazioni asincrone: il controller mantiene uno stato di annullamento (\texttt{setupVoiceCancelling}) e, dopo ogni step (stop recording, trascrizione, match, upload TTS), verifica se l'utente abbia richiesto di interrompere l'operazione; in tal caso esce dalla coroutine senza applicare altri side effect. Gli errori dei servizi (Whisper o Coqui) vengono riportati con messaggi distinti e accompagnati da feedback sonoro (\texttt{PlayErrorClip}), così durante i test era più semplice capire se il problema dipendesse da rete, permessi microfono o contenuto della registrazione.
 
@@ -261,7 +262,7 @@ Per la sintesi si adotta uno streaming incrementale del WAV di risposta: il clie
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.80\textwidth]{mainmode_pipeline.png}
-\caption{Pipeline conversazionale in \texttt{MainMode}: PTT $\rightarrow$ WAV $\rightarrow$ \texttt{Whisper}/\texttt{transcribe} $\rightarrow$ RAG/\texttt{chat} $\rightarrow$ \texttt{Coqui}/\texttt{tts_stream} $\rightarrow$ stream WAV progressivo + metadati temporali $\rightarrow$ playback e aggiornamento del testo di risposta.}
+\caption[Pipeline conversazionale in MainMode]{Pipeline conversazionale in \texttt{MainMode}: PTT $\rightarrow$ WAV $\rightarrow$ \texttt{Whisper}/\texttt{transcribe} $\rightarrow$ RAG/\texttt{chat} $\rightarrow$ \texttt{Coqui}/\texttt{tts_stream} $\rightarrow$ stream WAV progressivo + metadati temporali $\rightarrow$ playback e aggiornamento del testo di risposta.}
 \label{fig:mainmode-pipeline}
 \end{figure}
 
@@ -290,7 +291,7 @@ La Figura~\ref{fig:backend-services-arch} illustra l'architettura complessiva de
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{backend-services-arch.png}
-\caption{Architettura dei micro-servizi backend: i quattro servizi FastAPI (Whisper, RAG, Avatar Asset, TTS) comunicano su porte dedicate; il servizio RAG si appoggia a Ollama (porta 11434) per embedding e chat LLM.}
+\caption[Micro-servizi backend di SOULFRAME]{Architettura dei micro-servizi backend: i quattro servizi FastAPI (Whisper, RAG, Avatar Asset, TTS) comunicano su porte dedicate; il servizio RAG si appoggia a Ollama (porta 11434) per embedding e chat LLM.}
 \label{fig:backend-services-arch}
 \end{figure}
 
@@ -315,7 +316,7 @@ Questa orchestrazione non coincide con un semplice top-k sulla memoria. Prima di
 \begin{wrapfigure}{l}{0.33\textwidth}
 \centering
 \includegraphics[width=0.90\linewidth,keepaspectratio]{rag_hybrid_search.png}
-\caption{Pipeline RAG nel backend: comprensione domanda, recupero contesto, filtro passaggi utili e controllo finale della risposta.}
+\caption[Pipeline RAG nel backend]{Pipeline RAG nel backend: comprensione domanda, recupero contesto, filtro passaggi utili e controllo finale della risposta.}
 \label{fig:rag-hybrid-search}
 \end{wrapfigure}
 
@@ -340,7 +341,7 @@ L'ingestione passa da \texttt{POST /ingest\_file} e \texttt{POST /describe\_imag
 \begin{wrapfigure}{r}{0.28\textwidth}
 \centering
 \includegraphics[width=0.7\linewidth]{tts_streaming_protocol.png}
-\caption{Flusso reply TTS: segmentazione testo, sintesi e allineamento backend, invio WAV progressivo con metadati temporali.}
+\caption[Flusso reply TTS]{Flusso reply TTS: segmentazione testo, sintesi e allineamento backend, invio WAV progressivo con metadati temporali.}
 \label{fig:tts-streaming-protocol}
 \end{wrapfigure}
 
@@ -398,7 +399,7 @@ Avatar asset & POST /avatars/import & JSON: avatar\_id, url, gender/bodyId/urlTy
 Avatar asset & DELETE /avatars/\{avatar\_id\} & path: avatar\_id & JSON con \texttt{ok}, \texttt{deleted}; rimozione asset e metadati dal catalogo. \\
 \bottomrule
 \end{tabularx}
-\caption{Contratto minimo client-backend.}
+\caption[Contratto minimo client-backend]{Contratto minimo client-backend.}
 \label{tab:backend-client-endpoints}
 \end{table}
 \noindent La tabella va letta come riferimento operativo del client, non come elenco esaustivo di tutte le route offerte dai servizi.
@@ -427,15 +428,15 @@ Tutte le richieste HTTP sono configurate a partire da \texttt{SoulframeServicesC
 \begin{wrapfigure}{l}{0.4\textwidth}
 \centering
 \includegraphics[width=1.1\linewidth,height=0.45\textheight,keepaspectratio]{endpoint_normalization.png}
-\caption{Scelta tra URL assolute di loopback e percorsi relativi \texttt{/api/*} in base all'origine della build WebGL.}
+\caption[Scelta degli endpoint WebGL]{Scelta tra URL assolute di loopback e percorsi relativi \texttt{/api/*} in base all'origine della build WebGL.}
 \label{fig:endpoint-normalization}
 \end{wrapfigure}
 
-La Figura~\ref{fig:endpoint-normalization} rende esplicita la regola di switch tra URL assolute in loopback e percorsi relativi \texttt{/api/*} in deploy pubblico. In pratica, quando la build gira in locale usa ancora gli indirizzi diretti dei servizi; quando invece viene servita da un dominio pubblico, gli stessi indirizzi vengono riscritti sotto \texttt{/api} e passano attraverso il reverse proxy. Questa normalizzazione è gestita da \texttt{SoulframeServicesConfig.cs} tramite \texttt{NormalizeForWebGlRuntime()}, attiva solo in build WebGL. Per gli asset avatar esiste una normalizzazione separata in \texttt{AvatarManager}, così il caricamento dei \texttt{.glb} non viene confuso con il livello delle API. Il punto pratico è evitare che il browser dell'utente finale tenti di contattare indirizzi di loopback come \texttt{127.0.0.1:800x}; usando percorsi relativi, le chiamate restano agganciate alla stessa origine che ha servito la build e il routing interno viene delegato al proxy.
+La Figura~\ref{fig:endpoint-normalization} rende esplicita la regola di switch tra URL assolute in loopback e percorsi relativi \texttt{/api/*} in deploy pubblico. Quando la build gira in locale usa ancora gli indirizzi diretti dei servizi; quando invece viene servita da un dominio pubblico, gli stessi indirizzi vengono riscritti sotto \texttt{/api} e passano attraverso il reverse proxy. Questa normalizzazione è gestita da \texttt{SoulframeServicesConfig.cs} tramite \texttt{NormalizeForWebGlRuntime()}, attiva solo in build WebGL. Per gli asset avatar esiste una normalizzazione separata in \texttt{AvatarManager}, così il caricamento dei \texttt{.glb} non viene confuso con il livello delle API. L'obiettivo è evitare che il browser dell'utente finale tenti di contattare indirizzi di loopback come \texttt{127.0.0.1:800x}; usando percorsi relativi, le chiamate restano agganciate alla stessa origine che ha servito la build e il routing interno viene delegato al proxy.
 
 L'integrazione end-to-end espone però il client anche a failure tipici delle chiamate di rete: latenza variabile, timeout e servizi momentaneamente non raggiungibili. Nel prototipo questa gestione è concentrata in una policy semplice, definita in \texttt{SoulframeServicesConfig.cs}: il client attende fino a circa quindici secondi per una singola richiesta e, se necessario, la ripete una sola volta. Mantenere questa policy in uno \texttt{ScriptableObject} permette di bilanciare reattività e tolleranza agli errori senza modificare il codice del flusso conversazionale. Lato client C\#/Unity, ogni \texttt{UnityWebRequest} usa un timeout coerente con questa regola. In caso di errore di rete, timeout o risposta HTTP non valida, il client tenta il recupero entro il limite previsto; se anche questo fallisce, la UI aggiorna lo stato con un messaggio esplicito e termina la pipeline in modo pulito, ripristinando l'interazione.
 
-La scelta di mantenere questa policy semplice è intenzionale. Una logica più ricca, con backoff o strategie più aggressive, avrebbe forse migliorato alcuni casi limite, ma avrebbe anche reso più difficile capire se un problema dipendesse dalla rete, dal servizio o dal modo in cui il client stava inseguendo il recupero. In questa fase era più utile una robustezza facile da diagnosticare. Per la fase TTS, in cui la latenza percepita è più critica, il fallback audio di cortesia è quello descritto in \autoref{subsec:tts-streaming}. Serve a dare un feedback immediato anche quando la sintesi principale è in ritardo o richiede un retry. Sul lato server, il servizio TTS implementa inoltre un fallback CUDA$\rightarrow$CPU. Questo non riguarda solo il caso in cui la GPU manchi all'avvio: se durante la generazione emergono errori riconducibili a CUDA, il server prova a degradare su CPU per evitare il blocco definitivo della sintesi. L'esecuzione risulta più lenta, ma l'istanza continua a fornire audio e il deploy regge meglio su macchine consumer o in condizioni di carico variabile. Il livello di robustezza descritto è dimensionato per un prototipo di ricerca: \texttt{ai\_services.cmd} non implementa health-check automatici né auto-ripristino, e le limitazioni che emergono in scenari prolungati sono discusse in \ref{sec:problemi-soluzioni}.
+La policy resta semplice. Una logica più ricca, con backoff o strategie più aggressive, avrebbe forse migliorato alcuni casi limite, ma avrebbe anche reso più difficile capire se un problema dipendesse dalla rete, dal servizio o dal modo in cui il client stava inseguendo il recupero. In questa fase era più utile una robustezza facile da diagnosticare. Per la fase TTS, in cui la latenza percepita è più critica, il fallback audio di cortesia è quello descritto in \autoref{subsec:tts-streaming}. Serve a dare un feedback immediato anche quando la sintesi principale è in ritardo o richiede un retry. Sul lato server, il servizio TTS implementa inoltre un fallback CUDA$\rightarrow$CPU. Questo non riguarda solo il caso in cui la GPU manchi all'avvio: se durante la generazione emergono errori riconducibili a CUDA, il server prova a degradare su CPU per evitare il blocco definitivo della sintesi. L'esecuzione risulta più lenta, ma l'istanza continua a fornire audio e il deploy regge meglio su macchine consumer o in condizioni di carico variabile. Il livello di robustezza descritto è dimensionato per un prototipo di ricerca: \texttt{ai\_services.cmd} non implementa health-check automatici né auto-ripristino, e le limitazioni che emergono in scenari prolungati sono discusse in \ref{sec:problemi-soluzioni}.
 
 \endgroup
 
@@ -449,7 +450,7 @@ La scelta di mantenere questa policy semplice è intenzionale. Una logica più r
 \catcode`\_=12\relax
 \catcode`\#=12\relax
 
-Nel percorso client--micro-servizi emergono criticità operative che in un prototipo monolitico restano spesso meno visibili: latenza variabile tra stadi, vincoli browser sul routing API, qualità non uniforme dell'OCR, compatibilità fragile tra dipendenze ML e differenze di gestione tra Windows e Ubuntu. Le sottosezioni seguenti raccolgono i problemi che si sono presentati con maggiore continuità e il modo in cui sono stati affrontati.
+Nel percorso client--micro-servizi emergono criticità operative che in un prototipo monolitico restano spesso meno visibili: latenza variabile tra stadi, vincoli browser sul routing API, qualità non uniforme dell'OCR, compatibilità fragile tra dipendenze ML e differenze di gestione tra Windows e Ubuntu. A questo livello conta soprattutto capire dove il sistema tende a perdere continuità e quali correzioni sono servite per renderlo abbastanza stabile da reggere il flusso completo.
 
 \subsection{Latenza, routing e continuità del flusso}
 \label{subsec:latenza-timeout}\label{subsec:cors-routing}
@@ -458,7 +459,7 @@ Nel prototipo la criticità più immediata è la latenza percepita tra la fine d
 
 Per mitigare il problema si combinano misure lato client e lato server. Sul client, \texttt{SoulframeServicesConfig} centralizza una policy minima di invocazione: il turno non resta in attesa indefinita, ma prova a recuperare una volta sola prima di dichiarare il fallimento. In fase di tuning, una finestra di dieci secondi si è mostrata troppo aggressiva sui turni lenti, causando interruzioni premature del ciclo vocale; la soglia attuale di circa quindici secondi è risultata più adatta all'hardware di sviluppo. Sul server TTS, la latenza percepita viene ridotta tramite risposta audio progressiva: l'endpoint \texttt{/tts_stream} invia la risposta come WAV in streaming e consente al client di avviare il playback senza attendere il trasferimento completo del file. Per pre-attivazione iniziale, fallback CUDA$\rightarrow$CPU e breve audio di attesa si rimanda a \autoref{subsec:tts-streaming}; qui rileva soprattutto il fatto che queste misure contengano il ritardo del primo turno e mantengano il servizio disponibile anche in assenza di GPU.
 
-Nella pratica, queste misure contengono i casi di UI bloccata e stabilizzano la latenza percepita, soprattutto per risposte lunghe o per i primi turni dopo l'avvio. Restano però limiti coerenti con la natura prototipale del sistema: la policy di retry è volutamente semplice (senza backoff esponenziale), e la pipeline continua a risentire dei tempi di inferenza quando i servizi sono avviati su hardware non adeguato o quando i modelli vengono eseguiti in modalità CPU.
+Queste misure contengono i casi di UI bloccata e stabilizzano la latenza percepita, soprattutto per risposte lunghe o per i primi turni dopo l'avvio. Restano però limiti coerenti con la natura prototipale del sistema: la policy di retry è volutamente semplice, senza backoff esponenziale, e la pipeline continua a risentire dei tempi di inferenza quando i servizi sono avviati su hardware non adeguato o quando i modelli vengono eseguiti in modalità CPU.
 
 Su WebGL, alla latenza si aggiunge il problema del routing API nel browser. Le chiamate possono essere bloccate anche quando i micro-servizi sono in esecuzione, perché l'intercettazione avviene prima che la richiesta raggiunga il server. La causa è la \emph{Same-Origin Policy} (SOP), che isola le risorse tra origin diversi (schema, host e porta) e richiede un consenso esplicito per consentire accessi \emph{cross-origin}. Il meccanismo standard per gestire tale consenso è il \emph{Cross-Origin Resource Sharing} (CORS), che consente al server di dichiarare in modo controllato quali origin e metodi siano ammessi; la letteratura osserva però come design, implementazione e deployment di CORS risultino spesso soggetti a complessità e misconfigurazioni nel mondo reale \cite{Chen2018CORS}. Nel prototipo la condizione cross-origin emerge naturalmente dalla scomposizione a micro-servizi: in locale i servizi sono in ascolto su porte distinte (8001--8004), mentre la build WebGL può essere servita su un'altra porta o su un dominio differente.
 
@@ -474,7 +475,7 @@ Restano però limiti evidenti. La pipeline non implementa un'analisi avanzata de
 
 Su questo stesso blocco pesa anche la compatibilità dell'ambiente Python necessario per eseguire i micro-servizi. In fase di installazione, errori di import o mismatch di ABI si manifestano in modo concreto come fallimenti all'avvio di Whisper, ChromaDB o, soprattutto, del servizio TTS. La causa tecnica è legata alla profondità delle dipendenze transitive nel dominio AI/ML: librerie come \texttt{coqui-tts}, \texttt{torch}, \texttt{transformers} e \texttt{tokenizers} impongono vincoli di versione stringenti e spesso dipendono da componenti compilati, rendendo fragile l'aggiornamento non coordinato dei pacchetti. Questo scenario è tipico nell'ecosistema PyPI, dove aggiornamenti upstream possono introdurre conflitti tra vincoli e ambiente locale, richiedendo strategie di risoluzione esplicite \cite{Wang2020Watchman}.
 
-La risposta più affidabile è stata un pinning rigoroso delle versioni in \texttt{requirements.txt}, che fissa l'accoppiata tra framework web e librerie ML (ad esempio \texttt{fastapi==0.128.0}, \texttt{openai-whisper==20250625}, \texttt{chromadb==1.4.1}, \texttt{coqui-tts==0.27.5}, \texttt{torch==2.10.0}, \texttt{torchaudio==2.10.0}, \texttt{transformers==4.57.1}, \texttt{tokenizers==0.22.1}, \texttt{torchcodec>=0.8.0}). Questo riduce la variabilità tra macchine e rende riproducibile il comportamento durante test e deploy. Per le installazioni con accelerazione GPU, lo script operativo \texttt{ai_services.cmd} prevede inoltre un comando dedicato (\texttt{TORCH_INSTALL_CMD}) per installare wheel CUDA specifiche, e centralizza anche variabili operative che influenzano direttamente il comportamento di RAG, Whisper e Coqui XTTS v2. In pratica, mismatch tra \texttt{transformers} e \texttt{tokenizers} o assenza di codec audio necessari alla sintesi si presentano in modo ripetibile su ambienti diversi e richiedono riallineamenti puntuali nel file di dipendenze. Il vantaggio si vede soprattutto sulla riproducibilità: un nuovo setup tende a convergere verso uno stato funzionante senza interventi ad hoc, e le regressioni possono essere ricondotte a modifiche puntuali nel file dei requirements. Rimane tuttavia una fragilità strutturale rispetto a cambiamenti upstream: l'aggiornamento di un singolo pacchetto può richiedere riallineamenti a catena, e alcune dipendenze (in particolare nel TTS) impongono vincoli non sempre dichiarati in modo immediato nei metadati pubblici\footnote{PyPI: coqui-tts --- \url{https://pypi.org/project/coqui-tts/}.}. Nel perimetro attuale questo compromesso resta accettabile, ma suggerisce che un'evoluzione verso un rilascio più stabile richiederebbe una gestione più strutturata dell'ambiente (ad esempio lockfile e pipeline di build ripetibile) per ridurre ulteriormente l'impatto degli aggiornamenti remoti.
+La risposta più affidabile è stata un pinning rigoroso delle versioni in \texttt{requirements.txt}, che fissa l'accoppiata tra framework web e librerie ML (ad esempio \texttt{fastapi==0.128.0}, \texttt{openai-whisper==20250625}, \texttt{chromadb==1.4.1}, \texttt{coqui-tts==0.27.5}, \texttt{torch==2.10.0}, \texttt{torchaudio==2.10.0}, \texttt{transformers==4.57.1}, \texttt{tokenizers==0.22.1}, \texttt{torchcodec>=0.8.0}). Questo riduce la variabilità tra macchine e rende riproducibile il comportamento durante test e deploy. Per le installazioni con accelerazione GPU, lo script operativo \texttt{ai_services.cmd} prevede inoltre un comando dedicato (\texttt{TORCH_INSTALL_CMD}) per installare wheel CUDA specifiche, e centralizza anche variabili operative che influenzano direttamente il comportamento di RAG, Whisper e Coqui XTTS v2. Mismatch tra \texttt{transformers} e \texttt{tokenizers}, oppure l'assenza di codec audio necessari alla sintesi, si presentano così in modo ripetibile su ambienti diversi e richiedono riallineamenti puntuali nel file di dipendenze. Il vantaggio si vede soprattutto sulla riproducibilità: un nuovo setup tende a convergere verso uno stato funzionante senza interventi ad hoc, e le regressioni possono essere ricondotte a modifiche puntuali nel file dei requirements. Rimane tuttavia una fragilità strutturale rispetto a cambiamenti upstream: l'aggiornamento di un singolo pacchetto può richiedere riallineamenti a catena, e alcune dipendenze, in particolare nel TTS, impongono vincoli non sempre dichiarati in modo immediato nei metadati pubblici\footnote{PyPI: coqui-tts --- \url{https://pypi.org/project/coqui-tts/}.}. Nel perimetro attuale questo compromesso resta accettabile, ma suggerisce che un'evoluzione verso un rilascio più stabile richiederebbe una gestione più strutturata dell'ambiente, ad esempio lockfile e pipeline di build ripetibile, per ridurre ulteriormente l'impatto degli aggiornamenti remoti.
 
 \subsection{Differenze operative tra ambienti}\label{subsec:differenze-windows-ubuntu}
 
@@ -505,7 +506,7 @@ Il ciclo di vita operativo, dalla verifica di stato al restart e all'update, è 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.85\textwidth]{sfctl-lifecycle.png}
-  \caption{Sequenza tipica di diagnosi, restart e update dei servizi SOULFRAME tramite \texttt{sfctl} e \texttt{sf\_admin\_ubuntu.sh}.}
+\caption[Diagnosi e update con sfctl]{Sequenza tipica di diagnosi, restart e update dei servizi SOULFRAME tramite \texttt{sfctl} e \texttt{sf\_admin\_ubuntu.sh}.}
   \label{fig:sfctl-lifecycle}
 \end{figure}
 
@@ -521,14 +522,14 @@ Il meccanismo di auto-restart non sostituisce un health management completo, per
 La seconda componente di affidabilità operativa riguarda gli aggiornamenti, che rappresentano una fonte frequente di regressioni e downtime se applicati in modo parziale. Nel prototipo, la console amministrativa \texttt{sf\_admin\_ubuntu.sh} implementa una pipeline \texttt{update\_all} che segue una sequenza deterministica: stop dei servizi, creazione di backup, deploy degli artefatti, normalizzazione dei file e riavvio. L'aggiornamento non è \emph{zero-downtime} in senso stretto, ma riduce la finestra di indisponibilità ed evita stati intermedi difficili da diagnosticare. Il rollback resta manuale: il sistema conserva i backup, ma non esegue automaticamente un revert in caso di failure post-deploy. Questa limitazione deriva dalla scelta di mantenere l'infrastruttura leggera; in un'evoluzione verso un rilascio più stabile, l'introduzione di verifiche automatiche post-deploy (ad esempio health-check su tutte le unit e test di richiesta minima STT$\rightarrow$TTS) consentirebbe di bloccare o annullare automaticamente un aggiornamento non sano, avvicinando la pipeline a pratiche di continuous delivery più robuste.
 
 \paragraph{Sicurezza operativa: isolamento di rete e perimetro TLS.}
-La misura di sicurezza operativa più rilevante già presente è la riduzione della superficie di attacco tramite isolamento di rete. In produzione, tutti i micro-servizi FastAPI eseguono bind su \texttt{127.0.0.1}, quindi non sono direttamente esposti alla rete pubblica; l'unico punto di ingresso è il reverse proxy Caddy, che termina TLS e inoltra le richieste ai servizi interni tramite routing su \texttt{/api/*}. In pratica, browser e utenti esterni comunicano solo con Caddy in HTTPS, mentre le porte 8001--8004 restano confinate al loopback del server. Caddy gestisce inoltre \emph{automatic HTTPS}, includendo emissione e rinnovo dei certificati e riducendo errori operativi legati alla gestione manuale di TLS.\footnote{Caddy (Automatic HTTPS) --- \url{https://caddyserver.com/docs/automatic-https}} La direttiva \texttt{reverse\_proxy} definisce l'inoltro verso i target in loopback e consente di mantenere invariata la configurazione del client WebGL, che in produzione utilizza percorsi relativi anziché URL assolute, come discusso in \autoref{subsec:normalizzazione-endpoint}.\footnote{Caddy (reverse\_proxy) --- \url{https://caddyserver.com/docs/caddyfile/directives/reverse_proxy}}
+La misura di sicurezza operativa più rilevante già presente è la riduzione della superficie di attacco tramite isolamento di rete. In produzione, tutti i micro-servizi FastAPI eseguono bind su \texttt{127.0.0.1}, quindi non sono direttamente esposti alla rete pubblica; l'unico punto di ingresso è il reverse proxy Caddy, che termina TLS e inoltra le richieste ai servizi interni tramite routing su \texttt{/api/*}. Browser e utenti esterni comunicano quindi solo con Caddy in HTTPS, mentre le porte 8001--8004 restano confinate al loopback del server. Caddy gestisce inoltre \emph{automatic HTTPS}, includendo emissione e rinnovo dei certificati e riducendo errori operativi legati alla gestione manuale di TLS.\footnote{Caddy (Automatic HTTPS) --- \url{https://caddyserver.com/docs/automatic-https}} La direttiva \texttt{reverse\_proxy} definisce l'inoltro verso i target in loopback e consente di mantenere invariata la configurazione del client WebGL, che in produzione utilizza percorsi relativi anziché URL assolute, come discusso in \autoref{subsec:normalizzazione-endpoint}.\footnote{Caddy (reverse\_proxy) --- \url{https://caddyserver.com/docs/caddyfile/directives/reverse_proxy}}
 
-Questo assetto fornisce un livello di sicurezza pragmatico per un prototipo: il traffico è cifrato sul tratto pubblico e i servizi non sono raggiungibili direttamente dall'esterno. Restano però assenti altre misure di enforcement al perimetro: non è implementata autenticazione sugli endpoint, non è presente rate-limiting e le policy CORS risultano permissive (\texttt{allow\_origins=["*"]} sui server FastAPI). In termini di threat model, questo significa che chiunque possa raggiungere l'origin pubblico può invocare le API, soggetto solo alla conoscenza degli endpoint e alla disponibilità dei servizi. È una scelta compatibile con un contesto controllato, come un ambiente di test o dimostrazione, ma non con un'esposizione pubblica non supervisionata.
+Per un prototipo, questo assetto fornisce un livello di sicurezza pragmatico: il traffico è cifrato sul tratto pubblico e i servizi non sono raggiungibili direttamente dall'esterno. Restano però assenti altre misure di enforcement al perimetro: non è implementata autenticazione sugli endpoint, non è presente rate-limiting e le policy CORS risultano permissive (\texttt{allow\_origins=["*"]} sui server FastAPI). In termini di threat model, chiunque possa raggiungere l'origin pubblico può invocare le API, soggetto solo alla conoscenza degli endpoint e alla disponibilità dei servizi. È una scelta compatibile con un contesto controllato, come un ambiente di test o dimostrazione, ma non con un'esposizione pubblica non supervisionata.
 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.85\textwidth]{security_layers.png}
-  \caption{Livelli dell'architettura in cui si concentrano le misure operative di sicurezza: rete, reverse proxy, applicazione e sistema operativo.}
+\caption[Livelli della sicurezza operativa]{Livelli dell'architettura in cui si concentrano le misure operative di sicurezza: rete, reverse proxy, applicazione e sistema operativo.}
   \label{fig:security-layers}
 \end{figure}
 

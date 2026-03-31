@@ -20,7 +20,7 @@ Figura~\ref{fig:ca-evoluzione} sintetizza la traiettoria che porta dai CA script
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{vr_contesto_schema.png}
-\caption{Evoluzione della ricerca sui Conversational Agents (CA): dalla ``zero hour wave'' alla ``AI wave'' e ai relativi passaggi tecnologici. \protect\footnotemark}
+\caption[Evoluzione della ricerca sui CA]{Evoluzione della ricerca sui Conversational Agents (CA): dalla ``zero hour wave'' alla ``AI wave'' e ai relativi passaggi tecnologici. \protect\footnotemark}
 \label{fig:ca-evoluzione}
 \end{figure}
 \footnotetext{Fonte: schema rielaborato dall'autore sulla base dei lavori richiamati in questa sezione.}
@@ -35,12 +35,12 @@ La voce è un canale rilevante per la presenza sociale perché rende immediatame
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{social_presence_audio_quality.png}
-\caption{Fattori immersivi associati alla presenza sociale, con qualità audio tra le variabili considerate in letteratura. \protect\footnotemark}
+\caption[Presenza sociale e qualità audio]{Fattori immersivi associati alla presenza sociale, con qualità audio tra le variabili considerate in letteratura. \protect\footnotemark}
 \label{fig:social-presence-audio}
 \end{figure}
 \footnotetext{Fonte: Oh et al., \emph{A Systematic Review of Social Presence: Definition, Antecedents, and Implications}, Frontiers in Robotics and AI (2018), \url{https://www.frontiersin.org/journals/robotics-and-ai/articles/10.3389/frobt.2018.00114/full} (Figura 3; licenza/uso: CC BY).}
 
-La presenza sociale e la co-presenza dipendono dall'allineamento tra canali comunicativi e tempi dell'interazione. In Figura~\ref{fig:social-presence-audio} la qualità audio compare tra le variabili immersive considerate in letteratura. Per un ECA vocale questo significa che la resa della voce e la gestione temporale dei turni incidono direttamente sulla naturalezza percepita.
+La presenza sociale e la co-presenza dipendono dall'allineamento tra canali comunicativi e tempi dell'interazione. In Figura~\ref{fig:social-presence-audio} la qualità audio compare tra le variabili immersive considerate in letteratura. Per un ECA vocale, quindi, la resa della voce e la gestione temporale dei turni incidono direttamente sulla naturalezza percepita.
 
 Nel contesto delle interazioni mediate è utile distinguere loneliness e isolamento sociale oggettivo. L'isolamento riguarda la quantità dei contatti; la loneliness riguarda invece come quei legami vengono vissuti. Nasce da una discrepanza percepita tra le relazioni che una persona desidera e quelle che sente di avere, quindi non coincide con il semplice ``stare da soli''.\cite{HawkleyCacioppo2010}
 
@@ -60,8 +60,8 @@ L'integrazione del dialogo in ambienti 3D introduce criticità che emergono meno
 
 La continuità tra turni è un secondo limite: senza una memoria affidabile diventa più difficile mantenere riferimenti e preferenze espresse dall'utente. Resta critica anche l'integrazione multimodale, perché richiede coerenza tra risposta linguistica, tempi e segnali non verbali. Anche la valutazione non è semplice: combina metriche soggettive (presenza, co-presenza, naturalezza) e metriche tecniche (latenza, errori di trascrizione), con protocolli non sempre uniformi.
 
-\section{Posizionamento di SOULFRAME}
-\label{sec:soulframe-positioning}
+\section{Posizionamento e Architettura di SOULFRAME}
+\label{sec:soulframe-positioning}\label{sec:architettura-soulframe}
 SOULFRAME si colloca in questa famiglia di sistemi, ma con un obiettivo più circoscritto: capire se un agente embodied, fruito tramite un client Unity, possa sostenere uno scambio abbastanza stabile nel tempo.
 
 Il prototipo riprende alcune scelte ormai ricorrenti nei sistemi conversazionali embodied più recenti: una pipeline vocale a moduli distinti, una memoria esterna al modello generativo e una separazione tra client e servizi di inferenza. Qui però questi elementi non servono a costruire una piattaforma generale, ma a sostenere una conversazione uno-a-uno legata a un profilo persistente.
@@ -70,13 +70,12 @@ La distribuzione principale in WebGL abbassa la barriera di accesso rispetto a c
 
 SOULFRAME occupa quindi una posizione intermedia: non punta al realismo massimo dell'ambiente immersivo, ma non si riduce nemmeno a una semplice interfaccia parlante. Il punto è tenere insieme presenza, memoria e stabilità del turno in un perimetro tecnico ristretto.
 
-\section{Architettura di SOULFRAME}
-\label{sec:architettura-soulframe}
+Un prototipo come SOULFRAME mette insieme scena 3D, dialogo vocale e servizi esterni che devono restare coerenti anche quando il flusso rallenta o cambia ambiente di esecuzione. Per questo conviene chiarire subito che cosa il sistema deve davvero saper fare, come si distribuiscono le responsabilità tra client e backend e in che modo avatar, memoria e persistenza restano legati lungo tutto il ciclo di uso.
 
-\subsection{Requisiti essenziali del sistema}
-Un prototipo di agente conversazionale embodied come SOULFRAME mette insieme interazione in tempo reale, gestione di asset 3D e servizi di inferenza esterni. In questa sezione i requisiti servono soprattutto a chiarire quali capacità erano davvero necessarie per far funzionare il prototipo e quali vincoli hanno inciso sulla sua tenuta tecnica.
+\noindent\textbf{Requisiti essenziali del sistema.}
+I requisiti servono soprattutto a chiarire quali capacità erano davvero necessarie per far funzionare il prototipo e quali vincoli hanno inciso sulla sua tenuta tecnica.
 
-\textbf{Requisiti funzionali.} Le funzioni principali del sistema sono distribuite tra servizi FastAPI \cite{FastAPI2026} separati, richiamati dal client Unity tramite HTTP. L'elenco seguente mantiene il formato dei requisiti funzionali, ma descrive soprattutto come il prototipo lavora in pratica.
+\textbf{Requisiti funzionali.} Le funzioni principali del sistema sono distribuite tra servizi FastAPI \cite{FastAPI2026} separati, richiamati dal client Unity tramite HTTP. L'elenco seguente mantiene il formato dei requisiti funzionali, ma descrive il funzionamento concreto del prototipo.
 
 RF1 (Libreria e selezione avatar): il client deve ottenere e visualizzare la lista degli avatar disponibili tramite \texttt{/avatars/list} e permettere la selezione di un profilo attivo identificato da \texttt{avatar\_id}. Il requisito è soddisfatto se la lista include almeno un modello locale di fallback definito in \texttt{LOCAL\_MODELS} e, quando il backend è raggiungibile, include anche avatar importati con un URL caricabile del modello \texttt{.glb}.
 
@@ -120,7 +119,7 @@ In deploy pubblico, l'elemento chiave di integrazione è il reverse proxy Caddy,
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{pipeline_e2e.png}
-\caption{Flusso end-to-end del sistema SOULFRAME: dall'input vocale dell'utente alla risposta dell'agente embodied.}
+\caption[Flusso end-to-end di SOULFRAME]{Flusso end-to-end del sistema SOULFRAME: dall'input vocale dell'utente alla risposta dell'agente embodied.}
 \label{fig:pipeline-e2e}
 \end{figure}
 
@@ -131,7 +130,7 @@ Figura~\ref{fig:arch-cap3} riassume questa vista a blocchi. Figura~\ref{fig:pipe
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{arch_cap3.png}
-\caption{Vista d'insieme dell'architettura a componenti di SOULFRAME: il client Unity WebGL comunica con i micro-servizi backend attraverso il reverse proxy Caddy.}
+\caption[Architettura a componenti di SOULFRAME]{Vista d'insieme dell'architettura a componenti di SOULFRAME: il client Unity WebGL comunica con i micro-servizi backend attraverso il reverse proxy Caddy.}
 \label{fig:arch-cap3}
 \end{figure}
 
@@ -148,7 +147,7 @@ Prima del primo turno, però, il client può aprire anche una sessione esplicita
 
 La memoria per-avatar è costruita su un database vettoriale persistente (ChromaDB \cite{ChromaDB2026}), popolato tramite embedding generati con un modello dedicato. Accanto a questo livello persistente, il backend mantiene anche una finestra scorrevole dei turni più recenti in RAM, indicizzata per coppia \texttt{(avatar\_id, session\_id)}. Questa finestra conserva continuità locale tra richieste ravvicinate, mentre il log di sessione su file resta distinto. Il servizio invoca poi il modello linguistico per la risposta e, quando necessario, applica una riscrittura con vincoli di aderenza ai dati recuperati.
 
-La scelta di tenere insieme questi tre livelli --- memoria persistente, contesto recente e log --- nasce da un compromesso preciso. La sola memoria persistente rende più difficile seguire riferimenti ravvicinati. Una memoria solo di sessione, invece, fa perdere continuità tra incontri diversi, mentre un semplice log non basta a sostenere il turno in tempo reale. In pratica, ciascun livello copre un bisogno diverso: la memoria persistente mantiene il profilo nel tempo, il contesto recente sostiene lo scambio in corso e il log serve soprattutto a tracciare la sessione. I meccanismi più minuti di retrieval e tracciabilità sono sviluppati nel Capitolo~\ref{chap:implementazione} e in Appendice~\ref{app:rag}; qui queste scelte vengono trattate come euristiche implementative, non come prova statistica definitiva dell'aderenza ai dati recuperati.
+La scelta di tenere insieme questi tre livelli --- memoria persistente, contesto recente e log --- nasce da un compromesso preciso. La sola memoria persistente rende più difficile seguire riferimenti ravvicinati. Una memoria solo di sessione, invece, fa perdere continuità tra incontri diversi, mentre un semplice log non basta a sostenere il turno in tempo reale. Ciascun livello copre quindi un bisogno diverso: la memoria persistente mantiene il profilo nel tempo, il contesto recente sostiene lo scambio in corso e il log serve soprattutto a tracciare la sessione. I meccanismi più minuti di retrieval e tracciabilità sono sviluppati nel Capitolo~\ref{chap:implementazione} e in Appendice~\ref{app:rag}; qui queste scelte vengono trattate come euristiche implementative, non come prova statistica definitiva dell'aderenza ai dati recuperati.
 
 Ricevuto il testo di risposta, il client attiva la sintesi vocale tramite il servizio Text-to-Speech (TTS) basato su Coqui XTTS v2. La richiesta avviene preferibilmente tramite l'endpoint di streaming \texttt{/tts\_stream}, includendo \texttt{avatar\_id} e lingua: il servizio recupera il profilo vocale associato all'avatar (voice cloning) e produce audio progressivamente, consentendo al client di iniziare il playback non appena arrivano i primi byte dello stream. Il vantaggio è che il client non deve aspettare la generazione dell'intero file, ma solo l'arrivo della prima risposta udibile.
 
@@ -157,7 +156,7 @@ Per mitigare i tempi morti più evidenti, il TTS usa una pre-attivazione inizial
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.96\textwidth]{ui_state_diagram_cap3.png}
-\caption{Diagramma degli stati UI del client SOULFRAME: dalla fase di caricamento iniziale al ciclo conversazionale (Idle $\rightarrow$ Listening $\rightarrow$ Processing $\rightarrow$ Speaking).}
+\caption[Stati UI del client SOULFRAME]{Diagramma degli stati UI del client SOULFRAME: dalla fase di caricamento iniziale al ciclo conversazionale (Idle $\rightarrow$ Listening $\rightarrow$ Processing $\rightarrow$ Speaking).}
 \label{fig:ui-state-diagram-cap3}
 \end{figure}
 
@@ -170,7 +169,7 @@ Nel blocco RAG la figura distingue i tre passaggi essenziali: capire la richiest
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{flusso_e2e_cap3.png}
-\caption{Flusso end-to-end di una richiesta conversazionale in SOULFRAME: dall'acquisizione audio push-to-talk alla riproduzione della risposta vocale, con dettaglio dei passaggi interni RAG (capire la richiesta, recuperare contesto, controllare la risposta).}
+\caption[Flusso conversazionale end-to-end]{Flusso end-to-end di una richiesta conversazionale in SOULFRAME: dall'acquisizione audio push-to-talk alla riproduzione della risposta vocale, con dettaglio dei passaggi interni RAG (capire la richiesta, recuperare contesto, controllare la risposta).}
 \label{fig:flusso-e2e-cap3}
 \end{figure}
 
@@ -190,42 +189,42 @@ Le Figure~\ref{fig:ui-carosello-cap3}, \ref{fig:ui-mainmenu-cap3}, \ref{fig:ui-s
 \begin{figure}[H]
   \centering
   \includegraphics[width=1.0\textwidth]{flusso_avatar_cap3.png}
-  \caption{Flusso di gestione avatar in SOULFRAME: dalla creazione tramite Avaturn alla cache server-side e al rendering nel client Unity.}
+  \caption[Flusso di gestione avatar]{Flusso di gestione avatar in SOULFRAME: dalla creazione tramite Avaturn alla cache server-side e al rendering nel client Unity.}
 \label{fig:flusso-avatar-cap3}
 \end{figure}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{ui_carosello.png}
-\caption{Interfaccia carosello avatar in SOULFRAME: selezione del profilo attivo tra avatar locali e importati.}
+\caption[Carosello avatar]{Interfaccia carosello avatar in SOULFRAME: selezione del profilo attivo tra avatar locali e importati.}
 \label{fig:ui-carosello-cap3}
 \end{figure}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{ui_mainmenu.png}
-\caption{Interfaccia \texttt{MainMenu} in SOULFRAME: accesso alle funzioni principali prima dell'onboarding dell'avatar.}
+\caption[MainMenu di SOULFRAME]{Interfaccia \texttt{MainMenu} in SOULFRAME: accesso alle funzioni principali prima dell'onboarding dell'avatar.}
 \label{fig:ui-mainmenu-cap3}
 \end{figure}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{ui_setupvoice.png}
-\caption{Schermata \texttt{SetupVoice}: registrazione e validazione del campione vocale durante l'onboarding.}
+\caption[SetupVoice]{Schermata \texttt{SetupVoice}: registrazione e validazione del campione vocale durante l'onboarding.}
 \label{fig:ui-setupvoice-cap3}
 \end{figure}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{ui_setupmemory.png}
-\caption{Schermata \texttt{SetupMemory}: inserimento note e ingestione contenuti per popolare la memoria per-avatar.}
+\caption[SetupMemory]{Schermata \texttt{SetupMemory}: inserimento note e ingestione contenuti per popolare la memoria per-avatar.}
 \label{fig:ui-setupmemory-cap3}
 \end{figure}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{ui_push_to_talk.png}
-\caption{Stato di ascolto push-to-talk nel client Unity WebGL: acquisizione audio attiva con indicatore visivo.}
+\caption[Stato di ascolto push-to-talk]{Stato di ascolto push-to-talk nel client Unity WebGL: acquisizione audio attiva con indicatore visivo.}
 \label{fig:ui-ptt-cap3}
 \end{figure}
 
@@ -237,7 +236,7 @@ Nel sistema, la persistenza dei dati di profilo è organizzata su filesystem e s
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{persistenza_tree_cap3.png}
-\caption{Struttura del filesystem di persistenza in SOULFRAME: tre store isolati per \texttt{avatar\_id} (asset \texttt{.glb}, profilo vocale e memoria RAG).}
+\caption[Store persistenti del profilo avatar]{Struttura del filesystem di persistenza in SOULFRAME: tre store isolati per \texttt{avatar\_id} (asset \texttt{.glb}, profilo vocale e memoria RAG).}
 \label{fig:persistenza-tree-cap3}
 \end{figure}
 
@@ -250,8 +249,7 @@ Dal punto di vista del lavoro sperimentale, questa separazione ha avuto un vanta
 \section{Tecnologie utilizzate in SOULFRAME}
 \label{sec:tecnologie-soulframe}
 
-\subsection{Frontend, ambiente applicativo e avatar}
-Sul lato frontend, SOULFRAME adotta Unity come ambiente applicativo principale. WebGL resta la modalità principale di distribuzione, mentre la build Windows viene usata soprattutto per sviluppo e confronto. La scelta risponde a un compromesso pratico: mantenere nello stesso runtime UI, scena 3D, audio e logica di interazione, evitando di separare troppo presto la resa embodied dalla gestione del turno.
+Le tecnologie adottate non sono state scelte come semplice elenco di strumenti, ma come combinazione minima per tenere insieme frontend embodied, pipeline conversazionale e gestione operativa del prototipo. Sul lato frontend, SOULFRAME adotta Unity come ambiente applicativo principale. WebGL resta la modalità principale di distribuzione, mentre la build Windows viene usata soprattutto per sviluppo e confronto.
 
 Il prototipo prende forma dall'unione tra integrazione di Avaturn nel client Unity e backend AI a micro-servizi. L'avatar viene creato in ambiente web dedicato, il client ne acquisisce l'identità, delega l'import del modello \texttt{.glb} al backend e poi lo riporta nel percorso unitario di SOULFRAME descritto in Sezione~\ref{sec:architettura-riferimento}. Nel runtime Unity il caricamento dei \texttt{.glb} avviene con GLTFast,\footnote{Unity Technologies, \emph{glTFast package documentation}, \url{https://docs.unity3d.com/Packages/com.unity.cloud.gltfast@6.10/manual/index.html}} così da tenere la creazione dell'avatar fuori dalla scena ma il suo uso operativo dentro lo stesso flusso applicativo.
 
@@ -264,7 +262,7 @@ SOULFRAME implementa una pipeline conversazionale in tre stadi: riconoscimento d
 \begin{figure}[t]
 \centering
 \includegraphics[width=1.00\textwidth]{pipeline_ai.png}
-\caption{Schema della pipeline conversazionale (STT $\rightarrow$ RAG/LLM $\rightarrow$ TTS) adottata in SOULFRAME.}
+\caption[Pipeline conversazionale di SOULFRAME]{Schema della pipeline conversazionale (STT $\rightarrow$ RAG/LLM $\rightarrow$ TTS) adottata in SOULFRAME.}
 \label{fig:pipeline-ai-cap2}
 \end{figure}
 
@@ -278,7 +276,7 @@ Whisper è un modello STT basato su architettura Transformer e addestrato su lar
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.95\textwidth]{whisper_arch.png}
-\caption{Architettura del modello Whisper: encoder Transformer con
+\caption[Architettura del modello Whisper]{Architettura del modello Whisper: encoder Transformer con
 log-mel spectrogram in input e decoder per la trascrizione
 multilingue zero-shot.\protect\footnotemark}
 \label{fig:whisper-arch-cap2}
@@ -297,12 +295,12 @@ La query testuale viene trasformata in embedding, cioè una rappresentazione num
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.70\textwidth]{rag_frontiers_architecture.png}
-\caption{Schema concettuale di Retrieval-Augmented Generation (RAG): recupero di contesto e generazione della risposta. La figura mostra l'idea di base, che in SOULFRAME viene poi adattata a memoria per-avatar, routing dell'intento e controllo finale del testo. \protect\footnotemark}
+\caption[Schema concettuale del RAG]{Schema concettuale di Retrieval-Augmented Generation (RAG): recupero di contesto e generazione della risposta. La figura mostra l'idea di base, che in SOULFRAME viene poi adattata a memoria per-avatar, routing dell'intento e controllo finale del testo. \protect\footnotemark}
 \label{fig:rag-frontiers}
 \end{figure}
 \footnotetext{Fonte: Kaur et al., \emph{Knowledge, context and personalization in retrieval-augmented generation for healthcare}, Frontiers in Artificial Intelligence (2025), \url{https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2025.1697169/full} (Figura 1; licenza/uso: CC BY).}
 
-Nel backend di SOULFRAME questo schema viene poi esteso con una logica più esplicitamente conversazionale: routing dell'intento, retrieval ibrido lessicale+vettoriale, distinzione tra memoria persistente e contesto recente di sessione, e controllo finale della risposta quando il contesto recuperato è debole o ambiguo. In pratica, gli aggiornamenti passano dai contenuti recuperabili, non dai pesi del modello.
+Nel backend di SOULFRAME questo schema viene poi esteso con una logica più esplicitamente conversazionale: routing dell'intento, retrieval ibrido lessicale+vettoriale, distinzione tra memoria persistente e contesto recente di sessione, e controllo finale della risposta quando il contesto recuperato è debole o ambiguo. Gli aggiornamenti passano quindi dai contenuti recuperabili, non dai pesi del modello.
 
 \medskip
 \noindent\textbf{Text-to-Speech con Coqui XTTS v2}
@@ -314,7 +312,7 @@ Coqui XTTS v2 offre supporto multilingue e \emph{voice cloning}, quindi la costr
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.65\textwidth]{xtts_arch.png}
-\caption{Panoramica dell'architettura XTTS: Conditioning Encoder,
+\caption[Architettura XTTS]{Panoramica dell'architettura XTTS: Conditioning Encoder,
 encoder GPT-2 con Perceiver Resampler e decoder HiFi-GAN per
 sintesi multilingue zero-shot con voice cloning.\protect\footnotemark}
 \label{fig:xtts-arch-cap2}
@@ -329,7 +327,7 @@ Sul backend, invece, SOULFRAME è realizzato come insieme di micro-servizi indip
 \setlength{\tabcolsep}{2pt}
 \renewcommand{\arraystretch}{1.2}
 \begin{longtable}{|>{\raggedright\arraybackslash}p{0.16\textwidth}|>{\raggedright\arraybackslash}p{0.20\textwidth}|>{\raggedright\arraybackslash}p{0.07\textwidth}|>{\raggedright\arraybackslash}p{0.24\textwidth}|>{\raggedright\arraybackslash}p{0.27\textwidth}|}
-\caption{Micro-servizi backend di SOULFRAME.}
+\caption[Micro-servizi backend]{Micro-servizi backend di SOULFRAME.}
 \label{tab:microservizi-cap3}\\
 \hline
 \textbf{Componente} & \textbf{File Python} & \textbf{Porta} & \textbf{Endpoint chiave} & \textbf{Responsabilità} \\
@@ -360,7 +358,7 @@ Lo stesso vale per la ricerca ibrida usata dal RAG: i candidati vengono ordinati
 \begin{figure}[H]
 \centering
 \includegraphics[width=1.0\textwidth]{rag_docs_swagger.png}
-\caption{Interfaccia Swagger UI (\texttt{/docs}) del servizio RAG di SOULFRAME: una vista della documentazione automatica generata da FastAPI per \texttt{rag\_server.py}.}
+\caption[Swagger UI del servizio RAG]{Interfaccia Swagger UI (\texttt{/docs}) del servizio RAG di SOULFRAME: una vista della documentazione automatica generata da FastAPI per \texttt{rag\_server.py}.}
 \label{fig:rag-swagger-cap3}
 \end{figure}
 
@@ -396,7 +394,7 @@ Update/rollback & Aggiornamento manuale dello workspace e riavvio script & Scrip
 Gestione persistenze & Directory locali del progetto (\texttt{avatar\_store}, \texttt{voices}, \texttt{rag\_store}) & Directory persistenti lato server con separazione per componente/avatar \\
 \hline
 \end{tabular}
-\caption{Confronto operativo tra Windows locale e Ubuntu server.}
+\caption[Windows locale e Ubuntu server]{Confronto operativo tra Windows locale e Ubuntu server.}
 \label{tab:deploy-confronto-cap3}
 \end{table}
 

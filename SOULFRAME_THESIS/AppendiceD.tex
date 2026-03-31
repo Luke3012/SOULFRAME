@@ -5,6 +5,8 @@
 Nel percorso WebGL il frontend passa dal browser, ma alcune funzioni cruciali non possono essere lasciate a Unity da sola: permessi microfono, overlay DOM di Avaturn, file picker e sincronizzazione del filesystem virtuale dipendono dal contesto JavaScript della pagina. I file \texttt{.jslib} sono il punto di raccordo con questa parte del sistema.
 
 \section{Bridge WebGL per audio e avatar}
+Qui il browser non fa da semplice contenitore della build Unity, ma prende in carico alcune funzioni che il runtime WebGL da solo non riesce a gestire bene: microfono, overlay Avaturn e ritorno del focus al canvas.
+
 \paragraph{\normalfont\texttt{AudioCapture.jslib}.}
 Il bridge audio si occupa di tre passaggi:
 \begin{itemize}
@@ -106,11 +108,13 @@ OpenAvaturnIframe
 
 Il tentativo su più varianti di \texttt{SendMessage} serve perché i template WebGL non espongono sempre l'istanza Unity nello stesso modo; senza questa cautela il bridge diventerebbe fragile proprio nelle build che dovrebbero essere più portabili.
 
-Anche qui il punto non è cosmetico. Overlay, callback e refocus non servono soltanto a chiudere bene l'editor avatar: servono a evitare che DOM e canvas Unity si contendano tastiera, click e stato della pagina proprio durante un passaggio delicato dell'onboarding.
+Overlay, callback e refocus non servono soltanto a chiudere bene l'editor avatar: evitano che DOM e canvas Unity si contendano tastiera, click e stato della pagina proprio durante un passaggio delicato dell'onboarding.
 
 \section{Integrazioni browser e filesystem virtuale}
+In questa seconda parte rientrano invece i plugin che servono a far passare file e stato del browser verso il client senza rompere il flusso dell'onboarding e della memoria.
+
 \paragraph{\normalfont\texttt{WebGLFilePicker.jslib} e file picker browser.}
-Il file picker WebGL serve soprattutto a \texttt{SetupMemory}. Il plugin apre il selettore di file del browser, converte il contenuto in base64 e lo rimanda al client come piccolo JSON. In questo modo il frontend può trattare in modo abbastanza uniforme selezione documento e selezione immagine, pur restando dentro i vincoli della pagina web.
+Il file picker WebGL serve soprattutto a \texttt{SetupMemory}. Il plugin apre il selettore di file del browser, converte il contenuto in base64 e lo rimanda al client come piccolo JSON. Il frontend può così trattare in modo abbastanza uniforme selezione documento e selezione immagine, pur restando dentro i vincoli della pagina web.
 
 \begin{lstlisting}[language=json,caption={Payload tipico del file picker WebGL verso Unity.}]
 {
@@ -135,6 +139,6 @@ La Figura~\ref{fig:appendix-avaturn-overlay} mostra il caso più rappresentativo
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.96\textwidth]{Risorse/ui_avaturn_overlay_webgl.png}
-    \caption{Overlay del configuratore Avaturn aperto nel flusso WebGL di SOULFRAME. Il client Unity resta sospeso finché il browser non restituisce l'avatar selezionato tramite callback.}
+\caption[Overlay Avaturn in WebGL]{Overlay del configuratore Avaturn aperto nel flusso WebGL di SOULFRAME. Il client Unity resta sospeso finché il browser non restituisce l'avatar selezionato tramite callback.}
     \label{fig:appendix-avaturn-overlay}
 \end{figure}

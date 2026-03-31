@@ -13,6 +13,6 @@ AssetOrigin:
   serializedVersion: 1
   productId: 243983
   packageName: Export Project to Zip
-  packageVersion: 1.1.5
+  packageVersion: 1.1.6
   assetPath: Packages/ca.tim-cstj.export-project-to-zip/Editor/ExportProjectToZipSettingsProvider.cs
-  uploadId: 843732
+  uploadId: 884286

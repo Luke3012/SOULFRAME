@@ -41,7 +41,7 @@ Letta così, la tabella rischia di sembrare una semplice mappa di classi. In rea
 \paragraph{Macchina a stati e gating del profilo.}
 Il client si muove attorno a sei stati: \texttt{Boot}, \texttt{MainMenu}, \texttt{AvatarLibrary}, \texttt{SetupVoice}, \texttt{SetupMemory}, \texttt{MainMode}. Il punto più importante non è il numero degli stati, ma la logica di gating:
 
-Questo disegno evita che l'utente entri direttamente in conversazione con un profilo ancora incompleto. In questo modo onboarding e bootstrap restano parte reale del sistema, non un prologo separato.
+Questo disegno evita che l'utente entri direttamente in conversazione con un profilo ancora incompleto. Onboarding e bootstrap restano così parte reale del sistema, non un prologo separato.
 
 \begin{lstlisting}[style=sfcode,language={[Sharp]C},caption={Estratto adattato da \texttt{UIFlowController.cs}: scelta dello stato dopo i controlli di boot.}]
 if (!coquiReady || !ragReady)
@@ -54,6 +54,8 @@ return UIState.MainMenu;
 \end{lstlisting}
 
 \section{Gestione avatar e setup voce}
+Nel client questo è il punto in cui profilo avatar e voce smettono di essere semplice configurazione e diventano prerequisiti reali dell'interazione. Per questo libreria, import, validazione del campione vocale e salvataggio del profilo restano nello stesso blocco.
+
 \paragraph{AvatarManager e libreria avatar.}
 \texttt{AvatarManager} mantiene separati tre problemi:
 \begin{itemize}
@@ -85,7 +87,7 @@ POST /avatars/import
 
 Un dettaglio utile, che nel corpo starebbe stretto, è la separazione tra preview e avatar principale. \texttt{AvatarManager} usa identificatori di sessione distinti per evitare che un caricamento tardivo della preview finisca per sovrascrivere l'avatar attivo in scena. È una misura molto pratica: nel catalogo l'utente può cambiare scelta rapidamente, quindi i caricamenti asincroni devono poter arrivare ``fuori tempo'' senza corrompere lo stato corrente.
 
-Questo spiega anche perché la libreria avatar non sia trattata come un semplice passaggio cosmetico. Ogni scelta lì prepara già il resto della pipeline: memoria, voce, comportamento embodied e disponibilità effettiva del modello in scena. Se la preview e il caricamento principale si confondessero, l'utente non avrebbe solo un problema visivo; entrerebbe in uno stato conversazionale ambiguo.
+Per questo la libreria avatar non è trattata come un semplice passaggio cosmetico. Ogni scelta lì prepara già il resto della pipeline: memoria, voce, comportamento embodied e disponibilità effettiva del modello in scena. Se la preview e il caricamento principale si confondessero, l'utente non avrebbe solo un problema visivo; entrerebbe in uno stato conversazionale ambiguo.
 
 \paragraph{SetupVoice: frase guida, filtro e salvataggio.}
 Nel setup voce il client non si limita a registrare un campione. Costruisce prima una frase guida, poi filtra il materiale registrato e solo alla fine lo consegna a Coqui.
@@ -108,7 +110,7 @@ Il cuore del controllo è \texttt{CalculateSimilarity}. Dopo una normalizzazione
 \[
 s = \mathrm{clip}_{[0,1]}\big(0.6 \cdot s_{\mathrm{seq}} + 0.4 \cdot s_{\mathrm{word}}\big),
 \]
-dove \(s_{\mathrm{seq}}\) deriva dalla distanza di Levenshtein normalizzata e \(s_{\mathrm{word}}\) dall'overlap lessicale tra i token. La soglia usata nel progetto è \texttt{setupVoiceMinSimilarity = 0.7f}. Non serve a certificare l'identità del parlante: serve a scartare reference vocali troppo corte, troppo rumorose o troppo lontane dalla frase proposta.
+dove \(s_{\mathrm{seq}}\) deriva dalla distanza di Levenshtein normalizzata e \(s_{\mathrm{word}}\) dall'overlap lessicale tra i token. Anche qui i casi vuoti o troppo brevi vengono filtrati prima del confronto, quindi la normalizzazione non entra nei casi degeneri. La soglia usata nel progetto è \texttt{setupVoiceMinSimilarity = 0.7f}. Non serve a certificare l'identità del parlante: serve a scartare reference vocali troppo corte, troppo rumorose o troppo lontane dalla frase proposta.
 
 \begin{lstlisting}[style=sfterminal,title={Esito tipico della validazione voce},caption={Il feedback che la UI costruisce prima di inviare il campione a Coqui.}]
 frase attesa: "Mi chiamo Luca e oggi sto provando la mia voce."
@@ -137,25 +139,19 @@ ingresso in MainMode
 
 Che il client supporti anche turni \texttt{keyboard} è importante, perché dimostra che \texttt{MainMode} non coincide con una sola gesture di input: coincide con una sessione conversazionale dell'avatar.
 
-Dal lato client la sessione non è un metadato secondario. Serve a tenere insieme tre cose: il recap locale dei turni, il log conversazionale e la continuità tra input vocali e testuali. Per questo \texttt{BeginMainMode} apre la sessione appena il profilo è pronto, invece di aspettare il primo messaggio effettivo: in questo modo il turno nasce già dentro un contenitore coerente.
+Dal lato client la sessione non è un metadato secondario. Serve a tenere insieme tre cose: il recap locale dei turni, il log conversazionale e la continuità tra input vocali e testuali. Per questo \texttt{BeginMainMode} apre la sessione appena il profilo è pronto, invece di aspettare il primo messaggio effettivo: il turno nasce così già dentro un contenitore coerente.
 
 Anche la differenza tra desktop e touch va letta così. I due ambienti cambiano gesture, hint e comandi, ma non aprono due flussi diversi: PTT e tastiera sono soltanto due modi di entrare nella stessa conversazione.
 
-Da qui entrano in gioco anche i componenti che rendono l'avatar meno ``piatto'' durante i turni. In SOULFRAME il comportamento embodied non sta a lato di \texttt{MainMode}: resta agganciato allo stesso ciclo conversazionale e ne segue gli stati.
+Da qui entrano in gioco anche i componenti che rendono l'avatar meno ``piatto'' durante i turni. In SOULFRAME il comportamento embodied non sta a lato di \texttt{MainMode}: resta agganciato allo stesso ciclo conversazionale e ne segue gli stati. Per questo \texttt{AvaturnULipSyncBinder} non assume un naming unico dei blendshape, ma cerca a runtime candidati compatibili per i visemi principali e aggiorna i pesi in \texttt{LateUpdate}. Gli avatar non sono tutti uguali, quindi un mapping statico sarebbe troppo fragile.
 
-{\subsectionfont{\upshape}\paragraph{\normalfont\texttt{AvaturnULipSyncBinder}.}}
-Il binder non assume un naming unico dei blendshape. Cerca invece a runtime candidati compatibili per i visemi principali e aggiorna i pesi in \texttt{LateUpdate}. Il motivo è pratico: gli avatar non sono tutti uguali, quindi un mapping statico sarebbe troppo fragile.
-
-{\subsectionfont{\upshape}\paragraph{\normalfont\texttt{AvaturnIdleLookAndBlink}.}}
-Lo sguardo e il blink non vengono trattati come animazioni decorative. Il controller cambia comportamento in base allo stato del turno: idle, listening, speaking, focus esterno. In questo modo il volto dell'avatar non resta neutro proprio nei momenti in cui l'utente si aspetta un segnale di presenza.
-
-Guardando i componenti, le scelte descritte nel capitolo implementativo prendono una forma più concreta: qui si vedono i passaggi con cui stati, onboarding, avatar e comportamento embodied vengono davvero tenuti insieme nel client Unity.
+Lo stesso vale per \texttt{AvaturnIdleLookAndBlink}, che non tratta sguardo e blink come animazioni decorative. Il controller cambia comportamento in base allo stato del turno -- idle, listening, speaking, focus esterno -- così il volto dell'avatar non resta neutro proprio nei momenti in cui l'utente si aspetta un segnale di presenza.
 
 Un esempio utile del comportamento di \texttt{SetupVoice} compare quando la frase attesa non viene pronunciata in modo abbastanza aderente. In quel caso la registrazione non viene accettata e il client mostra esplicitamente che la similarità è insufficiente, invitando a riprovare.
 
 \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.92\textwidth]{Risorse/ui_setupvoice_similarity_fail.png}
-    \caption{Schermata di \texttt{SetupVoice} con validazione fallita: la frase pronunciata non raggiunge la soglia minima di similarità, quindi il campione vocale non viene registrato.}
-    \label{fig:appendix-setupvoice-fail}
+\centering
+\includegraphics[width=0.92\textwidth]{Risorse/ui_setupvoice_similarity_fail.png}
+\caption[Validazione fallita in SetupVoice]{Schermata di \texttt{SetupVoice} con validazione fallita: la frase pronunciata non raggiunge la soglia minima di similarità, quindi il campione vocale non viene registrato.}
+\label{fig:appendix-setupvoice-fail}
 \end{figure}

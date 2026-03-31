@@ -3,7 +3,7 @@
     "com.avaturn.webview": "https://github.com/avaturn/avaturn-unity-webview-sdk.git",
     "com.hecomi.ulipsync": "https://github.com/hecomi/uLipSync.git#upm",
     "com.unity.2d.sprite": "1.0.0",
-    "com.unity.ai.navigation": "2.0.11",
+    "com.unity.ai.navigation": "2.0.12",
     "com.unity.asset-manager-for-unity": "1.10.0",
     "com.unity.burst": "1.8.28",
     "com.unity.cinemachine": "3.1.6",
