@@ -7,6 +7,17 @@
 SOULFRAME is a cross-platform experience for interactive avatars with AI backend, currently maintained for both WebGL and Windows.
 The idea is simple: pick or create an avatar, speak, the system understands your voice, reasons with contextual memory, and responds in audio.
 
+## Experience Preview
+
+<p align="center">
+  <img src="SOULFRAME_THESIS/Risorse/ui_mainmenu.png" alt="SOULFRAME opening screen with the signature glowing rings and minimal menu" width="92%" />
+</p>
+
+<p align="center">
+  <em>Opening screen with SOULFRAME's signature rings: minimal, suspended, immediately recognizable.</em><br />
+  <em>The first visual note of the experience, where atmosphere arrives before interaction.</em>
+</p>
+
 ## What it does
 
 - Management of local and imported 3D avatars (with server-side caching of `.glb` assets).
@@ -102,6 +113,14 @@ In voice setup:
 - if similarity is at least 70%, the voice reference is saved for that avatar,
 - wait phrases (e.g., "hm", "un_secondo") are then generated for conversation.
 
+<p align="center">
+  <img src="SOULFRAME_THESIS/Risorse/ui_setupvoice.png" alt="SOULFRAME voice setup screen with avatar preview and guided recording text" width="88%" />
+</p>
+
+<p align="center">
+  <em>Voice setup guides the user through recording and verification before the avatar starts speaking back.</em>
+</p>
+
 ## Memory: what it can save
 
 RAG memory can be fed by:
@@ -116,6 +135,14 @@ Important details:
 - for images there is OCR and, when configured, semantic description with Gemini Vision;
 - everything is saved per avatar, so each profile maintains its own separate context.
 
+<p align="center">
+  <img src="SOULFRAME_THESIS/Risorse/ui_setupmemory.png" alt="SOULFRAME memory setup screen with options for document, image, and text ingestion" width="88%" />
+</p>
+
+<p align="center">
+  <em>Memory setup keeps ingestion explicit and readable: documents, images, and notes become per-avatar context.</em>
+</p>
+
 ## MainMode
 
 MainMode is the operational phase of conversation:
@@ -127,6 +154,14 @@ MainMode is the operational phase of conversation:
 5. UI updated with state, user text, and response.
 
 From MainMode you can also quickly return to voice setup/memory setup if you want to update the profile.
+
+<p align="center">
+  <img src="SOULFRAME_THESIS/Risorse/mainmode_desktop_eval.png" alt="SOULFRAME conversation view during live avatar response in desktop mode" width="92%" />
+</p>
+
+<p align="center">
+  <em>MainMode in action: the avatar answers in voice while the interface keeps the exchange calm, direct, and legible.</em>
+</p>
 
 ## Empirical Test Mode
 
@@ -173,6 +208,14 @@ Unity's lip sync in WebGL has known limitations compared to Play Mode/Desktop ex
 - On Windows, the scene uses a dedicated runtime scaler (`WindowsResolutionScaler`) for 3D rendering performance tuning:
   - 3D render scale is configurable from Inspector.
   - UI/canvas remains full-resolution.
+
+<p align="center">
+  <img src="SOULFRAME_THESIS/Risorse/ui-desktop-touch-comparison.png" alt="SOULFRAME desktop and touch layouts shown side by side" width="90%" />
+</p>
+
+<p align="center">
+  <em>Desktop and touch layouts share the same visual language while adapting interaction to the active platform.</em>
+</p>
 
 ## Local Frontend Modes on Windows
 
